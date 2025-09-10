@@ -26,6 +26,12 @@ server.get("/", (req: Request, res: Response) => {
     .json({ success: true, message: "Payment service is running" });
 });
 
+// VNPAY return URL handler
+server.get("/vnpay_return", (req: Request, res: Response) => {
+    console.log("VNPAY return ref:", req.query.ref);
+    res.status(200).json({ success: true, ref: req.query.ref });
+});
+
 // Error handling middleware
 server.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error(err.stack);

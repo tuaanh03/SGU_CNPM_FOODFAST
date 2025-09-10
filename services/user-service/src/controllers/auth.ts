@@ -1,6 +1,7 @@
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import prisma from "../lib/prisma";
+import { Prisma } from "@prisma/client";
 import { Request, Response } from "express";
 import { signupSchema, signinSchema } from "../validations/auth.validations";
 
@@ -28,8 +29,8 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const user = await prisma.$transaction(async (prisma) => {
-      const newUser = await prisma.user.create({
+      const user = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+          const newUser = await tx.user.create({
         data: { name, email, password: hashedPassword, phone_number },
       });
 

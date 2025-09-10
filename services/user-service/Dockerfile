@@ -2,7 +2,9 @@ FROM node:20-alpine
 
 WORKDIR /app/user-service
 
-RUN npm install -g pnpm
+# Install build tools needed for native modules like bcrypt
+RUN apk add --no-cache python3 make g++ \
+    && npm install -g pnpm
 
 COPY package.json pnpm-lock.yaml ./
 

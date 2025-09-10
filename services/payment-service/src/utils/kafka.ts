@@ -1,6 +1,6 @@
 import axios from "axios";
 import { Kafka, Partitioners } from "kafkajs";
-import { processPayment } from "../utils/stripe";
+import { processPayment } from "../utils/vnpay";
 
 const kafka = new Kafka({
   clientId: "payment-service",
@@ -79,16 +79,12 @@ export async function runConsumer() {
         );
         const userEmail = getUserPaymentDetails.data.email;
 
-        const card_number = getUserPaymentDetails.data.card_number;
-        const expiry_date = getUserPaymentDetails.data.expiry_date;
 
         const result = await processPayment(
           orderId,
           userId,
           amount,
-          item,
-          card_number,
-          expiry_date
+          item
         );
         console.log(`Payment result for order ${orderId}:`, result);
 
