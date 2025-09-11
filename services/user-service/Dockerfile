@@ -10,6 +10,8 @@ COPY package.json pnpm-lock.yaml ./
 
 RUN pnpm install --frozen-lockfile
 
+RUN apk del python3 make g++
+
 COPY . .
 
 RUN npx prisma generate
