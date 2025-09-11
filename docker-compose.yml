@@ -13,7 +13,7 @@ services:
       - network
 
   kafka:
-    image: confluentinc/cp-kafka:latest
+    image: confluentinc/cp-kafka:7.4.4 # Đảm bảo kafka không cần đến procss_rules trong docker-compose.yaml
     hostname: kafka
     container_name: kafka
     depends_on:
