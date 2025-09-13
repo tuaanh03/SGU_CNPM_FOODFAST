@@ -5,6 +5,8 @@ import { OrderSchema } from "../validations/order.validation";
 
 interface AuthenticatedRequest extends Request {
   user?: { id: string };
+  body: any;
+  params: any;
 }
 
 export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
@@ -21,7 +23,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
     if (!parsedBody.success) {
       res.status(400).json({
         success: false,
-        message: parsedBody.error.errors.map((err) => err.message).join(", "),
+        message: parsedBody.error.errors.map((err: any) => err.message).join(", "),
       });
       return;
     }
@@ -46,9 +48,11 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
 
     await publishEvent(JSON.stringify(orderPayload));
 
-    res
-      .status(201)
-      .json({ success: true, message: "Order created successfully" });
+    res.status(201).json({
+      success: true,
+      message: "Order created successfully",
+      orderId: saveOrder.orderId
+    });
   } catch (error) {
     console.error("error while creating order:", error);
     res.status(500).json({
@@ -99,6 +103,8 @@ export const getOrderStatus = async (
       data: {
         orderId: orderStatus.orderId,
         status: orderStatus.status,
+        amount: orderStatus.amount,
+        item: orderStatus.item,
       },
       message: "Order status retrieved successfully.",
     });
@@ -107,6 +113,82 @@ export const getOrderStatus = async (
     res.status(500).json({
       success: false,
       message: "Failed to check order status.",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+export const getPaymentUrl = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    const { orderId } = req.params;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: "User not authenticated.",
+      });
+      return;
+    }
+
+    if (!orderId) {
+      res.status(400).json({
+        success: false,
+        message: "Order ID is required.",
+      });
+      return;
+    }
+
+    // Kiểm tra order có thuộc về user này không
+    const order = await prisma.order.findUnique({
+      where: {
+        orderId,
+        userId,
+      },
+    });
+
+    if (!order) {
+      res.status(404).json({
+        success: false,
+        message: "Order not found.",
+      });
+      return;
+    }
+
+    // Nếu order đã success hoặc failed, không cần payment URL nữa
+    if (order.status === "success") {
+      res.status(200).json({
+        success: true,
+        message: "Order already paid successfully.",
+        paymentStatus: "success",
+      });
+      return;
+    }
+
+    if (order.status === "failed") {
+      res.status(200).json({
+        success: false,
+        message: "Payment failed. Please create a new order.",
+        paymentStatus: "failed",
+      });
+      return;
+    }
+
+    // Nếu order vẫn đang pending, frontend cần đợi payment URL từ Kafka event
+    res.status(200).json({
+      success: true,
+      message: "Payment is being processed. Please wait for payment URL.",
+      paymentStatus: order.status,
+      orderId: order.orderId,
+    });
+  } catch (error) {
+    console.error("Error getting payment URL:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get payment URL.",
       error: error instanceof Error ? error.message : "Unknown error",
     });
   }

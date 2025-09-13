@@ -1,4 +1,3 @@
-import axios from "axios";
 import { Kafka, Partitioners } from "kafkajs";
 import { processPayment } from "../utils/vnpay";
 
@@ -25,7 +24,8 @@ export async function publishEvent(
   amount: number,
   item: string,
   paymentStatus: string,
-  paymentIntentId: string
+  paymentIntentId: string,
+  paymentUrl?: string // Thêm paymentUrl vào tham số
 ) {
   if (!isProducerConnected) {
     await producer.connect();
@@ -40,6 +40,7 @@ export async function publishEvent(
     item,
     paymentStatus,
     paymentIntentId,
+    paymentUrl, // Thêm paymentUrl vào messageData
   };
 
   await producer.send({
@@ -71,47 +72,45 @@ export async function runConsumer() {
           return;
         }
 
-        const apiGatewayUrl =
-          process.env.API_GATEWAY_URL || "http://localhost:3000";
+        console.log(`Processing payment for order ${orderId}`);
 
-        const getUserPaymentDetails = await axios.get(
-          `${apiGatewayUrl}/api/payment-methods/get/${userId}`
-        );
-        const userEmail = getUserPaymentDetails.data.email;
-
-
+        // Tạo VNPay payment URL - không cần thông tin thẻ
         const result = await processPayment(
           orderId,
           userId,
           amount,
           item
         );
-        console.log(`Payment result for order ${orderId}:`, result);
 
-        if (result.success) {
+        console.log(`Payment URL created for order ${orderId}:`, result);
+
+        if (result.success && result.paymentUrl) {
           const paymentIntentId = result.paymentIntentId!;
-          const paymentStatus = "success";
 
-          publishEvent(
+          // Publish event với payment URL để frontend có thể redirect
+          await publishEvent(
             orderId,
             userId,
-            userEmail,
+            "system@vnpay.com", // Email không cần thiết cho VNPay
             amount,
             item,
-            paymentStatus,
-            paymentIntentId
+            "pending", // Status pending cho đến khi có callback từ VNPay
+            paymentIntentId,
+            result.paymentUrl // Thêm payment URL vào event
           );
+
+          console.log(`Payment URL sent for order ${orderId}: ${result.paymentUrl}`);
         } else {
           const paymentIntentId = result.paymentIntentId || "N/A";
-          const paymentStatus = "failed";
-          publishEvent(
+          await publishEvent(
             orderId,
             userId,
-            userEmail,
+            "system@vnpay.com",
             amount,
             item,
-            paymentStatus,
-            paymentIntentId
+            "failed",
+            paymentIntentId,
+            "" // No payment URL for failed cases
           );
         }
       },

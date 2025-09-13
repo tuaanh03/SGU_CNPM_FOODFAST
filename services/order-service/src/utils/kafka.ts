@@ -45,12 +45,16 @@ export async function runConsumer() {
         const event = message.value?.toString() as string;
         const data = JSON.parse(event);
 
+        console.log("Received payment event:", data);
+
+        // Cập nhật order status dựa trên payment event
         if (
           data.paymentStatus === "success" ||
-          data.paymentStatus === "failed"
+          data.paymentStatus === "failed" ||
+          data.paymentStatus === "pending"
         ) {
           try {
-            await prisma.order.update({
+            const updateResult = await prisma.order.update({
               where: {
                 orderId: data.orderId,
               },
@@ -58,7 +62,18 @@ export async function runConsumer() {
                 status: data.paymentStatus,
               },
             });
-            console.log("Status update");
+
+            console.log(
+              `Order ${data.orderId} status updated to: ${data.paymentStatus}`
+            );
+
+            // Nếu có paymentUrl, log để frontend có thể sử dụng
+            if (data.paymentUrl && data.paymentStatus === "pending") {
+              console.log(
+                `Payment URL for order ${data.orderId}: ${data.paymentUrl}`
+              );
+              // TODO: Có thể gửi paymentUrl về frontend qua WebSocket hoặc cách khác
+            }
           } catch (error) {
             console.error("Error updating order status:", error);
           }
