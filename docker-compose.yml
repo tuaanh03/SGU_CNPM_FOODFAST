@@ -1,7 +1,7 @@
 services:
   # Kafka & Zookeeper setup
   zookeeper:
-    image: confluentinc/cp-zookeeper:latest
+    image: confluentinc/cp-zookeeper:7.4.4
     hostname: zookeeper
     container_name: zookeeper
     environment:
@@ -11,6 +11,9 @@ services:
       - 22181:2181
     networks:
       - network
+    volumes: # <- thêm volumes để ZK giữ dữ liệu ổn định
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
 
   kafka:
     image: confluentinc/cp-kafka:7.4.4 # Đảm bảo kafka không cần đến procss_rules trong docker-compose.yaml
@@ -28,8 +31,7 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-        #Giữ lại dữ liệu Kafka trên máy chủ
-      KAFKA_LOG_DIRS: /var/lib/kafka/data
+
     networks:
       - network
     volumes:
@@ -138,6 +140,8 @@ volumes:
   userdb:
   orderdb:
   kafka_data:
+  zookeeper_data:    # <- thêm
+  zookeeper_log:     # <- thêm
 
 networks:
   network:
