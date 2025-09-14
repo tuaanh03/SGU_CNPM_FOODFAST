@@ -49,6 +49,14 @@ const paymentServiceProxy = proxy(config.paymentServiceUrl, {
   },
 });
 
+// proxy middleware for Product Service
+const productServiceProxy = proxy(config.productServiceUrl, {
+  proxyReqPathResolver: (req) => {
+    const newPath = req.originalUrl.replace(/^\/api/, "");
+    return newPath;
+  },
+});
+
 // user service routes
 server.use("/api/auth", authLimiter, userServiceProxy);
 server.use("/api/payment-methods", userServiceProxy);
@@ -61,6 +69,9 @@ server.use("/vnpay_return", paymentServiceProxy);
 
 // payment service routes - API routes (với /api prefix)
 server.use("/api/payment", paymentServiceProxy);
+
+// product service routes
+server.use("/api/products", productServiceProxy);
 
 // health check route
 server.get("/", (req: Request, res: Response) => {

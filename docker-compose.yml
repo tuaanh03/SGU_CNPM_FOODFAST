@@ -106,6 +106,34 @@ services:
     networks:
       - network
 
+  # Product service
+  product-service:
+    build:
+      context: ./services/product-service
+      dockerfile: Dockerfile
+    container_name: product-service
+    env_file:
+      - ./services/product-service/.env
+    ports:
+      - "3004:3004"
+    networks:
+      - network
+    depends_on:
+      - product-db
+      - kafka
+
+  product-db:
+    image: postgres:15-alpine
+    container_name: product-db
+    env_file:
+      - ./services/product-service/.env
+    ports:
+      - "5434:5432"
+    volumes:
+      - productdb:/var/lib/postgresql/data
+    networks:
+      - network
+
   # Payment service
   payment-service:
     build:
@@ -139,6 +167,7 @@ services:
 volumes:
   userdb:
   orderdb:
+  productdb:
   kafka_data:
   zookeeper_data:    # <- thêm
   zookeeper_log:     # <- thêm

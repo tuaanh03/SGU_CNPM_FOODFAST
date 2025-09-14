@@ -9,6 +9,48 @@ interface AuthenticatedRequest extends Request {
   params: any;
 }
 
+// Helper function để tính tổng tiền từ Product Service
+async function calculateOrderAmount(items: any[]): Promise<{ amount: number; validItems: any[] }> {
+  // Gọi Product Service để lấy thông tin và giá của từng sản phẩm
+  let totalAmount = 0;
+  const validItems = [];
+
+  for (const item of items) {
+    try {
+      // Call Product Service API qua API Gateway
+      const productResponse = await fetch(`http://api-gateway:3000/api/products/${item.productId}`);
+
+      if (!productResponse.ok) {
+        throw new Error(`Sản phẩm ${item.productId} không tồn tại`);
+      }
+
+      const productData = await productResponse.json();
+      const product = productData.data;
+
+      if (!product.isActive) {
+        throw new Error(`Sản phẩm ${product.name} không còn kinh doanh`);
+      }
+
+      const itemTotal = product.price * item.quantity;
+      totalAmount += itemTotal;
+
+      validItems.push({
+        productId: item.productId,
+        quantity: item.quantity,
+        price: product.price,
+        name: product.name,
+        sku: product.sku,
+        subtotal: itemTotal
+      });
+
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  return { amount: totalAmount, validItems };
+}
+
 export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user?.id;
@@ -28,37 +70,58 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
       return;
     }
 
-    const { item, amount } = parsedBody.data;
+    const { items } = parsedBody.data;
 
-    const saveOrder = await prisma.order.create({
-      data: {
-        userId,
-        amount,
-        item,
-        status: "pending",
-      },
-    });
+    try {
+      // Tính toán tổng tiền và validate sản phẩm
+      const { amount, validItems } = await calculateOrderAmount(items);
 
-    const orderPayload = {
-      orderId: saveOrder.orderId,
-      userId: saveOrder.userId,
-      amount: saveOrder.amount,
-      item: saveOrder.item,
-    };
+      // Lưu order với format mới
+      const saveOrder = await prisma.order.create({
+        data: {
+          userId,
+          amount,
+          item: JSON.stringify(validItems), // Lưu chi tiết items as JSON cho backward compatibility
+          status: "pending",
+        },
+      });
 
-    await publishEvent(JSON.stringify(orderPayload));
+      // Payload gửi đến Product Service để reserve inventory
+      const orderPayload = {
+        orderId: saveOrder.orderId,
+        userId: saveOrder.userId,
+        items: items, // Format đơn giản cho Product Service: [{productId, quantity}]
+        amount: saveOrder.amount,
+        timestamp: new Date().toISOString()
+      };
 
-    res.status(201).json({
-      success: true,
-      message: "Order created successfully",
-      orderId: saveOrder.orderId
-    });
+      await publishEvent(JSON.stringify(orderPayload));
+
+      res.status(201).json({
+        success: true,
+        message: "Đơn hàng đã được tạo và đang chờ kiểm tra tồn kho",
+        data: {
+          orderId: saveOrder.orderId,
+          items: validItems,
+          amount: saveOrder.amount,
+          status: saveOrder.status,
+          createdAt: saveOrder.created_at // Sửa từ createdAt thành created_at
+        }
+      });
+
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        message: error.message || "Lỗi khi validate sản phẩm"
+      });
+      return;
+    }
+
   } catch (error) {
-    console.error("error while creating order:", error);
+    console.error("Error creating order:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to create order.",
-      error: error instanceof Error ? error.message : "Unknown error",
+      message: "Lỗi hệ thống khi tạo đơn hàng",
     });
   }
 };
