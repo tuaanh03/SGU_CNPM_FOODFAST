@@ -62,17 +62,28 @@ export async function runConsumer() {
         );
 
         await consumer.run({
-            eachMessage: async ({ topic, partition, message }) => {
-                const event = message.value?.toString() as string;
-                const data = JSON.parse(event);
+            eachMessage: async ({ topic, message }) => {
+                const eventStr = message.value?.toString();
+                if (!eventStr) {
+                    console.warn(`Received empty message on topic ${topic}`);
+                    return;
+                }
+
+                let data: unknown;
+                try {
+                    data = JSON.parse(eventStr);
+                } catch {
+                    console.error(`Invalid JSON on topic ${topic}:`, eventStr);
+                    return;
+                }
 
                 console.log(`Received event from topic ${topic}:`, data);
 
                 try {
                     if (topic === "order.create") {
-                        await handleOrderCreate(data);
+                        await handleOrderCreate(data as any);
                     } else if (topic === "payment.event") {
-                        await handlePaymentEvent(data);
+                        await handlePaymentEvent(data as any);
                     }
                 } catch (error) {
                     console.error(`Error processing ${topic} event:`, error);
@@ -91,12 +102,15 @@ interface ReservationItem {
     price: number; // int (VND)
 }
 
-function isReservationItem(x: any): x is ReservationItem {
+function isReservationItem(x: unknown): x is ReservationItem {
+    const v = x as Partial<ReservationItem> | null | undefined;
     return (
-        x &&
-        typeof x.productId === "string" &&
-        Number.isInteger(x.quantity) &&
-        Number.isInteger(x.price)
+        !!v &&
+        typeof v.productId === "string" &&
+        typeof v.quantity === "number" &&
+        Number.isInteger(v.quantity) &&
+        typeof v.price === "number" &&
+        Number.isInteger(v.price)
     );
 }
 
@@ -106,21 +120,22 @@ function isReservationItem(x: any): x is ReservationItem {
  * - Ném Error nếu format sai để transaction rollback đúng cách.
  */
 function parseReservationItems(raw: unknown): ReservationItem[] {
-    if (typeof raw === "string") {
+    let val: unknown = raw;
+
+    if (typeof val === "string") {
         try {
-            raw = JSON.parse(raw);
+            val = JSON.parse(val);
         } catch {
             throw new Error("Invalid reservation.items JSON string");
         }
     }
-    if (!Array.isArray(raw)) {
+    if (!Array.isArray(val)) {
         throw new Error("reservation.items must be an array");
     }
-    const arr = raw as unknown[];
-    if (!arr.every(isReservationItem)) {
+    if (!val.every(isReservationItem)) {
         throw new Error("reservation.items has invalid element(s)");
     }
-    return arr as ReservationItem[];
+    return val as ReservationItem[];
 }
 
 // ================ Handlers ===================
@@ -137,7 +152,7 @@ async function handleOrderCreate(orderData: any) {
         let canReserve = true;
         let rejectMessage = "";
 
-        for (const item of items) {
+        for (const item of items as Array<{ productId: string; quantity: number }>) {
             const product = await prisma.product.findUnique({
                 where: { id: item.productId },
             });
@@ -217,7 +232,10 @@ async function handleOrderCreate(orderData: any) {
 async function handlePaymentEvent(paymentData: any) {
     console.log("Processing payment.event:", paymentData);
 
-    const { orderId, status } = paymentData;
+    const { orderId, paymentStatus, status } = paymentData;
+
+    // Lấy status từ cả hai field có thể có
+    const actualStatus: string | undefined = paymentStatus || status;
 
     try {
         const reservation = await prisma.reservation.findUnique({
@@ -229,7 +247,12 @@ async function handlePaymentEvent(paymentData: any) {
             return;
         }
 
-        if (status === "PAID") {
+        console.log(
+            `Processing order ${orderId} with status: ${actualStatus ?? "undefined"}`
+        );
+
+        // Xử lý cả "success" và "PAID" cho thanh toán thành công
+        if (actualStatus === "success" || actualStatus === "PAID") {
             // Commit: trừ hẳn kho và cập nhật reservation
             await prisma.$transaction(async (tx) => {
                 const items = parseReservationItems(reservation.items as unknown);
@@ -256,8 +279,14 @@ async function handlePaymentEvent(paymentData: any) {
                 });
             });
 
-            console.log(`Successfully committed inventory for order ${orderId}`);
-        } else if (status === "FAILED" || status === "CANCELED") {
+            console.log(
+                `Successfully committed inventory for order ${orderId} with status ${actualStatus}`
+            );
+        } else if (
+            actualStatus === "failed" ||
+            actualStatus === "FAILED" ||
+            actualStatus === "CANCELED"
+        ) {
             // Release: trả lại reserved quantity
             await prisma.$transaction(async (tx) => {
                 const items = parseReservationItems(reservation.items as unknown);
@@ -281,7 +310,13 @@ async function handlePaymentEvent(paymentData: any) {
                 });
             });
 
-            console.log(`Successfully released inventory for order ${orderId}`);
+            console.log(
+                `Successfully released inventory for order ${orderId} with status ${actualStatus}`
+            );
+        } else {
+            console.log(
+                `Unknown payment status for order ${orderId}: ${actualStatus} (raw paymentStatus: ${paymentStatus}, raw status: ${status})`
+            );
         }
     } catch (error) {
         console.error("Error processing payment.event:", error);
