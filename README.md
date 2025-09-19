@@ -1,124 +1,108 @@
-### payment-processing-microservices Architecture
+# payment-processing-microservices Architecture
 
-## Overview
+## Tổng quan
 
-This readme file provides a detailed explanation of the architecture for a microservices-based application. The system comprises five services: Gateway Service, User Service, Order Service, Payment Service, and Notification Service. Each service communicates via REST APIs, Kafka topics, and follows an event-driven architecture for scalability and reliability.
+Tệp README này cung cấp giải thích chi tiết về kiến trúc của một ứng dụng dựa trên microservices. Hệ thống bao gồm năm dịch vụ: **Gateway Service**, **User Service**, **Order Service**, **Payment Service**, và **Notification Service**.  
+Các dịch vụ giao tiếp thông qua REST APIs, Kafka topics, và tuân theo kiến trúc hướng sự kiện để đảm bảo khả năng mở rộng và độ tin cậy.
 
 ![Architecture Diagram](./assets/architecture.png)
 
-## Service Descriptions
+## Mô tả dịch vụ
 
 ### 1. Gateway Service
-
-The Gateway Service acts as a reverse proxy, routing requests to the appropriate microservices.
-
-**Responsibilities**:
-
-- Handles incoming HTTP requests.
-
-- Routes requests to User Service or Order Service based on the endpoint.
+- Reverse proxy định tuyến request đến User Service hoặc Order Service.
 
 ### 2. User Service
-
-The User Service manages user-related operations and stores user data.
-
-**Responsibilities**:
-
-- Handles user sign-up and sign-in.
-
-- Stores and manages user payment details.
-
-- Exposes an endpoint to retrieve user payment details for the Payment Service.
-
-**Database**:
-
-- Stores user information and payment details.
-
-**API Endpoints**:
-
-- `POST /signup`: Sign up a new user.
-- `POST /signin`: Sign in a user.
-- `POST /add`: Add payment details.
-- `GET /get/:userId`: Retrieve user payment details.
+- Quản lý user (signup, signin).
+- Lưu thông tin thanh toán.
+- Cung cấp API cho Payment Service lấy payment details.
 
 ### 3. Order Service
-
-The Order Service handles order creation and status management.
-
-**Responsibilities**:
-
-- Creates new orders with a status of "pending".
-
-- Publishes an event to the order.create Kafka topic.
-
-- Listens to the payment.event topic to update order statuses based on payment results.
-
-**Database**:
-
-Stores order information and status.
-
-**API Endpoints**:
-
-- `POST /create`: Create a new order.
-- `GET /status/:orderId`: Get order status.
+- Tạo order trạng thái `"pending"`.
+- Publish sự kiện `order.create`.
+- Lắng nghe `payment.event` để cập nhật trạng thái đơn hàng.
 
 ### 4. Payment Service
-
-The Payment Service manages payment processing.
-
-**Responsibilities**:
-
-- Subscribes to the order.create Kafka topic to process new orders.
-
-- Sends a GET request to the User Service to retrieve payment details.
-
-- Processes payments using Stripe.
-
-- Publishes an event to the payment.event Kafka topic with payment details.
-
-**Integration**:
-
-Communicates with Stripe for payment processing.
+- Subscribe `order.create` để xử lý thanh toán.
+- Gọi User Service lấy payment details.
+- Tích hợp với Stripe → publish `payment.event`.
 
 ### 5. Notification Service
-
-The Notification Service handles user notifications.
-
-**Responsibilities**:
-
-- Subscribes to the payment.event Kafka topic to receive payment status updates.
-
-- Sends email notifications to users based on payment status.
-
-- Implements a Dead Letter Queue (DLQ) for failed notifications.
+- Subscribe `payment.event`.
+- Gửi email thông báo.
+- Sử dụng **DLQ** cho message thất bại.
 
 ### Message Broker (Kafka)
+- **Topics**:
+    - `order.create` (Order → Payment)
+    - `payment.event` (Payment → Order + Notification)
 
-Kafka is used for event-driven communication between services.
+---
 
-**Topics**:
+## Công nghệ sử dụng
+- **Node.js, Express**
+- **Apache Kafka**
+- **PostgreSQL**
+- **Stripe**
+- **Docker**
 
-- order.create: Published by Order Service; consumed by Payment Service.
+---
 
-- payment.event: Published by Payment Service; consumed by Order and Notification Services.
+## Hướng dẫn chạy môi trường phát triển
 
-**DLQ**:
+### Docker cơ bản
+- **Build 1 service**:
+  ```bash
+  docker compose build --no-cache user-service
+  docker compose up -d user-service
+  ```
+- **Build toàn hệ thống**:
+  ```bash
+  docker compose up -d --build     # chạy ngầm
+  docker compose up --build        # chạy có log
+  ```
 
-Maintains failed messages in Notification Service debugging purposes.
+### Database Migration
+- **Kiểm tra migration**:
+  ```bash
+  docker-compose exec user-service npx prisma migrate status
+  ```
+- **Development**:
+  ```bash
+  docker-compose exec user-service npx prisma migrate dev
+  ```
+- **Production**:
+  ```bash
+  docker-compose exec user-service npx prisma migrate deploy
+  ```
+- **Sinh lại Prisma Client nếu schema thay đổi**:
+  ```bash
+  docker-compose exec user-service npx prisma generate
+  ```
 
-## Technologies Used
+### Kết nối và kiểm tra DB trực tiếp
+```bash
+docker exec -it user-db psql -U postgres -d foodfast_user
+```
 
-- Backend Frameworks: Node.js, Express
+### Test nhanh bằng Postman
+- **Signup**:
+  ```json
+  {
+    "name": "Nguyen Van A",
+    "email": "test@example.com",
+    "password": "123456",
+    "phone_number": "+84901234567"
+  }
+  ```
+- **Signin**:
+  ```json
+  {
+    "email": "test@example.com",
+    "password": "123456"
+  }
+  ```
 
-- Message Broker: Apache Kafka
+---
 
-- Database: PostgreSQL
-
-- Payment Integration: Stripe
-
-- Containerization: Docker
-
-## Conclusion
-
-This architecture is designed for scalability, maintainability, and fault tolerance. Each service is independently deployable and can be scaled as needed to handle increased load.
 # SGU_CNPM_FOODFAST
