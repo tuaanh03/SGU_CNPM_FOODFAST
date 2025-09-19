@@ -240,7 +240,7 @@ describe('Order Controller - LOGIC THỰC TẾ', () => {
             const req = mockRequest({ items: [] });
             const res = mockResponse();
             // ACT
-            await createOrder(res, req);
+            await createOrder(req, res); // Sửa thứ tự từ (res, req) thành (req, res)
             // ASSERT
             expect(res.status).toHaveBeenCalledWith(400);
             expect(res.json).toHaveBeenCalledWith({
@@ -249,29 +249,260 @@ describe('Order Controller - LOGIC THỰC TẾ', () => {
             });
       });
 
-      it('ERROR: Validation thất bại - quantity <= 0', async () => {
 
+      it('ERROR: Lỗi khi tạo đơn hàng', async () => {
+          // ARRANGE
+          const oneProductItem = [
+              {
+                  productId: mockOrderItems[0].productId,
+                  quantity: mockOrderItems[0].quantity,
+              },
+          ];
+          const req = mockRequest({ items: oneProductItem });
+          const res = mockResponse();
+
+          // Product service trả về sản phẩm hợp lệ
+          setupFetchMock(true, mockProductResponse);
+
+          // Database create lỗi
+          (prisma.order.create as jest.Mock).mockRejectedValue(new Error('Database connection failed'));
+
+          // ACT
+          await createOrder(req, res);
+
+          // ASSERT: Database error nằm trong inner try-catch nên trả về 400
+          expect(res.status).toHaveBeenCalledWith(400);
+          expect(res.json).toHaveBeenCalledWith({
+              success: false,
+              message: 'Database connection failed', // Lỗi database trả về message của error
+          });
+      });
+
+
+      it('ERROR: Validation thất bại - quantity <= 0', async () => {
+          // ARRANGE
+          const invalidItems = [
+              {
+                  productId: mockOrderItems[0].productId,
+                  quantity: 0, // Quantity không hợp lệ
+              },
+          ];
+          const req = mockRequest({ items: invalidItems });
+          const res = mockResponse();
+
+          // ACT
+          await createOrder(req, res);
+
+          // ASSERT
+          expect(res.status).toHaveBeenCalledWith(400);
+          expect(res.json).toHaveBeenCalledWith({
+              success: false,
+              message: 'Số lượng phải >= 1',
+          });
       });
 
 
       it('ERROR: Tạo order lỗi khi product service trả về 404 (sản phẩm không tồn tại)', async () => {
+          // ARRANGE
+          const oneProductItem = [
+              {
+                  productId: mockOrderItems[0].productId,
+                  quantity: mockOrderItems[0].quantity,
+              },
+          ];
+          const req = mockRequest({ items: oneProductItem });
+          const res = mockResponse();
 
+          // Product service trả về 404 (sản phẩm không tồn tại)
+          setupFetchMock(false);
+
+          // ACT
+          await createOrder(req, res);
+
+          // ASSERT
+          expect(res.status).toHaveBeenCalledWith(400);
+          expect(res.json).toHaveBeenCalledWith({
+              success: false,
+              message: `Sản phẩm ${oneProductItem[0].productId} không tồn tại`,
+          });
+
+          // Không được gọi đến database hoặc kafka
+          expect(prisma.order.create).not.toHaveBeenCalled();
+          expect(publishEvent).not.toHaveBeenCalled();
       });
 
       it('ERROR: Product không active', async () => {
+          // ARRANGE
+          const oneProductItem = [
+              {
+                  productId: mockOrderItems[0].productId,
+                  quantity: mockOrderItems[0].quantity,
+              },
+          ];
+          const req = mockRequest({ items: oneProductItem });
+          const res = mockResponse();
 
+          // Product service trả về sản phẩm không active
+          const inactiveProduct = {
+              data: {
+                  ...mockProductResponse.data,
+                  isActive: false,
+              },
+          };
+          setupFetchMock(true, inactiveProduct);
+
+          // ACT
+          await createOrder(req, res);
+
+          // ASSERT
+          expect(res.status).toHaveBeenCalledWith(400);
+          expect(res.json).toHaveBeenCalledWith({
+              success: false,
+              message: `Sản phẩm ${inactiveProduct.data.name} không còn kinh doanh`,
+          });
+
+          // Không được gọi đến database hoặc kafka
+          expect(prisma.order.create).not.toHaveBeenCalled();
+          expect(publishEvent).not.toHaveBeenCalled();
       });
 
       it('ERROR: Database lỗi khi create order', async () => {
+          // ARRANGE
+          const oneProductItem = [
+              {
+                  productId: mockOrderItems[0].productId,
+                  quantity: mockOrderItems[0].quantity,
+              },
+          ];
+          const req = mockRequest({ items: oneProductItem });
+          const res = mockResponse();
 
+          // Product service trả về sản phẩm hợp lệ
+          setupFetchMock(true, mockProductResponse);
+
+          // Database create lỗi
+          (prisma.order.create as jest.Mock).mockRejectedValue(new Error('Database connection timeout'));
+
+          // ACT
+          await createOrder(req, res);
+
+          // ASSERT: Database error nằm trong inner try-catch nên trả về 400
+          expect(res.status).toHaveBeenCalledWith(400);
+          expect(res.json).toHaveBeenCalledWith({
+              success: false,
+              message: 'Database connection timeout', // Lỗi database trả về message của error
+          });
+
+          // Kafka không được gọi do lỗi database
+          expect(publishEvent).not.toHaveBeenCalled();
       });
 
       it('ERROR: Kafka publish thất bại', async () => {
+          // ARRANGE
+          const oneProductItem = [
+              {
+                  productId: mockOrderItems[0].productId,
+                  quantity: mockOrderItems[0].quantity,
+              },
+          ];
+          const req = mockRequest({ items: oneProductItem });
+          const res = mockResponse();
 
+          // Product service trả về sản phẩm hợp lệ
+          setupFetchMock(true, mockProductResponse);
+
+          // Database create thành công
+          const qty = oneProductItem[0].quantity;
+          const price = mockProductResponse.data.price;
+          const expectedSubtotal = price * qty;
+          const expectedItems = [
+              {
+                  productId: mockProductResponse.data.id,
+                  quantity: qty,
+                  price,
+                  name: mockProductResponse.data.name,
+                  sku: mockProductResponse.data.sku,
+                  subtotal: expectedSubtotal,
+              },
+          ];
+          const expectedAmount = expectedSubtotal;
+
+          (prisma.order.create as jest.Mock).mockResolvedValue({
+              ...mockOrder,
+              amount: expectedAmount,
+              item: JSON.stringify(expectedItems),
+          });
+
+          // Kafka publish lỗi
+          (publishEvent as jest.Mock).mockRejectedValue(new Error('Kafka connection failed'));
+
+          // ACT
+          await createOrder(req, res);
+
+          // ASSERT: Kafka error nằm trong inner try-catch nên trả về 400
+          expect(res.status).toHaveBeenCalledWith(400);
+          expect(res.json).toHaveBeenCalledWith({
+              success: false,
+              message: 'Kafka connection failed', // Lỗi kafka trả về message của error
+          });
+
+          // Order vẫn được tạo trước khi kafka failed
+          expect(prisma.order.create).toHaveBeenCalledWith({
+              data: {
+                  userId: mockUser.id,
+                  amount: expectedAmount,
+                  item: JSON.stringify(expectedItems),
+                  status: 'pending',
+              },
+          });
+
+          // Kafka được gọi nhưng failed
+          expect(publishEvent).toHaveBeenCalledTimes(1);
       });
 
+      it('ERROR: Validation thất bại - productId không phải UUID', async () => {
+          // ARRANGE
+          const invalidItems = [
+              {
+                  productId: 'invalid-uuid', // ProductId không hợp lệ
+                  quantity: 1,
+              },
+          ];
+          const req = mockRequest({ items: invalidItems });
+          const res = mockResponse();
+
+          // ACT
+          await createOrder(req, res);
+
+          // ASSERT
+          expect(res.status).toHaveBeenCalledWith(400);
+          expect(res.json).toHaveBeenCalledWith({
+              success: false,
+              message: 'Product ID phải là UUID hợp lệ',
+          });
+      });
+
+      it('ERROR: Validation thất bại - missing userId', async () => {
+          // ARRANGE
+          const oneProductItem = [
+              {
+                  productId: mockOrderItems[0].productId,
+                  quantity: mockOrderItems[0].quantity,
+              },
+          ];
+          // Request không có user (unauthorized)
+          const req = mockRequest({ items: oneProductItem });
+          req.user = undefined; // Remove user
+          const res = mockResponse();
+
+          // ACT
+          await createOrder(req, res);
+
+          // ASSERT
+          expect(res.status).toHaveBeenCalledWith(401);
+          expect(res.json).toHaveBeenCalledWith({
+              message: 'Unauthorized: No user ID found',
+          });
+      });
   });
-  });
-
-
-
+});

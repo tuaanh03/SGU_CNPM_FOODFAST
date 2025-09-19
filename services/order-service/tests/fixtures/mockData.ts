@@ -6,7 +6,7 @@ export const mockUser = {
 export const mockOrderItems = [
   {
     productId: "550e8400-e29b-41d4-a716-446655440001",
-    quantity: 2
+    quantity: 1 // Sửa từ 2 thành 1 để phù hợp với test case
   },
   {
     productId: "550e8400-e29b-41d4-a716-446655440002",
@@ -23,7 +23,6 @@ export const mockProductResponse = {
     price: 12000000,
     isActive: true
   }
-    // Có thể thêm nhiều sản phẩm khác nếu cần
 };
 
 // Mock order record từ database
