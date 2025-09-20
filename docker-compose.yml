@@ -11,12 +11,12 @@ services:
       - 22181:2181
     networks:
       - network
-    volumes: # <- thêm volumes để ZK giữ dữ liệu ổn định
+    volumes:
       - zookeeper_data:/var/lib/zookeeper/data
       - zookeeper_log:/var/lib/zookeeper/log
 
   kafka:
-    image: confluentinc/cp-kafka:7.4.4 # Đảm bảo kafka không cần đến procss_rules trong docker-compose.yaml
+    image: confluentinc/cp-kafka:7.4.4
     hostname: kafka
     container_name: kafka
     depends_on:
@@ -31,7 +31,6 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-
     networks:
       - network
     volumes:
@@ -40,11 +39,11 @@ services:
   # Gateway service (acts as the proxy)
   api-gateway:
     build:
-      context: ./services/api-gateway
+      context: ./backend/services/api-gateway
       dockerfile: Dockerfile
     container_name: api-gateway
     env_file:
-      - ./services/api-gateway/.env
+      - ./backend/services/api-gateway/.env
     ports:
       - "3000:3000"
     networks:
@@ -53,11 +52,11 @@ services:
   # User service
   user-service:
     build:
-      context: ./services/user-service
+      context: ./backend/services/user-service
       dockerfile: Dockerfile
     container_name: user-service
     env_file:
-      - ./services/user-service/.env
+      - ./backend/services/user-service/.env
     ports:
       - "1000:1000"
     networks:
@@ -70,7 +69,7 @@ services:
     container_name: user-db
     restart: always
     env_file:
-      - ./services/user-service/.env
+      - ./backend/services/user-service/.env
     ports:
       - "5432:5432"
     volumes:
@@ -81,13 +80,13 @@ services:
   # Order service
   order-service:
     build:
-      context: ./services/order-service
+      context: ./backend/services/order-service
       dockerfile: Dockerfile
     container_name: order-service
     ports:
       - "2000:2000"
     env_file:
-      - ./services/order-service/.env
+      - ./backend/services/order-service/.env
     networks:
       - network
     depends_on:
@@ -98,7 +97,7 @@ services:
     image: postgres:15-alpine
     container_name: order-db
     env_file:
-      - ./services/order-service/.env
+      - ./backend/services/order-service/.env
     ports:
       - "5433:5432"
     volumes:
@@ -109,11 +108,11 @@ services:
   # Product service
   product-service:
     build:
-      context: ./services/product-service
+      context: ./backend/services/product-service
       dockerfile: Dockerfile
     container_name: product-service
     env_file:
-      - ./services/product-service/.env
+      - ./backend/services/product-service/.env
     ports:
       - "3004:3004"
     networks:
@@ -126,7 +125,7 @@ services:
     image: postgres:15-alpine
     container_name: product-db
     env_file:
-      - ./services/product-service/.env
+      - ./backend/services/product-service/.env
     ports:
       - "5434:5432"
     volumes:
@@ -137,11 +136,11 @@ services:
   # Payment service
   payment-service:
     build:
-      context: ./services/payment-service
+      context: ./backend/services/payment-service
       dockerfile: Dockerfile
     container_name: payment-service
     env_file:
-      - ./services/payment-service/.env
+      - ./backend/services/payment-service/.env
     ports:
       - "4000:4000"
     networks:
@@ -152,13 +151,13 @@ services:
   # Notification service
   notification-service:
     build:
-      context: ./services/notification-service
+      context: ./backend/services/notification-service
       dockerfile: Dockerfile
     container_name: notification-service
     ports:
       - "5001:5000"
     env_file:
-      - ./services/notification-service/.env
+      - ./backend/services/notification-service/.env
     networks:
       - network
     depends_on:
@@ -169,8 +168,8 @@ volumes:
   orderdb:
   productdb:
   kafka_data:
-  zookeeper_data:    # <- thêm
-  zookeeper_log:     # <- thêm
+  zookeeper_data:
+  zookeeper_log:
 
 networks:
   network:

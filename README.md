@@ -2,10 +2,28 @@
 
 ## Tổng quan
 
-Tệp README này cung cấp giải thích chi tiết về kiến trúc của một ứng dụng dựa trên microservices. Hệ thống bao gồm năm dịch vụ: **Gateway Service**, **User Service**, **Order Service**, **Payment Service**, và **Notification Service**.  
+Hệ thống xử lý thanh toán dựa trên kiến trúc microservices với cấu trúc được tổ chức thành backend và frontend riêng biệt. Backend bao gồm năm dịch vụ: **Gateway Service**, **User Service**, **Order Service**, **Payment Service**, và **Notification Service**.  
 Các dịch vụ giao tiếp thông qua REST APIs, Kafka topics, và tuân theo kiến trúc hướng sự kiện để đảm bảo khả năng mở rộng và độ tin cậy.
 
 ![Architecture Diagram](./assets/architecture.png)
+
+## Cấu trúc Project
+
+```
+payment-processing-microservices-main/
+├── backend/                    # Backend services
+│   └── services/
+│       ├── api-gateway/        # API Gateway - Reverse proxy
+│       ├── user-service/       # Quản lý người dùng và xác thực
+│       ├── product-service/    # Quản lý sản phẩm và danh mục
+│       ├── order-service/      # Quản lý đơn hàng
+│       ├── payment-service/    # Xử lý thanh toán VNPay
+│       └── notification-service/ # Gửi thông báo email
+├── frontend/                   # Frontend application (placeholder)
+├── assets/                     # Architecture diagrams
+├── docker-compose.yml          # Docker orchestration
+└── README.md                   # Documentation chính
+```
 
 ## Mô tả dịch vụ
 
