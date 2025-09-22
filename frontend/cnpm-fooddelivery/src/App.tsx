@@ -1,4 +1,4 @@
-import {Toaster, toast} from "sonner";
+import {Toaster} from "sonner";
 import {BrowserRouter, Route, Routes} from "react-router";
 import HomePage from "./pages/HomePage";
 import NotFound from "./pages/NotFound.tsx";
@@ -6,19 +6,19 @@ import NotFound from "./pages/NotFound.tsx";
 function App() {
 
 
-  return (
-    <>
-        <Toaster/>
+    return (
+        <>
+            <Toaster/>
 
 
-        <BrowserRouter>
-            <Routes>
-                <Route path="/" element={<HomePage/>}/>
-                <Route path="*" element={<NotFound/>}/>
-            </Routes>
-        </BrowserRouter>
-    </>
-  )
+            <BrowserRouter>
+                <Routes>
+                    <Route path="/" element={<HomePage/>}/>
+                    <Route path="*" element={<NotFound/>}/>
+                </Routes>
+            </BrowserRouter>
+        </>
+    )
 }
 
 export default App
