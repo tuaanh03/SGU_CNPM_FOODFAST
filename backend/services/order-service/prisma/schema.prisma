@@ -7,18 +7,48 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Order {
-  orderId    String   @id @unique @default(uuid())
-  userId     String
-  item       String
-  amount     Decimal
-  status     Status
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-}
-
-enum Status {
+// ---------- Enums ----------
+enum OrderStatus {
   pending
   success
   failed
+}
+
+// ---------- Order & OrderItem ----------
+model Order {
+  id     String  @id @default(uuid())
+  userId String? // Reference to User in user-service (no FK constraint)
+
+  status     OrderStatus @default(pending)
+  totalPrice Int
+  note       String?
+
+  // Giao hàng tối giản
+  deliveryAddress String?
+  contactPhone    String?
+
+  items     OrderItem[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
+
+model OrderItem {
+  id      String @id @default(uuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId String // Reference to Product in product-service (no FK constraint)
+
+  // Snapshot tại thời điểm đặt - lưu thông tin sản phẩm để tránh phụ thuộc
+  productName  String
+  productPrice Int
+  quantity     Int    @default(1)
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([productId])
 }

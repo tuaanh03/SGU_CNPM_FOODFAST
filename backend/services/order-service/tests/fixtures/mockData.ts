@@ -6,7 +6,7 @@ export const mockUser = {
 export const mockOrderItems = [
   {
     productId: "550e8400-e29b-41d4-a716-446655440001",
-    quantity: 1 // Sửa từ 2 thành 1 để phù hợp với test case
+    quantity: 1
   },
   {
     productId: "550e8400-e29b-41d4-a716-446655440002",
@@ -14,34 +14,61 @@ export const mockOrderItems = [
   }
 ];
 
-// Mock response từ Product Service (qua API Gateway)
+// Mock response từ Product Service (qua API Gateway) - sửa để khớp với schema mới
 export const mockProductResponse = {
   data: {
     id: "550e8400-e29b-41d4-a716-446655440001",
     name: "iPhone 15",
     sku: "IP15-128-BLK",
     price: 12000000,
-    isActive: true
+    isAvailable: true, // Sửa từ isActive thành isAvailable
+    stockOnHand: 10
   }
 };
 
-// Mock order record từ database
+export const mockProductResponse2 = {
+  data: {
+    id: "550e8400-e29b-41d4-a716-446655440002",
+    name: "Samsung Galaxy S24",
+    sku: "SGS24-256-WHT",
+    price: 15000000,
+    isAvailable: true,
+    stockOnHand: 5
+  }
+};
+
+// Mock order record từ database - sửa theo schema mới
 export const mockOrder = {
-  orderId: "order-550e8400-e29b-41d4-a716-446655440000",
+  id: "order-550e8400-e29b-41d4-a716-446655440000",
   userId: mockUser.id,
-  amount: 12000000,
-  item: JSON.stringify([
+  totalPrice: 12000000,
+  deliveryAddress: "123 Test Street",
+  contactPhone: "0901234567",
+  note: "Test order",
+  status: "pending",
+  items: [
+    {
+      id: "item-1",
+      productId: "550e8400-e29b-41d4-a716-446655440001",
+      productName: "iPhone 15",
+      productPrice: 12000000,
+      quantity: 1
+    }
+  ],
+  createdAt: new Date("2024-01-15T10:00:00.000Z"),
+  updatedAt: new Date("2024-01-15T10:00:00.000Z")
+};
+
+export const mockValidOrderRequest = {
+  items: [
     {
       productId: "550e8400-e29b-41d4-a716-446655440001",
-      quantity: 1,
-      price: 12000000,
-      name: "iPhone 15",
-      sku: "IP15-128-BLK",
-      subtotal: 12000000
+      quantity: 1
     }
-  ]),
-  status: "pending",
-  created_at: new Date("2024-01-15T10:00:00.000Z")
+  ],
+  deliveryAddress: "123 Test Street",
+  contactPhone: "0901234567",
+  note: "Test order"
 };
 
 export const mockRequest = (body: any = {}, params: any = {}) => ({

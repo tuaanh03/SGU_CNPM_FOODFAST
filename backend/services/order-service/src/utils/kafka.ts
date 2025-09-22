@@ -71,17 +71,27 @@ async function handlePaymentEvent(data: any) {
     data.paymentStatus === "pending"
   ) {
     try {
+      // Map payment status to OrderStatus enum (lowercase)
+      let orderStatus: "pending" | "success" | "failed";
+      if (data.paymentStatus === "success") {
+        orderStatus = "success";
+      } else if (data.paymentStatus === "failed") {
+        orderStatus = "failed";
+      } else {
+        orderStatus = "pending";
+      }
+
       const updateResult = await prisma.order.update({
         where: {
-          orderId: data.orderId,
+          id: data.orderId, // Sử dụng id thay vì orderId
         },
         data: {
-          status: data.paymentStatus,
+          status: orderStatus,
         },
       });
 
       console.log(
-        `Order ${data.orderId} status updated to: ${data.paymentStatus}`
+        `Order ${data.orderId} status updated to: ${orderStatus}`
       );
 
       // Nếu có paymentUrl, log để frontend có thể sử dụng
@@ -104,9 +114,9 @@ async function handleInventoryReserveResult(data: any) {
     if (status === "RESERVED") {
       // Cập nhật order status thành "pending" - đợi thanh toán
       await prisma.order.update({
-        where: { orderId },
+        where: { id: orderId }, // Sử dụng id thay vì orderId
         data: {
-          status: "pending" // Giữ pending thay vì confirmed (enum không có confirmed)
+          status: "pending"
         },
       });
       console.log(`Order ${orderId} inventory reserved successfully, ready for payment`);
@@ -114,9 +124,9 @@ async function handleInventoryReserveResult(data: any) {
     } else if (status === "REJECTED") {
       // Cập nhật order status thành "failed" - không đủ hàng
       await prisma.order.update({
-        where: { orderId },
+        where: { id: orderId }, // Sử dụng id thay vì orderId
         data: {
-          status: "failed" // Dùng failed thay vì cancelled (enum không có cancelled)
+          status: "failed"
         },
       });
       console.log(`Order ${orderId} failed due to inventory shortage: ${message}`);

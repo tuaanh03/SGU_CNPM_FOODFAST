@@ -1,7 +1,3 @@
-
-
-
-
 import { Request, Response } from "express";
 import prisma from "../lib/prisma";
 
@@ -42,7 +38,7 @@ export const getCategoryById = async (req: Request, res: Response) => {
       include: {
         products: {
           where: {
-            isActive: true
+            isAvailable: true
           }
         },
         _count: {

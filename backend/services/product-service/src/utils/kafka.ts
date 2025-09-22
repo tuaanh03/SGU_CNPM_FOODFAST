@@ -163,7 +163,7 @@ async function handleOrderCreate(orderData: any) {
                 break;
             }
 
-            if (!product.isActive) {
+            if (!product.isAvailable) {
                 canReserve = false;
                 rejectMessage = `Sản phẩm ${product.name} không còn kinh doanh`;
                 break;

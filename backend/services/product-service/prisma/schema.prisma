@@ -11,20 +11,28 @@ datasource db {
 }
 
 model Product {
-  id       String  @id @default(uuid())
-  sku      String  @unique
-  name     String
-  price    Int
-  isActive Boolean @default(true)
+  id          String  @id @default(uuid())
+  sku         String  @unique
+  name        String
+  price       Int
+  description String?
+  imageUrl    String?
 
-  categoryId String?
-  category   Category? @relation(fields: [categoryId], references: [id])
+  isAvailable       Boolean   @default(true)
+  soldOutUntil      DateTime?
+  unavailableReason String?
 
   stockOnHand Int @default(0)
   reserved    Int @default(0)
 
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([categoryId])
+  @@index([isAvailable, stockOnHand])
 }
 
 model Category {
@@ -39,9 +47,12 @@ model Category {
 model Reservation {
   id      String @id @default(uuid())
   orderId String @unique
-  items   Json // Array of {productId, quantity}
+  items   Json // Array of { productId, quantity }
   status  String // PENDING, RESERVED, COMMITTED, RELEASED
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([status])
 }

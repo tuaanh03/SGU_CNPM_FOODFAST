@@ -31,7 +31,7 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
 
       const user = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
           const newUser = await tx.user.create({
-        data: { name, email, password: hashedPassword, phone_number },
+        data: { name, email, password: hashedPassword, phoneNumber: phone_number },
       });
 
       return newUser;

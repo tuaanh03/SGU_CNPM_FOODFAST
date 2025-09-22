@@ -10,5 +10,8 @@ const OrderItemSchema = z.object({
 // Schema chính cho Order
 export const OrderSchema = z.object({
   items: z.array(OrderItemSchema).min(1, "Đơn hàng phải có ít nhất 1 sản phẩm"),
-  // amount sẽ được tính toán dựa trên items từ Product Service
+  deliveryAddress: z.string().optional(),
+  contactPhone: z.string().optional(),
+  note: z.string().optional(),
+  // totalPrice sẽ được tính toán dựa trên items từ Product Service
 });

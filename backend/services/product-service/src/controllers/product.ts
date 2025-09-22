@@ -103,7 +103,7 @@ export const createProduct = async (req: Request, res: Response) => {
         price: parseInt(price),
         categoryId,
         stockOnHand: parseInt(stockOnHand) || 0,
-        isActive: isActive !== false
+        isAvailable: isActive !== false
       },
       include: {
         category: true

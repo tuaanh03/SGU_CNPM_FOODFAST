@@ -21,9 +21,9 @@ export const addPaymentMethods = async (
       return;
     }
 
-    const isCardNumberExists = await prisma.payment_methods.findFirst({
+    const isCardNumberExists = await prisma.paymentMethod.findFirst({
       where: {
-        card_number: card_number,
+        cardNumber: card_number,
         userId,
       },
     });
@@ -37,12 +37,12 @@ export const addPaymentMethods = async (
     const [month, year] = expiry_date.split("/");
     const expiryDate = new Date(`20${year}-${month}-01`);
 
-    await prisma.payment_methods.create({
+    await prisma.paymentMethod.create({
       data: {
         userId: userId,
-        card_number,
-        cardholder_name,
-        expiry_date: expiryDate,
+        cardNumber: card_number,
+        cardholderName: cardholder_name,
+        expiryDate: expiryDate,
       },
     });
 
@@ -74,9 +74,9 @@ export const getPaymentDetails = async (
         paymentMethods: {
           select: {
             id: true,
-            card_number: true,
-            cardholder_name: true,
-            expiry_date: true,
+            cardNumber: true,
+            cardholderName: true,
+            expiryDate: true,
           },
         },
       },
