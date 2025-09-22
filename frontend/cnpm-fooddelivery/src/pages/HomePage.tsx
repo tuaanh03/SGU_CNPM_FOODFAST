@@ -1,10 +1,16 @@
-
+import Navigation from "@/components/Navigation";
+import Banner from "@/components/Banner";
+import ProductList from "@/components/ProductList";
+import Footer from "@/components/Footer";
 
 const HomePage = () => {
   return (
-      <div><h1 className="text-3xl font-bold underline">
-          Hello world!
-      </h1></div>
+    <div className="min-h-screen w-full overflow-x-hidden">
+      <Navigation />
+      <Banner />
+      <ProductList />
+      <Footer />
+    </div>
   );
 }
 
