@@ -2,6 +2,7 @@ import {Toaster} from "sonner";
 import {BrowserRouter, Route, Routes} from "react-router";
 import HomePage from "./pages/HomePage";
 import ProductPage from "./pages/ProductPage";
+import OrderPage from "./pages/OrderPage";
 import NotFound from "./pages/NotFound.tsx";
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
                 <Routes>
                     <Route path="/" element={<HomePage/>}/>
                     <Route path="/products" element={<ProductPage/>}/>
+                    <Route path="/order" element={<OrderPage/>}/>
                     <Route path="*" element={<NotFound/>}/>
                 </Routes>
             </BrowserRouter>
