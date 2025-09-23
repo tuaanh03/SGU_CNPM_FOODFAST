@@ -14,47 +14,80 @@ env.config();
 const server = express();
 const PORT = config.port;
 
-// middleware's
-server.use(cors());
+/** 1) CORS đặt trước mọi middleware/route */
+server.use(cors({
+    origin: "http://localhost:5173",
+    credentials: true,
+    methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
+    allowedHeaders: ["Content-Type","Authorization","X-Requested-With"]
+}));
+
+/** 2) Tắt etag + chặn cache để tránh 304 trong dev */
+server.disable("etag");
+server.use((req, res, next) => {
+    res.setHeader("Cache-Control", "no-store");
+    next();
+});
+
+/** Trả lời preflight sớm, không để rơi vào proxy */
+server.options("/api/*", cors());
+server.options("*", cors());
+
 server.use(helmet());
 server.use(morgan("dev"));
 server.use(compression());
 server.use(bodyParser.json());
 
+/** Helper: decorator chung để gắn CORS header vào response từ proxy */
+const addCorsOnProxyResp = {
+    userResHeaderDecorator: (headers: any) => {
+        headers["Access-Control-Allow-Origin"] = "http://localhost:5173";
+        headers["Access-Control-Allow-Credentials"] = "true";
+        headers["Vary"] = "Origin";      // quan trọng cho CORS caching
+        delete headers["etag"];           // tránh vòng 304 lần sau
+        return headers;
+    }
+};
+
+/** Helper: xoá conditional headers (tránh 304) khi forward */
+const dropConditionalHeaders = {
+    proxyReqOptDecorator: (proxyReqOpts: any) => {
+        if (proxyReqOpts.headers) {
+            delete proxyReqOpts.headers["if-none-match"];
+            delete proxyReqOpts.headers["If-None-Match"];
+            delete proxyReqOpts.headers["if-modified-since"];
+            delete proxyReqOpts.headers["If-Modified-Since"];
+        }
+        return proxyReqOpts;
+    }
+};
+
 // proxy middleware for User Service (handles both /auth and /payment-methods)
 const userServiceProxy = proxy(config.userServiceUrl, {
-  proxyReqPathResolver: (req) => {
-    const newPath = req.originalUrl.replace(/^\/api/, "");
-    return newPath;
-  },
+    proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api/, ""),
+    ...addCorsOnProxyResp
 });
 
 // proxy middleware for Order Service
 const orderServiceProxy = proxy(config.orderServiceUrl, {
-  proxyReqPathResolver: (req) => {
-    const newPath = req.originalUrl.replace(/^\/api/, "");
-    return newPath;
-  },
+    proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api/, ""),
+    ...addCorsOnProxyResp
 });
 
 // proxy middleware for Payment Service
 const paymentServiceProxy = proxy(config.paymentServiceUrl, {
-  proxyReqPathResolver: (req) => {
-    // For VNPay return URL, keep the original path without /api prefix
-    if (req.originalUrl.startsWith('/vnpay_return')) {
-      return req.originalUrl;
-    }
-    const newPath = req.originalUrl.replace(/^\/api/, "");
-    return newPath;
-  },
+    proxyReqPathResolver: (req) => {
+        if (req.originalUrl.startsWith("/vnpay_return")) return req.originalUrl;
+        return req.originalUrl.replace(/^\/api/, "");
+    },
+    ...addCorsOnProxyResp
 });
 
-// proxy middleware for Product Service
+// proxy middleware for Product Service (thêm bỏ conditional headers)
 const productServiceProxy = proxy(config.productServiceUrl, {
-  proxyReqPathResolver: (req) => {
-    const newPath = req.originalUrl.replace(/^\/api/, "");
-    return newPath;
-  },
+    proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api/, ""),
+    ...dropConditionalHeaders,
+    ...addCorsOnProxyResp
 });
 
 // user service routes
@@ -74,24 +107,20 @@ server.use("/api/payment", paymentServiceProxy);
 server.use("/api/products", productServiceProxy);
 
 // health check route
-server.get("/", (req: Request, res: Response) => {
-  res.json({ success: true, message: "API Gateway is running" });
+server.get("/", (_req: Request, res: Response) => {
+    res.json({ success: true, message: "API Gateway is running" });
 });
 
-// Handler cho frontend routes - payment result page
+// frontend route demo
 server.get("/payment-result", (req: Request, res: Response) => {
-  res.json({
-    success: true,
-    message: "Payment result page",
-    query: req.query
-  });
+    res.json({ success: true, message: "Payment result page", query: req.query });
 });
 
-// fallback route for unmatched requests
+// fallback
 server.use((req: Request, res: Response) => {
-  res.status(404).json({ error: "Route not found" });
+    res.status(404).json({ error: "Route not found" });
 });
 
 server.listen(PORT, () => {
-  console.log(`API Gateway is running on port ${PORT}`);
+    console.log(`API Gateway is running on port ${PORT}`);
 });
