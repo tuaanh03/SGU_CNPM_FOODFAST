@@ -1,10 +1,13 @@
-import Navigation from "../components/Navigation";
-import Footer from "../components/Footer";
-import ProductFilter from "../components/ProductFilter";
-import ProductList from "../components/ProductList";
+import Navigation from "@/components/Navigation";
+import Footer from "@/components/Footer";
+import ProductFilter from "@/components/ProductFilter";
+import ProductList from "@/components/ProductList";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import axios from "axios";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Search, SlidersHorizontal } from "lucide-react";
 
 // Interface theo schema Product từ backend
 interface Product {
@@ -36,20 +39,30 @@ const ProductPage = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState("all");
 
   useEffect(() => {
     fetchProducts();
   }, []);
 
   useEffect(() => {
-    // Lọc sản phẩm theo từ khóa tìm kiếm
-    const filtered = products.filter(product =>
+    // Lọc sản phẩm theo từ khóa tìm kiếm và category
+    let filtered = products.filter(product =>
       product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.category?.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
+
+    // Lọc theo category
+    if (selectedCategory !== "all") {
+      filtered = filtered.filter(product => {
+        const categoryName = product.category?.name.toLowerCase();
+        return categoryName?.includes(selectedCategory.toLowerCase());
+      });
+    }
+
     setFilteredProducts(filtered);
-  }, [products, searchTerm]);
+  }, [products, searchTerm, selectedCategory]);
 
   const fetchProducts = async () => {
     try {
@@ -78,74 +91,65 @@ const ProductPage = () => {
     setSearchTerm(e.target.value);
   };
 
+  const handleCategoryChange = (category: string) => {
+    setSelectedCategory(category);
+  };
+
   return (
-    <div className="min-h-screen w-full overflow-x-hidden bg-gray-50">
+    <div className="min-h-screen bg-background">
       <Navigation />
 
-      {/* Header Section */}
-      <section className="bg-white shadow-sm">
-        <div className="max-w-full mx-auto px-4 py-8">
-          <div className="text-center">
-            <h1 className="text-3xl md:text-4xl font-bold text-gray-800 mb-4">
-              🍕 Thực Đơn FastFood
-            </h1>
-            <p className="text-lg text-gray-600 mb-6">
-              Khám phá {products.length > 0 ? `${products.length}+` : "100+"} món ăn ngon được giao hàng nhanh chóng
-            </p>
-
-            {/* Search Bar */}
-            <div className="max-w-md mx-auto relative">
-              <input
-                type="text"
-                placeholder="Tìm kiếm món ăn..."
-                value={searchTerm}
-                onChange={handleSearchChange}
-                className="w-full px-4 py-3 pl-12 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-              />
-              <div className="absolute left-4 top-1/2 transform -translate-y-1/2">
-                <span className="text-gray-400">🔍</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Main Content */}
-      <main className="max-w-full mx-auto px-4 py-8">
-        {/* Filter Section */}
-        <ProductFilter />
-
-        {/* Results Summary */}
-        <div className="flex justify-between items-center mb-6">
-          <p className="text-gray-600">
-            Hiển thị <span className="font-semibold">{filteredProducts.length}</span> sản phẩm
-            {searchTerm && (
-              <span className="ml-2 text-sm">cho từ khóa "<em>{searchTerm}</em>"</span>
-            )}
+      <main className="container mx-auto px-4 py-6 space-y-6">
+        <div className="text-center space-y-4">
+          <h1 className="text-4xl font-bold text-balance text-foreground">
+            Thực Đơn FastFood
+          </h1>
+          <p className="text-lg text-muted-foreground text-pretty max-w-2xl mx-auto">
+            Khám phá {products.length > 0 ? `${products.length}+` : "100+"} món ăn ngon được giao hàng nhanh chóng
           </p>
-          <div className="hidden md:flex items-center gap-2">
-            <span className="text-gray-600 text-sm">Xem dạng:</span>
-            <button className="p-2 border border-gray-300 rounded bg-orange-500 text-white">
-              ⊞
-            </button>
-            <button className="p-2 border border-gray-300 rounded hover:bg-gray-50">
-              ☰
-            </button>
-          </div>
         </div>
 
-        {/* Products List - sử dụng ProductList component */}
+        <div className="flex gap-3 max-w-2xl mx-auto">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+            <Input
+              placeholder="Tìm kiếm món ăn, nhà hàng..."
+              className="pl-10 h-12 text-base"
+              value={searchTerm}
+              onChange={handleSearchChange}
+            />
+          </div>
+          <Button variant="outline" size="lg" className="px-4 bg-transparent">
+            <SlidersHorizontal className="w-4 h-4" />
+          </Button>
+        </div>
+
+        <ProductFilter
+          selectedCategory={selectedCategory}
+          onCategoryChange={handleCategoryChange}
+        />
+
+        {searchTerm && (
+          <div className="text-center">
+            <p className="text-muted-foreground">
+              Hiển thị <span className="font-semibold text-foreground">{filteredProducts.length}</span> kết quả
+              cho "<span className="font-medium text-primary">{searchTerm}</span>"
+            </p>
+          </div>
+        )}
+
         <ProductList products={filteredProducts} loading={loading} />
 
-        {/* Load More Button - chỉ hiển thị khi có sản phẩm */}
-        {!loading && filteredProducts.length > 0 && (
-          <div className="text-center mt-12">
-            <button
-              className="px-8 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors font-semibold"
-              onClick={fetchProducts}
-            >
-              Làm mới danh sách
-            </button>
+        {!loading && filteredProducts.length === 0 && searchTerm && (
+          <div className="text-center py-12">
+            <div className="text-6xl mb-4">🔍</div>
+            <h3 className="text-xl font-semibold text-foreground mb-2">Không tìm thấy kết quả</h3>
+            <p className="text-muted-foreground mb-4">
+              Không có món ăn nào phù hợp với từ khóa "{searchTerm}"
+            </p>
+            <Button onClick={() => setSearchTerm("")} variant="outline">
+              Xóa bộ lọc
+            </Button>
           </div>
         )}
       </main>

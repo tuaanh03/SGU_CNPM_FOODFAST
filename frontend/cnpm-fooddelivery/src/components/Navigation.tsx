@@ -1,35 +1,45 @@
 import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
 import { Link } from "react-router";
+import { MapPin, User, ClipboardList } from "lucide-react";
 
 const Navigation = () => {
   return (
-    <nav className="bg-orange-500 shadow-md w-full">
-      <div className="max-w-full mx-auto px-4 py-3">
-        <div className="flex justify-between items-center">
-          <div className="flex items-center space-x-2">
-            <Link to="/" className="text-white text-2xl font-bold hover:text-orange-200 transition-colors">
-              🍕 FastFood
-            </Link>
-          </div>
+    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+        <div className="flex items-center space-x-4">
+          <Link to="/" className="flex items-center space-x-2">
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+              <span className="text-primary-foreground font-bold text-lg">🍕</span>
+            </div>
+            <span className="font-bold text-xl text-foreground">FastFood</span>
+          </Link>
+        </div>
 
-          <div className="hidden md:flex items-center space-x-6">
-            <Link to="/" className="text-white hover:text-orange-200 transition-colors">Trang chủ</Link>
-            <Link to="/products" className="text-white hover:text-orange-200 transition-colors">Thực đơn</Link>
-            <a href="#" className="text-white hover:text-orange-200 transition-colors">Về chúng tôi</a>
-            <a href="#" className="text-white hover:text-orange-200 transition-colors">Liên hệ</a>
-          </div>
+        <div className="flex items-center space-x-2">
+          <Button variant="ghost" size="sm" className="text-muted-foreground">
+            <MapPin className="w-4 h-4 mr-2" />
+            Quận 1, TP.HCM
+          </Button>
+        </div>
 
-          <div className="flex items-center space-x-3">
-            <Button variant="outline" className="bg-white text-orange-500 border-white hover:bg-orange-50">
-              Đăng nhập
+        <div className="flex items-center space-x-2">
+          <Link to="/my-orders">
+            <Button variant="ghost" size="sm" className="relative">
+              <ClipboardList className="w-5 h-5" />
+              <Badge className="absolute -top-2 -right-2 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs">
+                3
+              </Badge>
             </Button>
-            <Button className="bg-orange-600 hover:bg-orange-700 text-white">
-              Đăng ký
+          </Link>
+          <Link to="/profile">
+            <Button variant="ghost" size="sm">
+              <User className="w-5 h-5" />
             </Button>
-          </div>
+          </Link>
         </div>
       </div>
-    </nav>
+    </header>
   );
 };
 
