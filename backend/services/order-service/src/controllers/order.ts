@@ -128,7 +128,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
                 message: "Đơn hàng đã được tạo và đang chờ kiểm tra tồn kho",
                 data: {
                     orderId: savedOrder.id,
-                    items: savedOrder.items.map(item => ({
+                    items: savedOrder.items.map((item: any) => ({
                         productId: item.productId,
                         productName: item.productName,
                         productPrice: item.productPrice,
@@ -213,7 +213,7 @@ export const getOrderStatus = async (
                 deliveryAddress: order.deliveryAddress,
                 contactPhone: order.contactPhone,
                 note: order.note,
-                items: order.items.map(item => ({
+                items: order.items.map((item: any) => ({
                     productId: item.productId,
                     productName: item.productName,
                     productPrice: item.productPrice,
@@ -355,7 +355,7 @@ export const getUserOrders = async (
         res.status(200).json({
             success: true,
             data: {
-                orders: orders.map(order => ({
+                orders: orders.map((order: any) => ({
                     orderId: order.id,
                     status: order.status,
                     totalPrice: order.totalPrice,
@@ -363,7 +363,7 @@ export const getUserOrders = async (
                     contactPhone: order.contactPhone,
                     note: order.note,
                     itemsCount: order.items.length,
-                    items: order.items.map(item => ({
+                    items: order.items.map((item: any) => ({
                         productId: item.productId,
                         productName: item.productName,
                         productPrice: item.productPrice,
