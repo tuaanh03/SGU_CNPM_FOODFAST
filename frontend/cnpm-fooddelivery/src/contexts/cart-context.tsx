@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useReducer, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, type ReactNode } from 'react';
 
 interface CartItem {
   id: string;
@@ -24,14 +24,14 @@ interface CartState {
 }
 
 type CartAction =
-  | { type: 'ADD_ITEM'; payload: { item: CartItem; restaurant: Restaurant } }
+  | { type: 'ADD_ITEM'; payload: { item: Omit<CartItem, 'quantity'>; restaurant: Restaurant } }
   | { type: 'REMOVE_ITEM'; payload: { id: string } }
   | { type: 'UPDATE_QUANTITY'; payload: { id: string; quantity: number } }
   | { type: 'CLEAR_CART' }
   | { type: 'TOGGLE_CART' }
   | { type: 'OPEN_CART' }
   | { type: 'CLOSE_CART' }
-  | { type: 'CHANGE_RESTAURANT'; payload: { restaurant: Restaurant; item: CartItem } };
+  | { type: 'CHANGE_RESTAURANT'; payload: { restaurant: Restaurant; item: Omit<CartItem, 'quantity'> } };
 
 const initialState: CartState = {
   items: [],
@@ -196,13 +196,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
       if (confirmChange) {
         dispatch({
           type: 'CHANGE_RESTAURANT',
-          payload: { restaurant, item: { ...item, quantity: 1 } }
+          payload: { restaurant, item }
         });
       }
     } else {
       dispatch({
         type: 'ADD_ITEM',
-        payload: { item: { ...item, quantity: 1 }, restaurant }
+        payload: { item, restaurant }
       });
     }
   };
@@ -261,6 +261,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useCart() {
   const context = useContext(CartContext);
   if (context === undefined) {
