@@ -32,10 +32,10 @@ async function calculateOrderAmount(items: any[]): Promise<{ totalPrice: number;
                 throw new Error(`Sản phẩm ${product.name} không còn kinh doanh`);
             }
 
-            // Kiểm tra stock availability
-            if (product.stockOnHand < item.quantity) {
-                throw new Error(`Sản phẩm ${product.name} không đủ hàng. Còn lại: ${product.stockOnHand}, yêu cầu: ${item.quantity}`);
-            }
+            // // Kiểm tra stock availability
+            // if (product.stockOnHand < item.quantity) {
+            //     throw new Error(`Sản phẩm ${product.name} không đủ hàng. Còn lại: ${product.stockOnHand}, yêu cầu: ${item.quantity}`);
+            // }
 
             // Validate quantity
             if (item.quantity <= 0) {

@@ -215,33 +215,6 @@ describe('Order Controller', () => {
         expect(prisma.order.create).not.toHaveBeenCalled();
       });
 
-      it('nên trả lỗi khi không đủ hàng trong kho', async () => {
-        // ARRANGE
-        const req = mockRequest({
-          ...mockValidOrderRequest,
-          items: [{
-            productId: mockValidOrderRequest.items[0].productId,
-            quantity: 15 // Yêu cầu nhiều hơn stock (10)
-          }]
-        });
-        const res = mockResponse();
-
-        (global.fetch as jest.Mock).mockResolvedValueOnce({
-          ok: true,
-          json: async () => mockProductResponse,
-        });
-
-        // ACT
-        await createOrder(req, res);
-
-        // ASSERT
-        expect(res.status).toHaveBeenCalledWith(400);
-        expect(res.json).toHaveBeenCalledWith({
-          success: false,
-          message: `Sản phẩm ${mockProductResponse.data.name} không đủ hàng. Còn lại: ${mockProductResponse.data.stockOnHand}, yêu cầu: 15`
-        });
-        expect(prisma.order.create).not.toHaveBeenCalled();
-      });
     });
   });
 

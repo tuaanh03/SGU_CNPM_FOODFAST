@@ -22,9 +22,6 @@ model Product {
   soldOutUntil      DateTime?
   unavailableReason String?
 
-  stockOnHand Int @default(0)
-  reserved    Int @default(0)
-
   categoryId String?
   category   Category? @relation(fields: [categoryId], references: [id])
 
@@ -32,7 +29,7 @@ model Product {
   updatedAt DateTime @updatedAt
 
   @@index([categoryId])
-  @@index([isAvailable, stockOnHand])
+  @@index([isAvailable])
 }
 
 model Category {

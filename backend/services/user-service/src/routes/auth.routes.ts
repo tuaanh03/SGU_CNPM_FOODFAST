@@ -1,7 +1,20 @@
 import { Router } from "express";
-import { signin, signup } from "../controllers/auth";
+import {
+  register,
+  login,
+  getProfile,
+  updateProfile
+} from "../controllers/auth";
+import { authenticateToken } from "../middleware/auth";
 
-export const authRoute: Router = Router();
+const router = Router();
 
-authRoute.post("/signup", signup);
-authRoute.post("/signin", signin);
+// Public routes
+router.post("/register", register);
+router.post("/login", login);
+
+// Protected routes
+router.get("/profile", authenticateToken, getProfile);
+router.put("/profile", authenticateToken, updateProfile);
+
+export default router;

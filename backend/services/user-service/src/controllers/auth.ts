@@ -1,107 +1,217 @@
-import bcrypt from 'bcryptjs';
+import { Request, Response } from "express";
+import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import prisma from "../lib/prisma";
-import { Prisma } from "@prisma/client";
-import { Request, Response } from "express";
-import { signupSchema, signinSchema } from "../validations/auth.validations";
 
-export const signup = async (req: Request, res: Response): Promise<void> => {
+// Đăng ký user
+export const register = async (req: Request, res: Response) => {
   try {
-    const parsedBody = signupSchema.safeParse(req.body);
+    const { email, password, name, phone, role = "CUSTOMER" } = req.body;
 
-    if (!parsedBody.success) {
-      res.status(400).json({
-        success: false,
-        message: parsedBody.error.errors.map((err) => err.message).join(", "),
-      });
-      return;
-    }
-
-    const { name, email, password, phone_number } = parsedBody.data;
-
-    const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) {
-      res
-        .status(409)
-        .json({ success: false, message: "Email is already in use." });
-      return;
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-      const user = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-          const newUser = await tx.user.create({
-        data: { name, email, password: hashedPassword, phoneNumber: phone_number },
-      });
-
-      return newUser;
+    // Kiểm tra email đã tồn tại
+    const existingUser = await prisma.user.findUnique({
+      where: { email }
     });
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "Email đã được sử dụng"
+      });
+    }
+
+    // Mã hóa password
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    // Tạo user mới
+    const user = await prisma.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        name,
+        phone,
+        role: role as any
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        phone: true,
+        role: true,
+        status: true,
+        createdAt: true
+      }
+    });
+
+    // Tạo JWT token
+    const token = jwt.sign(
+      {
+        userId: user.id,
+        email: user.email,
+        role: user.role
+      },
+      process.env.JWT_SECRET || "secret",
+      { expiresIn: "7d" }
+    );
 
     res.status(201).json({
       success: true,
-      data: { id: user.id, email: user.email },
-      message: "User created successfully.",
+      data: {
+        user,
+        token
+      },
+      message: "Đăng ký thành công"
     });
-  } catch (error: any) {
-    console.error("Signup error:", error);
+  } catch (error) {
+    console.error("Error registering user:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to signup.",
-      error: error instanceof Error ? error.message : "Unknown error",
+      message: "Lỗi khi đăng ký"
     });
   }
 };
 
-export const signin = async (req: Request, res: Response): Promise<void> => {
+// Đăng nhập
+export const login = async (req: Request, res: Response) => {
   try {
-    const parsedBody = signinSchema.safeParse(req.body);
+    const { email, password } = req.body;
 
-    if (!parsedBody.success) {
-      res.status(400).json({
-        success: false,
-        message: parsedBody.error.errors.map((err) => err.message).join(", "),
-      });
-      return;
-    }
+    // Tìm user theo email
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: {
+        store: true
+      }
+    });
 
-    const { email, password } = parsedBody.data;
-
-    const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      res.status(404).json({ success: false, message: "User not found." });
-      return;
+      return res.status(400).json({
+        success: false,
+        message: "Email hoặc mật khẩu không đúng"
+      });
     }
 
+    // Kiểm tra account status
+    if (user.status !== "ACTIVE") {
+      return res.status(403).json({
+        success: false,
+        message: "Tài khoản đã bị khóa hoặc vô hiệu hóa"
+      });
+    }
+
+    // Kiểm tra password
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
-      res.status(401).json({ success: false, message: "Invalid credentials." });
-      return;
+      return res.status(400).json({
+        success: false,
+        message: "Email hoặc mật khẩu không đúng"
+      });
     }
 
+    // Tạo JWT token
     const token = jwt.sign(
-      { userId: user.id, email: user.email },
-      process.env.JWT_SECRET_KEY!,
-      { expiresIn: "1h" }
+      {
+        userId: user.id,
+        email: user.email,
+        role: user.role
+      },
+      process.env.JWT_SECRET || "secret",
+      { expiresIn: "7d" }
     );
 
-    res.cookie("token", token, {
-      maxAge: 72 * 60 * 60 * 1000,
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-    });
+    // Trả về thông tin user (không bao gồm password)
+    const { password: _, ...userWithoutPassword } = user;
 
-    res.status(200).json({
+    res.json({
       success: true,
-      data: { userId: user.id, email: user.email, token },
-      message: "User signed in successfully.",
+      data: {
+        user: userWithoutPassword,
+        token
+      },
+      message: "Đăng nhập thành công"
     });
-  } catch (error: any) {
-    console.error("Signin error:", error);
+  } catch (error) {
+    console.error("Error logging in:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to sign in.",
-      error: error instanceof Error ? error.message : "Unknown error",
+      message: "Lỗi khi đăng nhập"
+    });
+  }
+};
+
+// Lấy thông tin profile
+export const getProfile = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        addresses: true,
+        store: true,
+        paymentMethods: true
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy user"
+      });
+    }
+
+    // Loại bỏ password khỏi response
+    const { password, ...userWithoutPassword } = user;
+
+    res.json({
+      success: true,
+      data: userWithoutPassword
+    });
+  } catch (error) {
+    console.error("Error getting profile:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi lấy thông tin profile"
+    });
+  }
+};
+
+// Cập nhật profile
+export const updateProfile = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+    const { name, phone, avatar } = req.body;
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(name && { name }),
+        ...(phone && { phone }),
+        ...(avatar && { avatar })
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        phone: true,
+        avatar: true,
+        role: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+
+    res.json({
+      success: true,
+      data: user,
+      message: "Cập nhật profile thành công"
+    });
+  } catch (error) {
+    console.error("Error updating profile:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi cập nhật profile"
     });
   }
 };

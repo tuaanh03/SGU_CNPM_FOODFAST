@@ -1,117 +1,274 @@
 import prisma from "../lib/prisma";
 import { Request, Response } from "express";
-import { paymentSchema } from "../validations/payment.validations";
 
 interface AuthenticatedRequest extends Request {
-  user?: { id: string };
+  user?: { userId: string; email: string; role: string };
 }
 
-export const addPaymentMethods = async (
+export const addPaymentMethod = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
   try {
-    const { card_number, expiry_date, cardholder_name } = paymentSchema.parse(
-      req.body
-    );
-    const userId = req.user?.id;
+    const { cardNumber, expiryDate, cardholderName, isDefault = false } = req.body;
+    const userId = req.user?.userId;
 
     if (!userId) {
-      res.status(401).json({ message: "Unauthorized: No user ID found" });
+      res.status(401).json({
+        success: false,
+        message: "Unauthorized: No user ID found"
+      });
       return;
     }
 
+    // Kiểm tra thẻ đã tồn tại chưa
     const isCardNumberExists = await prisma.paymentMethod.findFirst({
       where: {
-        cardNumber: card_number,
+        cardNumber,
         userId,
       },
     });
 
     if (isCardNumberExists) {
-      res.status(409).json({ success: false, message: "Card already exists" });
+      res.status(409).json({
+        success: false,
+        message: "Thẻ này đã được thêm trước đó"
+      });
       return;
     }
 
-    // Convert expiry_date from MM/YY format to a full date
-    const [month, year] = expiry_date.split("/");
-    const expiryDate = new Date(`20${year}-${month}-01`);
+    // Nếu đặt làm thẻ mặc định, bỏ default của các thẻ khác
+    if (isDefault) {
+      await prisma.paymentMethod.updateMany({
+        where: { userId },
+        data: { isDefault: false }
+      });
+    }
 
-    await prisma.paymentMethod.create({
+    const paymentMethod = await prisma.paymentMethod.create({
       data: {
-        userId: userId,
-        cardNumber: card_number,
-        cardholderName: cardholder_name,
-        expiryDate: expiryDate,
+        userId,
+        cardNumber,
+        cardholderName,
+        expiryDate,
+        isDefault,
       },
     });
 
     res.status(201).json({
       success: true,
-      message: "Payment method added successfully",
+      data: paymentMethod,
+      message: "Thêm phương thức thanh toán thành công",
     });
   } catch (error: any) {
     console.error("Error adding payment method:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to add payment method",
+      message: "Lỗi khi thêm phương thức thanh toán",
       error: error.message,
     });
   }
 };
 
-export const getPaymentDetails = async (
-  req: Request,
+export const getPaymentMethods = async (
+  req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
-  const { userId } = req.params;
-
   try {
-    const userPaymentDetails = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        email: true,
-        paymentMethods: {
-          select: {
-            id: true,
-            cardNumber: true,
-            cardholderName: true,
-            expiryDate: true,
-          },
-        },
-      },
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: "Unauthorized: No user ID found"
+      });
+      return;
+    }
+
+    const paymentMethods = await prisma.paymentMethod.findMany({
+      where: { userId },
+      orderBy: [
+        { isDefault: 'desc' },
+        { createdAt: 'desc' }
+      ]
     });
-
-    if (!userPaymentDetails) {
-      res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-      return;
-    }
-
-    if (
-      !userPaymentDetails.paymentMethods ||
-      userPaymentDetails.paymentMethods.length === 0
-    ) {
-      res.status(404).json({
-        success: false,
-        message: "No payment details found for this user",
-      });
-      return;
-    }
 
     res.status(200).json({
       success: true,
-      data: userPaymentDetails.paymentMethods[0],
-      email: userPaymentDetails.email,
-      message: "Payment details fetched successfully",
+      data: paymentMethods,
+      message: "Lấy danh sách phương thức thanh toán thành công",
     });
   } catch (error: any) {
-    console.error("Error fetching payment method or user details:", error);
+    console.error("Error fetching payment methods:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch payment details",
+      message: "Lỗi khi lấy danh sách phương thức thanh toán",
+      error: error.message,
+    });
+  }
+};
+
+export const updatePaymentMethod = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { cardNumber, expiryDate, cardholderName, isDefault } = req.body;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: "Unauthorized: No user ID found"
+      });
+      return;
+    }
+
+    // Kiểm tra payment method có thuộc về user không
+    const existingPaymentMethod = await prisma.paymentMethod.findFirst({
+      where: { id, userId }
+    });
+
+    if (!existingPaymentMethod) {
+      res.status(404).json({
+        success: false,
+        message: "Không tìm thấy phương thức thanh toán"
+      });
+      return;
+    }
+
+    // Nếu đặt làm mặc định, bỏ default của các thẻ khác
+    if (isDefault) {
+      await prisma.paymentMethod.updateMany({
+        where: { userId, id: { not: id } },
+        data: { isDefault: false }
+      });
+    }
+
+    const updatedPaymentMethod = await prisma.paymentMethod.update({
+      where: { id },
+      data: {
+        ...(cardNumber && { cardNumber }),
+        ...(expiryDate && { expiryDate }),
+        ...(cardholderName && { cardholderName }),
+        ...(isDefault !== undefined && { isDefault })
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      data: updatedPaymentMethod,
+      message: "Cập nhật phương thức thanh toán thành công",
+    });
+  } catch (error: any) {
+    console.error("Error updating payment method:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi cập nhật phương thức thanh toán",
+      error: error.message,
+    });
+  }
+};
+
+export const deletePaymentMethod = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: "Unauthorized: No user ID found"
+      });
+      return;
+    }
+
+    // Kiểm tra payment method có thuộc về user không
+    const existingPaymentMethod = await prisma.paymentMethod.findFirst({
+      where: { id, userId }
+    });
+
+    if (!existingPaymentMethod) {
+      res.status(404).json({
+        success: false,
+        message: "Không tìm thấy phương thức thanh toán"
+      });
+      return;
+    }
+
+    await prisma.paymentMethod.delete({
+      where: { id }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Xóa phương thức thanh toán thành công",
+    });
+  } catch (error: any) {
+    console.error("Error deleting payment method:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi xóa phương thức thanh toán",
+      error: error.message,
+    });
+  }
+};
+
+export const setDefaultPaymentMethod = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: "Unauthorized: No user ID found"
+      });
+      return;
+    }
+
+    // Kiểm tra payment method có thuộc về user không
+    const existingPaymentMethod = await prisma.paymentMethod.findFirst({
+      where: { id, userId }
+    });
+
+    if (!existingPaymentMethod) {
+      res.status(404).json({
+        success: false,
+        message: "Không tìm thấy phương thức thanh toán"
+      });
+      return;
+    }
+
+    // Bỏ default của tất cả payment methods khác
+    await prisma.paymentMethod.updateMany({
+      where: { userId },
+      data: { isDefault: false }
+    });
+
+    // Đặt payment method này làm mặc định
+    const updatedPaymentMethod = await prisma.paymentMethod.update({
+      where: { id },
+      data: { isDefault: true }
+    });
+
+    res.status(200).json({
+      success: true,
+      data: updatedPaymentMethod,
+      message: "Đã đặt làm phương thức thanh toán mặc định",
+    });
+  } catch (error: any) {
+    console.error("Error setting default payment method:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi đặt phương thức thanh toán mặc định",
       error: error.message,
     });
   }

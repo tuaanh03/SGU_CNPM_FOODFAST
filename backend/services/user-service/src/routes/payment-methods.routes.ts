@@ -1,8 +1,20 @@
 import { Router } from "express";
-import { authMiddleware } from "../middleware/authMiddleware";
-import { addPaymentMethods, getPaymentDetails } from "../controllers/payment-methods";
+import {
+  addPaymentMethod,
+  getPaymentMethods,
+  updatePaymentMethod,
+  deletePaymentMethod,
+  setDefaultPaymentMethod
+} from "../controllers/payment-methods";
+import { authenticateToken } from "../middleware/auth";
 
-export const paymentRoute: Router = Router();
+const router = Router();
 
-paymentRoute.post("/add", authMiddleware, addPaymentMethods);
-paymentRoute.get("/get/:userId", getPaymentDetails);
+// Tất cả routes đều yêu cầu authentication
+router.get("/", authenticateToken, getPaymentMethods);
+router.post("/", authenticateToken, addPaymentMethod);
+router.put("/:id", authenticateToken, updatePaymentMethod);
+router.delete("/:id", authenticateToken, deletePaymentMethod);
+router.patch("/:id/default", authenticateToken, setDefaultPaymentMethod);
+
+export default router;
