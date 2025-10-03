@@ -11,21 +11,25 @@ export const authMiddleware = (
   next: NextFunction
 ): void => {
   try {
-    const token = req.cookies?.token;
+    // Lấy token từ cookie với tên 'token' hoặc từ Authorization header
+    let token = req.cookies?.token;
+
+    // Nếu không có cookie 'token', thử lấy từ Authorization header
+    if (!token) {
+      const authHeader = req.headers.authorization;
+      token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
+    }
 
     if (!token) {
       res.status(401).json({ message: "Unauthorized: No token provided" });
       return;
     }
 
-    if (!process.env.JWT_SECRET_KEY) {
-      throw new Error("JWT_SECRET_KEY is not defined");
-    }
+    // Sử dụng JWT_SECRET hoặc JWT_SECRET_KEY tương thích với user-service
+    const jwtSecret =
+      process.env.JWT_SECRET || process.env.JWT_SECRET_KEY || "secret";
 
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET_KEY
-    ) as jwt.JwtPayload;
+    const decoded = jwt.verify(token, jwtSecret) as jwt.JwtPayload;
 
     if (!decoded.userId) {
       throw new Error("Token payload is missing UserId");
