@@ -4,11 +4,11 @@ import prisma from "../lib/prisma";
 // Lấy tất cả sản phẩm
 export const getAllProducts = async (req: Request, res: Response) => {
   try {
-    const { categoryId, isActive } = req.query;
+    const { categoryId, isAvailable } = req.query;
 
     const where: any = {};
     if (categoryId) where.categoryId = categoryId as string;
-    if (isActive !== undefined) where.isActive = isActive === 'true';
+    if (isAvailable !== undefined) where.isAvailable = isAvailable === 'true';
 
     const products = await prisma.product.findMany({
       where,
@@ -68,7 +68,17 @@ export const getProductById = async (req: Request, res: Response) => {
 // Tạo sản phẩm mới
 export const createProduct = async (req: Request, res: Response) => {
   try {
-    const { sku, name, price, categoryId, stockOnHand, isActive } = req.body;
+    const {
+      sku,
+      name,
+      price,
+      description,
+      imageUrl,
+      categoryId,
+      isAvailable,
+      soldOutUntil,
+      unavailableReason
+    } = req.body;
 
     // Kiểm tra SKU đã tồn tại chưa
     const existingSku = await prisma.product.findUnique({
@@ -101,9 +111,12 @@ export const createProduct = async (req: Request, res: Response) => {
         sku,
         name,
         price: parseInt(price),
+        description,
+        imageUrl,
         categoryId,
-        stockOnHand: parseInt(stockOnHand) || 0,
-        isAvailable: isActive !== false
+        isAvailable: isAvailable !== false,
+        soldOutUntil,
+        unavailableReason
       },
       include: {
         category: true
@@ -128,7 +141,17 @@ export const createProduct = async (req: Request, res: Response) => {
 export const updateProduct = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { sku, name, price, categoryId, stockOnHand, isActive } = req.body;
+    const {
+      sku,
+      name,
+      price,
+      description,
+      imageUrl,
+      categoryId,
+      isAvailable,
+      soldOutUntil,
+      unavailableReason
+    } = req.body;
 
     // Kiểm tra sản phẩm tồn tại
     const existingProduct = await prisma.product.findUnique({
@@ -174,9 +197,12 @@ export const updateProduct = async (req: Request, res: Response) => {
     if (sku !== undefined) updateData.sku = sku;
     if (name !== undefined) updateData.name = name;
     if (price !== undefined) updateData.price = parseInt(price);
+    if (description !== undefined) updateData.description = description;
+    if (imageUrl !== undefined) updateData.imageUrl = imageUrl;
     if (categoryId !== undefined) updateData.categoryId = categoryId;
-    if (stockOnHand !== undefined) updateData.stockOnHand = parseInt(stockOnHand);
-    if (isActive !== undefined) updateData.isActive = isActive;
+    if (isAvailable !== undefined) updateData.isAvailable = isAvailable;
+    if (soldOutUntil !== undefined) updateData.soldOutUntil = soldOutUntil;
+    if (unavailableReason !== undefined) updateData.unavailableReason = unavailableReason;
 
     const product = await prisma.product.update({
       where: { id },
@@ -233,41 +259,45 @@ export const deleteProduct = async (req: Request, res: Response) => {
   }
 };
 
-// Lấy thông tin tồn kho
-export const getProductStock = async (req: Request, res: Response) => {
+// Cập nhật trạng thái sản phẩm (tắt/mở bán)
+export const updateProductAvailability = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const { isAvailable, soldOutUntil, unavailableReason } = req.body;
 
-    const product = await prisma.product.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        sku: true,
-        name: true,
-        stockOnHand: true,
-        reserved: true
-      }
+    const existingProduct = await prisma.product.findUnique({
+      where: { id }
     });
 
-    if (!product) {
+    if (!existingProduct) {
       return res.status(404).json({
         success: false,
         message: "Không tìm thấy sản phẩm"
       });
     }
 
-    res.json({
-      success: true,
+    const product = await prisma.product.update({
+      where: { id },
       data: {
-        ...product,
-        available: product.stockOnHand - product.reserved
+        isAvailable,
+        soldOutUntil,
+        unavailableReason
+      },
+      include: {
+        category: true
       }
     });
+
+    res.json({
+      success: true,
+      data: product,
+      message: "Cập nhật trạng thái sản phẩm thành công"
+    });
   } catch (error) {
-    console.error("Error fetching product stock:", error);
+    console.error("Error updating product availability:", error);
     res.status(500).json({
       success: false,
-      message: "Lỗi khi lấy thông tin tồn kho"
+      message: "Lỗi khi cập nhật trạng thái sản phẩm"
     });
   }
 };

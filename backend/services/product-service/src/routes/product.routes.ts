@@ -1,30 +1,24 @@
-import express from "express";
+import { Router } from "express";
 import {
   getAllProducts,
   getProductById,
   createProduct,
   updateProduct,
   deleteProduct,
-  getProductStock
+  updateProductAvailability,
 } from "../controllers/product";
-import { authMiddleware } from "../middleware/authMiddleware";
-import { validateBody, validateParams } from "../middleware/validation";
-import {
-  createProductSchema,
-  updateProductSchema,
-  uuidParamSchema
-} from "../validations/product.validation";
+import { authenticateToken, requireStoreAdmin } from "../middleware/auth";
 
-const router = express.Router();
+const router = Router();
 
-// Public routes - không cần auth
+// Public routes - không cần authentication
 router.get("/", getAllProducts);
-router.get("/:id", validateParams(uuidParamSchema), getProductById);
-router.get("/:id/stock", validateParams(uuidParamSchema), getProductStock);
+router.get("/:id", getProductById);
 
-// Protected routes - cần auth (dành cho admin sau này)
-router.post("/", authMiddleware, validateBody(createProductSchema), createProduct);
-router.put("/:id", authMiddleware, validateParams(uuidParamSchema), validateBody(updateProductSchema), updateProduct);
-router.delete("/:id", authMiddleware, validateParams(uuidParamSchema), deleteProduct);
+// Protected routes - chỉ STORE_ADMIN mới được phép
+router.post("/", authenticateToken, requireStoreAdmin, createProduct);
+router.put("/:id", authenticateToken, requireStoreAdmin, updateProduct);
+router.delete("/:id", authenticateToken, requireStoreAdmin, deleteProduct);
+router.patch("/:id/availability", authenticateToken, requireStoreAdmin, updateProductAvailability);
 
 export default router;

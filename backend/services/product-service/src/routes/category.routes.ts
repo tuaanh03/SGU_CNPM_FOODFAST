@@ -6,7 +6,7 @@ import {
   updateCategory,
   deleteCategory
 } from "../controllers/category";
-import { authMiddleware } from "../middleware/authMiddleware";
+import { authenticateToken, requireStoreAdmin } from "../middleware/auth";
 import { validateBody, validateParams } from "../middleware/validation";
 import {
   createCategorySchema,
@@ -20,9 +20,9 @@ const router = express.Router();
 router.get("/", getAllCategories);
 router.get("/:id", validateParams(uuidParamSchema), getCategoryById);
 
-// Protected routes - cần auth (dành cho admin sau này)
-router.post("/", authMiddleware, validateBody(createCategorySchema), createCategory);
-router.put("/:id", authMiddleware, validateParams(uuidParamSchema), validateBody(updateCategorySchema), updateCategory);
-router.delete("/:id", authMiddleware, validateParams(uuidParamSchema), deleteCategory);
+// Protected routes - chỉ STORE_ADMIN mới được phép
+router.post("/", authenticateToken, requireStoreAdmin, validateBody(createCategorySchema), createCategory);
+router.put("/:id", authenticateToken, requireStoreAdmin, validateParams(uuidParamSchema), validateBody(updateCategorySchema), updateCategory);
+router.delete("/:id", authenticateToken, requireStoreAdmin, validateParams(uuidParamSchema), deleteCategory);
 
 export default router;

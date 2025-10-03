@@ -1,39 +1,43 @@
-import hpp from "hpp";
 import cors from "cors";
 import env from "dotenv";
-import helmet from "helmet";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
-import { authRoute } from "./routes/auth.routes";
-import { paymentRoute } from "./routes/payment-methods.routes";
 import express, { NextFunction, Request, Response } from "express";
+
+// Import routes
+import authRoutes from "./routes/auth.routes";
+import storeRoutes from "./routes/store.routes";
+import addressRoutes from "./routes/address.routes";
+import paymentMethodRoutes from "./routes/payment-methods.routes";
 
 env.config();
 
 const server = express();
 
-// middleware's
+// Middleware's
 server.use(express.json());
 server.use(cookieParser());
-server.use(hpp());
 server.use(
   cors({
     origin: "http://localhost:3000",
   })
 );
-server.use(helmet());
 server.use(morgan("dev"));
 
-// Disabling 'X-Powered-By' header for security reasons
-server.disable("x-powered-by");
-
-// routes
-server.use("/auth", authRoute);
-server.use("/payment-methods", paymentRoute);
+// Routes
+server.use("/auth", authRoutes);
+server.use("/stores", storeRoutes);
+server.use("/addresses", addressRoutes);
+server.use("/payment-methods", paymentMethodRoutes);
 
 // Health Check Route
 server.get("/", (req: Request, res: Response) => {
-  res.status(200).json({ success: true, message: "User service is running" });
+  res.status(200).json({
+    success: true,
+    message: "User service is running",
+    service: "user-service",
+    version: "1.0.0"
+  });
 });
 
 // Error handling middleware
@@ -53,6 +57,8 @@ server.use((req: Request, res: Response) => {
   });
 });
 
-server.listen(process.env.PORT, () => {
-  console.log(`User service is running at port ${process.env.PORT}...`);
+const PORT = process.env.PORT || 3003;
+
+server.listen(PORT, () => {
+  console.log(`User service is running on port ${PORT}`);
 });

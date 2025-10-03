@@ -1,3 +1,6 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,20 +10,94 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id             String  @id @default(uuid())
-  name           String
-  email          String  @unique
-  password       String
-  phoneNumber    String?
-  defaultAddress String?
+enum UserRole {
+  CUSTOMER // Khách hàng - chỉ có thể đặt hàng
+  STORE_ADMIN // Admin cửa hàng - quản lý sản phẩm, đơn hàng
+}
 
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  BANNED
+}
+
+model User {
+  id       String  @id @default(uuid())
+  email    String  @unique
+  password String
+  name     String
+  phone    String?
+  avatar   String?
+
+  role   UserRole   @default(CUSTOMER)
+  status UserStatus @default(ACTIVE)
+
+  // Thông tin địa chỉ
+  addresses Address[]
+
+  // Thông tin cửa hàng (chỉ dành cho STORE_ADMIN)
+  store Store?
+
+  // Phương thức thanh toán
   paymentMethods PaymentMethod[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([email])
+  @@index([role])
+  @@index([status])
+}
+
+model Address {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name      String // Tên người nhận
+  phone     String // SĐT người nhận
+  address   String // Địa chỉ chi tiết
+  ward      String // Phường/Xã
+  district  String // Quận/Huyện
+  province  String // Tỉnh/Thành phố
+  isDefault Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Store {
+  id      String @id @default(uuid())
+  ownerId String @unique
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+  avatar      String?
+  cover       String?
+
+  // Địa chỉ cửa hàng
+  address  String
+  ward     String
+  district String
+  province String
+
+  phone String?
+  email String?
+
+  // Thời gian hoạt động
+  openTime  String? // Ví dụ: "08:00"
+  closeTime String? // Ví dụ: "22:00"
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([isActive])
 }
 
 model PaymentMethod {
@@ -29,10 +106,13 @@ model PaymentMethod {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   cardNumber     String
+  expiryDate     String
   cardholderName String
-  expiryDate     DateTime
+  isDefault      Boolean @default(false)
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
+  @@unique([userId, cardNumber])
   @@index([userId])
 }
