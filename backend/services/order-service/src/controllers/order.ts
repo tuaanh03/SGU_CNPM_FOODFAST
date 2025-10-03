@@ -2,6 +2,7 @@ import prisma from "../lib/prisma";
 import { Request, Response } from "express";
 import { publishEvent } from "../utils/kafka";
 import { OrderSchema } from "../validations/order.validation";
+import { Prisma} from "@prisma/client";
 
 interface AuthenticatedRequest extends Request {
     user?: { id: string };
@@ -9,11 +10,29 @@ interface AuthenticatedRequest extends Request {
     params: any;
 }
 
+// Input item khi client gửi request
+interface OrderItemInput {
+    productId: string;
+    quantity: number;
+}
+
+// Item đã validate từ Product Service
+interface ValidatedOrderItem extends OrderItemInput {
+    productName: string;
+    productPrice: number;
+    subtotal: number;
+}
+
+// Prisma type cho Order kèm items
+type OrderWithItems = Prisma.OrderGetPayload<{
+    include: { items: true };
+}>;
+
 // Helper function để tính tổng tiền từ Product Service
-async function calculateOrderAmount(items: any[]): Promise<{ totalPrice: number; validItems: any[] }> {
+async function calculateOrderAmount(items: OrderItemInput[]): Promise<{ totalPrice: number; validItems: any[] }> {
     // Gọi Product Service để lấy thông tin và giá của từng sản phẩm
     let totalPrice = 0;
-    const validItems = [];
+    const validItems: ValidatedOrderItem[] = [];
 
     for (const item of items) {
         try {
@@ -90,7 +109,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
             const { totalPrice, validItems } = await calculateOrderAmount(items);
 
             // Tạo order với structure mới theo Prisma schema
-            const savedOrder = await prisma.order.create({
+            const savedOrder: OrderWithItems = await prisma.order.create({
                 data: {
                     userId,
                     totalPrice,
@@ -116,7 +135,9 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
             const orderPayload = {
                 orderId: savedOrder.id,
                 userId: savedOrder.userId,
-                items: items, // Format đơn giản cho Product Service: [{productId, quantity}]
+                items: items.map((
+                    item: OrderItemInput) => ({ productId: item.productId, quantity: item.quantity }
+                )), // Format đơn giản cho Product Service: [{productId, quantity}]
                 totalPrice: savedOrder.totalPrice,
                 timestamp: new Date().toISOString()
             };
