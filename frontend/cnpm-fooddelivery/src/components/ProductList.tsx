@@ -41,10 +41,18 @@ const ProductList = ({ products = [], loading = false }: ProductListProps) => {
     dispatch({
       type: "ADD_ITEM",
       payload: {
-        id: product.id,
-        name: product.name,
-        price: product.price,
-        imageUrl: product.imageUrl,
+        item: {
+          id: product.id,
+          name: product.name,
+          price: product.price,
+          imageUrl: product.imageUrl ?? "",
+        },
+        // NOTE: Cart requires a restaurant; provide a minimal placeholder derived from product
+        restaurant: {
+          id: product.id,
+          name: product.name,
+          imageUrl: product.imageUrl ?? "",
+        },
       },
     });
   };
