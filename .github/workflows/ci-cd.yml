@@ -1,0 +1,185 @@
+name: CI/CD Pipeline - Build, Test & Push to Docker Hub
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  DOCKER_REGISTRY: docker.io
+  DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+
+jobs:
+  # Job 1: Test Backend Services
+  test-backend:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [order-service, payment-service]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install dependencies
+        working-directory: ./backend/services/${{ matrix.service }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        working-directory: ./backend/services/${{ matrix.service }}
+        run: pnpm test
+
+  # Job 2: Test Frontend
+  test-frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        working-directory: ./frontend/cnpm-fooddelivery
+        run: npm install
+
+      - name: Run lint
+        working-directory: ./frontend/cnpm-fooddelivery
+        run: npm run lint
+
+      - name: Build frontend
+        working-directory: ./frontend/cnpm-fooddelivery
+        run: npm run build
+
+  # Job 3: Build và Push Docker Images cho Backend Services
+  build-push-backend:
+    needs: [test-backend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        service:
+          - api-gateway
+          - user-service
+          - order-service
+          - product-service
+          - payment-service
+          - notification-service
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/foodfast-${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend/services/${{ matrix.service }}
+          file: ./backend/services/${{ matrix.service }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+    # Job 4: Build và Push Frontend (tạm thời disable - sẽ thêm sau)
+    # build-push-frontend:
+    #   needs: [test-frontend]
+    #   runs-on: ubuntu-latest
+    #   if: github.ref == 'refs/heads/main'
+    #
+    #   steps:
+    #     - name: Checkout code
+    #       uses: actions/checkout@v4
+    #
+    #     - name: Setup Node.js
+    #       uses: actions/setup-node@v4
+    #       with:
+    #         node-version: '20'
+    #
+    #     - name: Install dependencies và build
+    #       working-directory: ./frontend/cnpm-fooddelivery
+    #       run: |
+    #         npm install
+    #         npm run build
+    #
+    #     - name: Set up Docker Buildx
+    #       uses: docker/setup-buildx-action@v3
+    #
+    #     - name: Login to Docker Hub
+    #       uses: docker/login-action@v3
+    #       with:
+    #         username: ${{ secrets.DOCKERHUB_USERNAME }}
+    #         password: ${{ secrets.DOCKERHUB_TOKEN }}
+    #
+    #     - name: Create Dockerfile for frontend
+    #       working-directory: ./frontend/cnpm-fooddelivery
+    #       run: |
+    #         cat > Dockerfile << 'EOF'
+    #         FROM nginx:alpine
+    #         COPY dist /usr/share/nginx/html
+    #         EXPOSE 80
+    #         CMD ["nginx", "-g", "daemon off;"]
+    #         EOF
+    #
+    #     - name: Build and push frontend image
+    #       uses: docker/build-push-action@v5
+    #       with:
+    #         context: ./frontend/cnpm-fooddelivery
+    #         push: true
+    #         tags: |
+    #           ${{ secrets.DOCKERHUB_USERNAME }}/foodfast-frontend:latest
+    #           ${{ secrets.DOCKERHUB_USERNAME }}/foodfast-frontend:${{ github.sha }}
+
+    # Job 5: Notification về kết quả (tạm thời chỉ backend)
+    # notify:
+    #   needs: [build-push-backend]
+    #   runs-on: ubuntu-latest
+    #   if: always()
+
+  #   steps:
+  #     - name: Notify success
+  #       if: ${{ needs.build-push-backend.result == 'success' }}
+  #       run: |
+  #         echo "✅ Build và push thành công tất cả backend services lên Docker Hub!"
+  #         echo "🚀 Backend services: api-gateway, user-service, order-service, product-service, payment-service, notification-service"
+  #         echo "📝 Frontend sẽ được thêm sau khi có Dockerfile"
+
+  #     - name: Notify failure
+  #       if: ${{ needs.build-push-backend.result == 'failure' }}
+  #       run: |
+  #         echo "❌ Build hoặc push backend services thất bại!"
+  #         echo "Backend result: ${{ needs.build-push-backend.result }}"
