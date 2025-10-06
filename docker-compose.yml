@@ -63,6 +63,8 @@ services:
       - network
     depends_on:
       - user-db
+    volumes:
+      - ./backend/services/user-service/prisma:/app/user-service/prisma:rw
     command: >
       sh -c "
         npx prisma generate &&
@@ -77,6 +79,7 @@ services:
       - ./backend/services/user-service/.env
     ports:
       - "5432:5432"
+      - "5554:5555"
     volumes:
       - userdb:/var/lib/postgresql/data
     networks:
@@ -105,6 +108,7 @@ services:
       - ./backend/services/order-service/.env
     ports:
       - "5433:5432"
+      - "5556:5555"
     volumes:
       - orderdb:/var/lib/postgresql/data
     networks:
@@ -133,6 +137,7 @@ services:
       - ./backend/services/product-service/.env
     ports:
       - "5434:5432"
+      - "5555:5555"
     volumes:
       - productdb:/var/lib/postgresql/data
     networks:
