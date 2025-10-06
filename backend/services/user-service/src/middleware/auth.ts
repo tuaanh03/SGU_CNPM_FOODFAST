@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import prisma from "../lib/prisma";
-
+import crypto from "crypto";
 // Interface để extend Request object
 interface AuthRequest extends Request {
   user?: {
@@ -31,32 +31,59 @@ export const authenticateToken = async (
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret") as any;
 
-    // Kiểm tra user còn tồn tại và active
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
-      select: { id: true, email: true, role: true, status: true }
+    // Kiểm tra token đã bị thu hồi (đã logout) hay chưa
+    const jti = decoded?.jti as string | undefined;
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+    const revoked = await prisma.revokedToken.findFirst({
+      where: {
+        AND: [
+          {
+            OR: [
+              ...(jti ? ([{ jti }] as any[]) : []),
+              { tokenHash }
+            ]
+          },
+          { expiresAt: { gt: new Date() } }
+        ]
+      }
     });
 
-    if (!user || user.status !== "ACTIVE") {
+    if (revoked) {
       return res.status(401).json({
         success: false,
-        message: "Token không hợp lệ hoặc tài khoản đã bị khóa"
+        message: "Token đã bị thu hồi. Vui lòng đăng nhập lại."
       });
     }
 
-    req.user = {
-      userId: user.id,
-      email: user.email,
-      role: user.role
-    };
+    // Kiểm tra user còn tồn tại và đang hoạt động
+    const userId = decoded?.userId as string | undefined;
+    const email = decoded?.email as string | undefined;
+    const role = decoded?.role as string | undefined;
 
-    next();
-  } catch (error) {
-    console.error("Auth error:", error);
-    res.status(401).json({
-      success: false,
-      message: "Token không hợp lệ"
-    });
+    if (!userId || !email || !role) {
+      return res.status(401).json({
+        success: false,
+        message: "Token không hợp lệ"
+      });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.status !== "ACTIVE") {
+      return res.status(403).json({
+        success: false,
+        message: "Tài khoản đã bị khóa hoặc không tồn tại"
+      });
+    }
+
+    // Gán thông tin user vào request để các handler khác dùng
+    req.user = { userId, email, role };
+
+    return next();
+  } catch (err: any) {
+    // Token hết hạn hoặc không hợp lệ
+    const message = err?.name === "TokenExpiredError" ? "Token đã hết hạn" : "Token không hợp lệ";
+    return res.status(401).json({ success: false, message });
   }
 };
 
