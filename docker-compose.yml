@@ -63,7 +63,12 @@ services:
       - network
     depends_on:
       - user-db
-
+    command: >
+      sh -c "
+        npx prisma generate &&
+        npx prisma db push &&
+        node dist/server.js
+      "
   user-db:
     image: postgres:15-alpine
     container_name: user-db

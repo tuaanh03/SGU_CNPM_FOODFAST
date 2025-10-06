@@ -94,6 +94,7 @@ const productServiceProxy = proxy(config.productServiceUrl, {
 server.use("/api/auth", authLimiter, userServiceProxy);
 server.use("/api/payment-methods", userServiceProxy);
 server.use("/api/stores", userServiceProxy);
+server.use("/api/addresses", userServiceProxy);
 
 // order service routes
 server.use("/api/order", orderLimiter, orderServiceProxy);
