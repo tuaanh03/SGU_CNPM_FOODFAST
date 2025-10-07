@@ -3,6 +3,22 @@
   <component name="CopilotDiffPersistence">
     <option name="pendingDiffs">
       <map>
+        <entry key="$PROJECT_DIR$/backend/services/order-service/prisma/migrations/20251007000000_init/migration.sql">
+          <value>
+            <PendingDiffInfo>
+              <option name="filePath" value="$PROJECT_DIR$/backend/services/order-service/prisma/migrations/20251007000000_init/migration.sql" />
+              <option name="updatedContent" value="-- CreateTable Order&#10;CREATE TABLE &quot;Order&quot; (&#10;  &quot;id&quot; TEXT PRIMARY KEY,&#10;  &quot;userId&quot; TEXT NOT NULL,&#10;  &quot;totalPrice&quot; INTEGER NOT NULL,&#10;  &quot;deliveryAddress&quot; TEXT NOT NULL,&#10;  &quot;contactPhone&quot; TEXT NOT NULL,&#10;  &quot;note&quot; TEXT,&#10;  &quot;status&quot; TEXT NOT NULL,&#10;  &quot;createdAt&quot; TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,&#10;  &quot;updatedAt&quot; TIMESTAMP(3) NOT NULL&#10;);&#10;&#10;-- CreateTable OrderItem&#10;CREATE TABLE &quot;OrderItem&quot; (&#10;  &quot;id&quot; TEXT PRIMARY KEY,&#10;  &quot;orderId&quot; TEXT NOT NULL,&#10;  &quot;productId&quot; TEXT NOT NULL,&#10;  &quot;productName&quot; TEXT NOT NULL,&#10;  &quot;productPrice&quot; INTEGER NOT NULL,&#10;  &quot;quantity&quot; INTEGER NOT NULL&#10;);&#10;&#10;-- AddForeignKey&#10;ALTER TABLE &quot;OrderItem&quot; ADD CONSTRAINT &quot;OrderItem_orderId_fkey&quot; FOREIGN KEY (&quot;orderId&quot;) REFERENCES &quot;Order&quot;(&quot;id&quot;) ON DELETE CASCADE ON UPDATE CASCADE;&#10;&#10;-- Indexes&#10;CREATE INDEX &quot;Order_userId_idx&quot; ON &quot;Order&quot;(&quot;userId&quot;);&#10;CREATE INDEX &quot;Order_status_idx&quot; ON &quot;Order&quot;(&quot;status&quot;);&#10;CREATE INDEX &quot;OrderItem_orderId_idx&quot; ON &quot;OrderItem&quot;(&quot;orderId&quot;);&#10;" />
+            </PendingDiffInfo>
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/backend/services/product-service/prisma/migrations/20251007000500_add_storeId_to_product/migration.sql">
+          <value>
+            <PendingDiffInfo>
+              <option name="filePath" value="$PROJECT_DIR$/backend/services/product-service/prisma/migrations/20251007000500_add_storeId_to_product/migration.sql" />
+              <option name="updatedContent" value="-- AlterTable: add storeId to Product&#10;ALTER TABLE &quot;Product&quot; ADD COLUMN IF NOT EXISTS &quot;storeId&quot; TEXT;&#10;&#10;-- Index for storeId&#10;CREATE INDEX IF NOT EXISTS &quot;Product_storeId_idx&quot; ON &quot;Product&quot;(&quot;storeId&quot;);&#10;" />
+            </PendingDiffInfo>
+          </value>
+        </entry>
         <entry key="$PROJECT_DIR$/backend/services/product-service/src/server.ts">
           <value>
             <PendingDiffInfo>

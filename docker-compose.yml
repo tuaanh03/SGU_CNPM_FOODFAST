@@ -140,7 +140,7 @@ services:
       - product-db
       - kafka
     volumes:
-      - ./backend/services/order-service/prisma:/app/order-service/prisma:rw
+      - ./backend/services/product-service/prisma:/app/product-service/prisma:rw
     command: >
       sh -c "
         npx prisma generate &&
