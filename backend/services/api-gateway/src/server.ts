@@ -98,6 +98,12 @@ const restaurantServiceProxy = proxy(config.restaurantServiceUrl, {
     ...addCorsOnProxyResp
 });
 
+// proxy middleware for Cart Service
+const cartServiceProxy = proxy(config.cartServiceUrl, {
+    proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api/, ""),
+    ...addCorsOnProxyResp
+});
+
 // ====== AGGREGATION ENDPOINT ======
 // GET /api/restaurants/:restaurantId/menu
 // Gọi song song restaurant-service và product-service, gom kết quả trả về client
@@ -154,6 +160,9 @@ server.use("/api/categories", productServiceProxy);
 
 // restaurant service routes
 server.use("/api/stores", restaurantServiceProxy);
+
+// cart service routes
+server.use("/api/cart", cartServiceProxy);
 
 // health check route
 server.get("/", (_req: Request, res: Response) => {
