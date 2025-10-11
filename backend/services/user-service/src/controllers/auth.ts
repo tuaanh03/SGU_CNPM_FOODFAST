@@ -49,7 +49,7 @@ export const register = async (req: Request, res: Response) => {
                 email: user.email,
                 role: user.role,
             },
-            process.env.JWT_SECRET || "secret",
+            process.env.JWT_SECRET_KEY || "secret",
             { expiresIn: "7d", jwtid: jti }
         );
 
@@ -75,7 +75,6 @@ export const login = async (req: Request, res: Response) => {
         // Tìm user theo email
         const user = await prisma.user.findUnique({
             where: { email },
-            include: { store: true },
         });
 
         if (!user) {
@@ -110,7 +109,7 @@ export const login = async (req: Request, res: Response) => {
                 email: user.email,
                 role: user.role,
             },
-            process.env.JWT_SECRET || "secret",
+            process.env.JWT_SECRET_KEY || "secret",
             { expiresIn: "7d", jwtid: jti }
         );
 
@@ -142,7 +141,6 @@ export const getProfile = async (req: Request, res: Response) => {
             where: { id: userId },
             include: {
                 addresses: true,
-                store: true,
                 paymentMethods: true,
             },
         });
@@ -222,7 +220,7 @@ export const logout = async (req: Request, res: Response) => {
         }
 
         // Xác thực token để lấy thông tin jti và exp
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret") as any;
+        const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY || "secret") as any;
         const jti: string | undefined = decoded?.jti;
         const exp: number | undefined = decoded?.exp; // giây kể từ epoch
         const userId = (req as any)?.user?.userId as string | undefined;

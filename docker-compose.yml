@@ -86,6 +86,45 @@ services:
     networks:
       - network
 
+  # Restaurant service
+  restaurant-service:
+    build:
+      context: ./backend/services/restaurant-service
+      dockerfile: Dockerfile
+    container_name: restaurant-service
+    env_file:
+      - ./backend/services/restaurant-service/.env
+    ports:
+      - "3005:3005"
+      - "5558:5555"
+    networks:
+      - network
+    depends_on:
+      - restaurant-db
+    volumes:
+      - ./backend/services/restaurant-service/prisma:/app/restaurant-service/prisma:rw
+    command: >
+      sh -c "
+        npx prisma generate &&
+        npx prisma migrate deploy &&
+        node dist/server.js
+      "
+
+  restaurant-db:
+    image: postgres:15-alpine
+    container_name: restaurant-db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: foodfast_restaurant
+    ports:
+      - "5435:5432"
+    volumes:
+      - restaurantdb:/var/lib/postgresql/data
+    networks:
+      - network
+
   # Order service
   order-service:
     build:
@@ -197,6 +236,7 @@ volumes:
   kafka_data:
   zookeeper_data:
   zookeeper_log:
+  restaurantdb:
 
 networks:
   network:

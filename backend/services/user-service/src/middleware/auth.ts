@@ -29,7 +29,7 @@ export const authenticateToken = async (
     }
 
     // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret") as any;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY || "secret") as any;
 
     // Kiểm tra token đã bị thu hồi (đã logout) hay chưa
     const jti = decoded?.jti as string | undefined;

@@ -5,9 +5,7 @@ import cookieParser from "cookie-parser";
 import express, { NextFunction, Request, Response } from "express";
 
 // Import routes
-import authRoutes from "./routes/auth.routes";
-import addressRoutes from "./routes/address.routes";
-import paymentMethodRoutes from "./routes/payment-methods.routes";
+import storeRoutes from "./routes/store.routes";
 
 env.config();
 
@@ -24,16 +22,14 @@ server.use(
 server.use(morgan("dev"));
 
 // Routes
-server.use("/auth", authRoutes);
-server.use("/addresses", addressRoutes);
-server.use("/payment-methods", paymentMethodRoutes);
+server.use("/stores", storeRoutes);
 
 // Health Check Route
 server.get("/", (req: Request, res: Response) => {
   res.status(200).json({
     success: true,
-    message: "User service is running",
-    service: "user-service",
+    message: "Restaurant service is running",
+    service: "restaurant-service",
     version: "1.0.0"
   });
 });
@@ -55,8 +51,10 @@ server.use((req: Request, res: Response) => {
   });
 });
 
-const PORT = process.env.PORT || 3003;
+const PORT = process.env.PORT || 3005;
 
 server.listen(PORT, () => {
-  console.log(`User service is running on port ${PORT}`);
+  console.log(`Restaurant service is running on port ${PORT}`);
 });
+
+

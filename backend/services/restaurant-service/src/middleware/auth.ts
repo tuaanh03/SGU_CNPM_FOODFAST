@@ -27,7 +27,7 @@ export const authenticateToken = async (
       });
     }
 
-    // Verify token (dùng cùng JWT_SECRET_KEY với user-service)
+    // Verify token (dùng cùng JWT_SECRET với user-service)
     const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY || "secret") as any;
 
     req.user = {
@@ -62,7 +62,7 @@ export const requireStoreAdmin = (
   if (req.user.role !== "STORE_ADMIN") {
     return res.status(403).json({
       success: false,
-      message: "Chỉ admin cửa hàng mới có quyền quản lý sản phẩm"
+      message: "Chỉ admin cửa hàng mới có quyền quản lý cửa hàng"
     });
   }
 

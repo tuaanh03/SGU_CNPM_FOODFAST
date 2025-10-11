@@ -19,7 +19,8 @@
     "express-http-proxy": "^2.1.1",
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.0.0",
-    "morgan": "^1.10.0"
+    "morgan": "^1.10.0",
+    "axios": "^1.12.2"
   },
   "devDependencies": {
     "@types/body-parser": "^1.19.5",

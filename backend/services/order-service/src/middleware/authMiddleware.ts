@@ -25,9 +25,8 @@ export const authMiddleware = (
       return;
     }
 
-    // Sử dụng JWT_SECRET hoặc JWT_SECRET_KEY tương thích với user-service
-    const jwtSecret =
-      process.env.JWT_SECRET || process.env.JWT_SECRET_KEY || "secret";
+    // Sử dụng JWT_SECRET_KEY để tương thích với user-service
+    const jwtSecret = process.env.JWT_SECRET_KEY || "secret";
 
     const decoded = jwt.verify(token, jwtSecret) as jwt.JwtPayload;
 

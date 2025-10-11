@@ -6,8 +6,9 @@ import bodyParser from "body-parser";
 import compression from "compression";
 import proxy from "express-http-proxy";
 import { config } from "./config/index";
-import express, { Request, Response } from "express";
+import express, { Request, Response , NextFunction, RequestHandler } from "express";
 import { authLimiter, orderLimiter } from "./utils/limiters";
+import axios from "axios";
 
 env.config();
 
@@ -90,10 +91,52 @@ const productServiceProxy = proxy(config.productServiceUrl, {
     ...addCorsOnProxyResp
 });
 
+// proxy middleware for Restaurant Service
+const restaurantServiceProxy = proxy(config.restaurantServiceUrl, {
+    proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api/, ""),
+    ...dropConditionalHeaders,
+    ...addCorsOnProxyResp
+});
+
+// ====== AGGREGATION ENDPOINT ======
+// GET /api/restaurants/:restaurantId/menu
+// Gọi song song restaurant-service và product-service, gom kết quả trả về client
+server.get(
+    "/api/restaurants/:restaurantId/menu",
+    (async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+        try {
+            const { restaurantId } = req.params;
+
+            const [restaurantResponse, productsResponse] = await Promise.all([
+                fetch(`${config.restaurantServiceUrl}/stores/${restaurantId}`),
+                fetch(`${config.productServiceUrl}/products?storeId=${restaurantId}`)
+            ]);
+
+            if (!restaurantResponse.ok) {
+                res.status(404).json({ success: false, message: "Không tìm thấy nhà hàng" });
+                return;
+            }
+
+            const restaurantJson = await restaurantResponse.json();
+            const productsJson   = productsResponse.ok ? await productsResponse.json() : null;
+
+            res.json({
+                success: true,
+                data: {
+                    restaurant: restaurantJson.data,
+                    products: productsJson?.success ? productsJson.data : { products: [], pagination: null }
+                }
+            });
+        } catch (err) {
+            next(err); // chuẩn Express
+        }
+    }) as RequestHandler // (tùy chọn) ép kiểu về RequestHandler cho chắc
+);
+
+
 // user service routes
 server.use("/api/auth", authLimiter, userServiceProxy);
 server.use("/api/payment-methods", userServiceProxy);
-server.use("/api/stores", userServiceProxy);
 server.use("/api/addresses", userServiceProxy);
 
 // order service routes
@@ -109,7 +152,8 @@ server.use("/api/payment", paymentServiceProxy);
 server.use("/api/products", productServiceProxy);
 server.use("/api/categories", productServiceProxy);
 
-
+// restaurant service routes
+server.use("/api/stores", restaurantServiceProxy);
 
 // health check route
 server.get("/", (_req: Request, res: Response) => {
