@@ -263,3 +263,78 @@ export const logout = async (req: Request, res: Response) => {
         return res.status(500).json({ success: false, message: "Lỗi khi đăng xuất" });
     }
 };
+
+// --------------------- Verify Token (cho API Gateway) ---------------------
+export const verifyToken = async (req: Request, res: Response) => {
+    try {
+        const { token } = req.body;
+
+        if (!token) {
+            return res.status(400).json({
+                success: false,
+                message: "Thiếu token"
+            });
+        }
+
+        // Verify token
+        const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY || "secret") as any;
+
+        // Kiểm tra token đã bị thu hồi hay chưa
+        const jti = decoded?.jti as string | undefined;
+        const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+        const revoked = await prisma.revokedToken.findFirst({
+            where: {
+                AND: [
+                    {
+                        OR: [
+                            ...(jti ? ([{ jti }] as any[]) : []),
+                            { tokenHash }
+                        ]
+                    },
+                    { expiresAt: { gt: new Date() } }
+                ]
+            }
+        });
+
+        if (revoked) {
+            return res.status(401).json({
+                success: false,
+                message: "Token đã bị thu hồi"
+            });
+        }
+
+        // Kiểm tra user còn tồn tại và active
+        const userId = decoded?.userId as string | undefined;
+        const email = decoded?.email as string | undefined;
+        const role = decoded?.role as string | undefined;
+
+        if (!userId || !email || !role) {
+            return res.status(401).json({
+                success: false,
+                message: "Token không hợp lệ"
+            });
+        }
+
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        if (!user || user.status !== "ACTIVE") {
+            return res.status(403).json({
+                success: false,
+                message: "Tài khoản đã bị khóa hoặc không tồn tại"
+            });
+        }
+
+        // Token hợp lệ
+        return res.status(200).json({
+            success: true,
+            data: {
+                userId,
+                email,
+                role
+            }
+        });
+    } catch (err: any) {
+        const message = err?.name === "TokenExpiredError" ? "Token đã hết hạn" : "Token không hợp lệ";
+        return res.status(401).json({ success: false, message });
+    }
+};

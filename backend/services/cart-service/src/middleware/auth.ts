@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -9,37 +8,34 @@ export interface AuthRequest extends Request {
   };
 }
 
+// Middleware tin tưởng thông tin từ API Gateway
 export const verifyToken = (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const token = req.headers.authorization?.split(' ')[1] || req.cookies?.token;
+    // Lấy thông tin user từ headers do API Gateway gửi xuống
+    const userId = req.headers['x-user-id'] as string;
+    const email = req.headers['x-user-email'] as string;
+    const role = req.headers['x-user-role'] as string;
 
-    if (!token) {
+    if (!userId || !email) {
       return res.status(401).json({
         success: false,
-        message: 'Unauthorized: No token provided',
+        message: 'User not authenticated',
       });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY || 'secret') as {
-      userId: string;  // User Service dùng userId
-      email: string;
-      role?: string;
-    };
-
-    // Map userId thành id để dùng trong Cart Service
+    // Tin tưởng thông tin từ API Gateway
     req.user = {
-      id: decoded.userId,
-      email: decoded.email,
-      role: decoded.role,
+      id: userId,
+      email: email,
+      role: role,
     };
 
     next();
   } catch (error) {
-    console.error('Token verification error:', error);
+    console.error('Auth error:', error);
     return res.status(401).json({
       success: false,
-      message: 'Unauthorized: Invalid token',
-      error: error instanceof Error ? error.message : 'Unknown error',
+      message: 'Unauthorized',
     });
   }
 };
