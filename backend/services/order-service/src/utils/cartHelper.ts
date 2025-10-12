@@ -1,0 +1,72 @@
+import axios, { AxiosError } from 'axios';
+
+interface CartItem {
+  productId: string;
+  quantity: number;
+  storeId: string;
+}
+
+interface CartResponse {
+  success: boolean;
+  data?: {
+    items: Array<{
+      productId: string;
+      quantity: number;
+    }>;
+    restaurantId: string;
+  };
+  message?: string;
+}
+
+/**
+ * Lấy giỏ hàng của user từ Cart Service (qua API Gateway)
+ * @param token - JWT token từ request header
+ * @param storeId - ID của cửa hàng
+ */
+export async function fetchUserCart(token: string, storeId: string): Promise<CartItem[]> {
+  try {
+    // Gọi qua API Gateway để có headers x-user-id, x-user-email
+    const response = await axios.get<CartResponse>(
+      `http://api-gateway:3000/api/cart/${storeId}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (!response.data.success || !response.data.data) {
+      return [];
+    }
+
+    return response.data.data.items.map((item: { productId: string; quantity: number }) => ({
+      ...item,
+      storeId: response.data.data!.restaurantId,
+    }));
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const axiosError = error as AxiosError<{ message?: string }>;
+      throw new Error(`Cart Service error: ${axiosError.response?.data?.message || axiosError.message}`);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Xóa giỏ hàng sau khi tạo order thành công
+ * @param token - JWT token từ request header
+ * @param storeId - ID của cửa hàng
+ */
+export async function clearUserCart(token: string, storeId: string): Promise<void> {
+  try {
+    // Gọi qua API Gateway
+    await axios.delete(`http://api-gateway:3000/api/cart/${storeId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+  } catch (error) {
+    console.error('Error clearing cart:', error);
+    // Không throw error vì đây chỉ là cleanup, không ảnh hưởng đến order
+  }
+}

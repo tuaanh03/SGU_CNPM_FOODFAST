@@ -52,3 +52,50 @@ model OrderItem {
   @@index([orderId])
   @@index([productId])
 }
+
+// ---------- Read-Model: Cache products từ Product Service ----------
+// Subscribe từ Kafka topic: product.sync
+model MenuItemRead {
+  id      String @id @default(uuid())
+  storeId String // restaurantId từ Restaurant Service
+  menuId  String // Sử dụng storeId làm menuId
+
+  productId String // Reference đến Product Service
+
+  // Snapshot data từ Product Service
+  name        String
+  description String?
+  price       Decimal @db.Decimal(10, 2)
+  imageUrl    String?
+  categoryId  String?
+
+  // Trạng thái
+  isAvailable  Boolean   @default(true)
+  soldOutUntil DateTime? // Hết hàng đến khi nào
+  displayOrder Int       @default(0)
+
+  // Version để xử lý eventual consistency
+  version      Int      @default(1)
+  lastSyncedAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([menuId, productId]) // Mỗi product chỉ xuất hiện 1 lần trong 1 menu
+  @@index([storeId])
+  @@index([productId])
+  @@index([isAvailable])
+  @@index([storeId, isAvailable]) // Query menu available của 1 store
+}
+
+// Bảng track trạng thái đồng bộ với Product Service
+model RestaurantSyncStatus {
+  storeId         String   @id
+  menuId          String?
+  lastSyncedAt    DateTime @default(now())
+  lastSyncVersion Int      @default(0)
+  totalMenuItems  Int      @default(0)
+  isHealthy       Boolean  @default(true) // False nếu lâu không sync
+
+  updatedAt DateTime @updatedAt
+}

@@ -17,6 +17,38 @@ const producer = kafka.producer({
 });
 let isProducerConnected = false;
 
+// Publish product sync event to Order Service
+export async function publishProductSyncEvent(
+    eventType: 'CREATED' | 'UPDATED' | 'DELETED',
+    productData: any
+) {
+    try {
+        if (!isProducerConnected) {
+            await producer.connect();
+            isProducerConnected = true;
+            console.log("Kafka producer connected");
+        }
+
+        const event = {
+            eventType,
+            timestamp: new Date().toISOString(),
+            data: productData
+        };
+
+        await producer.send({
+            topic: "product.sync",
+            messages: [{
+                key: `product-${productData.id}-${Date.now()}`,
+                value: JSON.stringify(event)
+            }],
+        });
+
+        console.log(`Published product sync event: ${eventType}`, productData.id);
+    } catch (error) {
+        console.error("Error publishing product sync event:", error);
+    }
+}
+
 export async function publishInventoryReserveResult(
     orderId: string,
     status: "RESERVED" | "REJECTED",

@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import prisma from "../lib/prisma";
+import { publishProductSyncEvent } from "../utils/kafka";
 
 // Lấy tất cả sản phẩm
 export const getAllProducts = async (req: Request, res: Response) => {
@@ -126,6 +127,19 @@ export const createProduct = async (req: Request, res: Response) => {
       }
     });
 
+    // Publish event đồng bộ sang Order Service
+    await publishProductSyncEvent('CREATED', {
+      id: product.id,
+      storeId: product.storeId,
+      name: product.name,
+      description: product.description,
+      price: product.price.toString(),
+      imageUrl: product.imageUrl,
+      categoryId: product.categoryId,
+      isAvailable: product.isAvailable,
+      soldOutUntil: product.soldOutUntil,
+    });
+
     res.status(201).json({
       success: true,
       data: product,
@@ -217,6 +231,19 @@ export const updateProduct = async (req: Request, res: Response) => {
       }
     });
 
+    // Publish event đồng bộ sang Order Service
+    await publishProductSyncEvent('UPDATED', {
+      id: product.id,
+      storeId: product.storeId,
+      name: product.name,
+      description: product.description,
+      price: product.price.toString(),
+      imageUrl: product.imageUrl,
+      categoryId: product.categoryId,
+      isAvailable: product.isAvailable,
+      soldOutUntil: product.soldOutUntil,
+    });
+
     res.json({
       success: true,
       data: product,
@@ -291,6 +318,19 @@ export const updateProductAvailability = async (req: Request, res: Response) => 
       include: {
         category: true
       }
+    });
+
+    // Publish event đồng bộ sang Order Service
+    await publishProductSyncEvent('UPDATED', {
+      id: product.id,
+      storeId: product.storeId,
+      name: product.name,
+      description: product.description,
+      price: product.price.toString(),
+      imageUrl: product.imageUrl,
+      categoryId: product.categoryId,
+      isAvailable: product.isAvailable,
+      soldOutUntil: product.soldOutUntil,
     });
 
     res.json({
