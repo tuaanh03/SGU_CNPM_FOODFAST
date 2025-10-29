@@ -254,7 +254,7 @@ services:
     depends_on:
       - kafka
 
-  # Redis for Cart Service
+  # Redis for Cart Service and Order Session Management
   redis:
     image: redis:7-alpine
     container_name: redis
@@ -264,7 +264,7 @@ services:
       - redis_data:/data
     networks:
       - network
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --notify-keyspace-events Ex
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s

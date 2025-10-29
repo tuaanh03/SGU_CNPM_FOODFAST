@@ -3,6 +3,7 @@ import env from "dotenv";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
 import { runConsumer } from "./utils/kafka";
+import { initializeRedisExpirationListener } from "./utils/redisSessionManager";
 import { orderRoute } from "./routes/order.routes";
 import express, { NextFunction, Request, Response } from "express";
 
@@ -12,6 +13,9 @@ const server = express();
 
 // run kafka consumer 
 runConsumer();
+
+// Khởi tạo Redis expiration listener để tự động hủy orders hết hạn
+initializeRedisExpirationListener();
 
 // middleware's
 server.use(express.json());

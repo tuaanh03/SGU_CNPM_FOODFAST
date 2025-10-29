@@ -1,5 +1,6 @@
 import { Kafka, Partitioners } from "kafkajs";
 import prisma from "../lib/prisma";
+import { deleteOrderSession } from "./redisSessionManager";
 
 const kafka = new Kafka({
   clientId: "order-service",
@@ -28,6 +29,20 @@ export async function publishEvent(messages: string) {
   });
 }
 
+export async function publishOrderExpirationEvent(payload: any) {
+  if (!isProducerConnected) {
+    await producer.connect();
+    isProducerConnected = true;
+  }
+  await producer.send({
+    topic: "order.expired",
+    messages: [{
+      key: `order-expired-${payload.orderId}`,
+      value: JSON.stringify(payload)
+    }],
+  });
+}
+
 const consumer = kafka.consumer({
   groupId: "order-service-group",
 });
@@ -43,7 +58,7 @@ export async function runConsumer() {
 
     // Process messages
     await consumer.run({
-      eachMessage: async ({ topic, partition, message }) => {
+      eachMessage: async ({ topic, message }) => {
         const event = message.value?.toString() as string;
         const data = JSON.parse(event);
 
@@ -75,16 +90,16 @@ async function handlePaymentEvent(data: any) {
   ) {
     try {
       // Map payment status to OrderStatus enum (lowercase)
-      let orderStatus: "pending" | "success" | "failed";
+      let orderStatus: "pending" | "success" | "cancelled";
       if (data.paymentStatus === "success") {
         orderStatus = "success";
       } else if (data.paymentStatus === "failed") {
-        orderStatus = "failed";
+        orderStatus = "cancelled";
       } else {
         orderStatus = "pending";
       }
 
-      const updateResult = await prisma.order.update({
+      await prisma.order.update({
         where: {
           id: data.orderId, // Sử dụng id thay vì orderId
         },
@@ -96,6 +111,12 @@ async function handlePaymentEvent(data: any) {
       console.log(
         `Order ${data.orderId} status updated to: ${orderStatus}`
       );
+
+      // Xóa session trong Redis khi thanh toán thành công hoặc thất bại
+      if (data.paymentStatus === "success" || data.paymentStatus === "failed") {
+        await deleteOrderSession(data.orderId);
+        console.log(`✅ Deleted Redis session for order ${data.orderId} after payment ${data.paymentStatus}`);
+      }
 
       // Nếu có paymentUrl, log để frontend có thể sử dụng
       if (data.paymentUrl && data.paymentStatus === "pending") {
@@ -125,14 +146,18 @@ async function handleInventoryReserveResult(data: any) {
       console.log(`Order ${orderId} inventory reserved successfully, ready for payment`);
 
     } else if (status === "REJECTED") {
-      // Cập nhật order status thành "failed" - không đủ hàng
+      // Cập nhật order status thành "cancelled" - không đủ hàng
       await prisma.order.update({
         where: { id: orderId }, // Sử dụng id thay vì orderId
         data: {
-          status: "failed"
+          status: "cancelled"
         },
       });
-      console.log(`Order ${orderId} failed due to inventory shortage: ${message}`);
+
+      // Xóa session trong Redis khi order bị hủy
+      await deleteOrderSession(orderId);
+
+      console.log(`Order ${orderId} cancelled due to inventory shortage: ${message}`);
     }
   } catch (error) {
     console.error("Error handling inventory reserve result:", error);
@@ -140,7 +165,7 @@ async function handleInventoryReserveResult(data: any) {
 }
 
 async function handleProductSync(event: any) {
-  const { eventType, data, timestamp } = event;
+  const { eventType, data } = event;
 
   try {
     console.log(`Processing product sync event: ${eventType}`, data);

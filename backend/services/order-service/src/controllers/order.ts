@@ -2,14 +2,17 @@ import prisma from "../lib/prisma";
 import { Request, Response } from "express";
 import { publishEvent } from "../utils/kafka";
 import { OrderSchema } from "../validations/order.validation";
-import { validateCartItems, checkPriceChanges } from "../utils/menuValidator";
+import { validateCartItems } from "../utils/menuValidator";
 import { fetchUserCart, clearUserCart } from "../utils/cartHelper";
+import { createOrderSession } from "../utils/redisSessionManager";
 
 interface AuthenticatedRequest extends Request {
     user?: { id: string };
     body: any;
     params: any;
 }
+
+
 
 // Helper function để tính tổng tiền từ Product Service
 async function calculateOrderAmount(items: any[]): Promise<{ totalPrice: number; validItems: any[] }> {
@@ -91,6 +94,10 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
             // Tính toán tổng tiền và validate sản phẩm
             const { totalPrice, validItems } = await calculateOrderAmount(items);
 
+            // Tạo session trong Redis và lấy expirationTime
+            const sessionDurationMinutes = parseInt(process.env.ORDER_SESSION_DURATION_MINUTES || '15');
+            const expirationTime = new Date(Date.now() + sessionDurationMinutes * 60 * 1000);
+
             // Tạo order với status PENDING theo workflow mới
             const savedOrder = await prisma.order.create({
                 data: {
@@ -100,6 +107,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
                     contactPhone,
                     note,
                     status: "pending", // Order ở trạng thái PENDING
+                    expirationTime, // Thời điểm hết hạn thanh toán
                     items: {
                         create: validItems.map(item => ({
                             productId: item.productId,
@@ -114,12 +122,21 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
                 }
             });
 
+            // Tạo session trong Redis với TTL
+            const session = await createOrderSession(
+                savedOrder.id,
+                savedOrder.userId || '',
+                savedOrder.totalPrice,
+                sessionDurationMinutes
+            );
+
             // Payload gửi đến Payment Service qua Kafka (bất đồng bộ)
             const orderPayload = {
                 orderId: savedOrder.id,
                 userId: savedOrder.userId,
                 items: validItems, // Gửi thông tin items cho payment
                 totalPrice: savedOrder.totalPrice,
+                expiresAt: session.expirationTime.toISOString(),
                 timestamp: new Date().toISOString()
             };
 
@@ -143,7 +160,12 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
                     deliveryAddress: savedOrder.deliveryAddress,
                     contactPhone: savedOrder.contactPhone,
                     note: savedOrder.note,
-                    createdAt: savedOrder.createdAt
+                    session: {
+                        expiresAt: session.expirationTime.toISOString(),
+                        durationMinutes: session.durationMinutes
+                    },
+                    createdAt: savedOrder.createdAt,
+                    expirationTime: savedOrder.expirationTime
                 }
             });
 
@@ -278,7 +300,7 @@ export const getPaymentUrl = async (
             return;
         }
 
-        // Nếu order đã success hoặc failed, không cần payment URL nữa
+        // Nếu order đã success hoặc cancelled, không cần payment URL nữa
         if (order.status === "success") {
             res.status(200).json({
                 success: true,
@@ -288,11 +310,11 @@ export const getPaymentUrl = async (
             return;
         }
 
-        if (order.status === "failed") {
+        if (order.status === "cancelled") {
             res.status(200).json({
                 success: false,
-                message: "Thanh toán thất bại. Vui lòng tạo đơn hàng mới",
-                paymentStatus: "failed",
+                message: "Đơn hàng đã bị hủy hoặc hết hạn thanh toán. Vui lòng tạo đơn hàng mới",
+                paymentStatus: "cancelled",
             });
             return;
         }
@@ -484,6 +506,9 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
         // }
 
         // Bước 4: Tạo Order với status PENDING theo workflow mới
+        const sessionDurationMinutes = parseInt(process.env.ORDER_SESSION_DURATION_MINUTES || '15');
+        const expirationTime = new Date(Date.now() + sessionDurationMinutes * 60 * 1000);
+
         const savedOrder = await prisma.order.create({
             data: {
                 userId,
@@ -492,6 +517,7 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
                 contactPhone,
                 note,
                 status: "pending", // Order ở trạng thái PENDING
+                expirationTime, // Thời điểm hết hạn thanh toán
                 items: {
                     create: validationResult.validItems.map(item => ({
                         productId: item.productId,
@@ -506,12 +532,21 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
             }
         });
 
+        // Tạo session trong Redis với TTL
+        const session = await createOrderSession(
+            savedOrder.id,
+            savedOrder.userId || '',
+            savedOrder.totalPrice,
+            sessionDurationMinutes
+        );
+
         // Bước 5: Publish event order.create cho Payment Service (bất đồng bộ)
         const orderPayload = {
             orderId: savedOrder.id,
             userId: savedOrder.userId,
             items: validationResult.validItems, // Gửi full items info với price snapshot
             totalPrice: savedOrder.totalPrice,
+            expiresAt: session.expirationTime.toISOString(),
             timestamp: new Date().toISOString()
         };
 
@@ -537,7 +572,12 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
                 deliveryAddress: savedOrder.deliveryAddress,
                 contactPhone: savedOrder.contactPhone,
                 note: savedOrder.note,
-                createdAt: savedOrder.createdAt
+                session: {
+                    expiresAt: session.expirationTime.toISOString(),
+                    durationMinutes: session.durationMinutes
+                },
+                createdAt: savedOrder.createdAt,
+                expirationTime: savedOrder.expirationTime
             }
         });
 

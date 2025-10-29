@@ -11,7 +11,7 @@ datasource db {
 enum OrderStatus {
   pending
   success
-  failed
+  cancelled // Đã hủy, thanh toán thất bại, hoặc hết hạn
 }
 
 // ---------- Order & OrderItem ----------
@@ -27,12 +27,15 @@ model Order {
   deliveryAddress String?
   contactPhone    String?
 
-  items     OrderItem[]
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  items OrderItem[]
+
+  createdAt      DateTime  @default(now()) // Thời điểm tạo đơn hàng
+  expirationTime DateTime? // Thời điểm hết hạn thanh toán (15 phút sau createdAt)
+  updatedAt      DateTime  @updatedAt
 
   @@index([userId, createdAt])
   @@index([status, createdAt])
+  @@index([expirationTime]) // Index để query orders cần expire
 }
 
 model OrderItem {
