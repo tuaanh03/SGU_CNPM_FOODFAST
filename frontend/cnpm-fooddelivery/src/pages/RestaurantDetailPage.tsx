@@ -80,7 +80,6 @@ const RestaurantDetailPage = () => {
           toast.error("Không tải được thực đơn của cửa hàng");
         }
       } catch (e) {
-        // eslint-disable-next-line no-console
         console.error("Fetch restaurant detail failed", e);
         toast.error("Có lỗi khi tải dữ liệu cửa hàng");
       } finally {
@@ -125,8 +124,7 @@ const RestaurantDetailPage = () => {
   }, [store, products]);
 
   const menuSections = useMemo(() => {
-    if (!products.length) return [] as { category: string; items: any[] }[];
-
+    if (!products.length) return [] as { category: string; items: ProductItem[] }[];
     const grouped: Record<string, ProductItem[]> = {};
     for (const p of products) {
       const key = p.category?.name || "Khác";
