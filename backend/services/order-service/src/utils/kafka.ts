@@ -43,6 +43,20 @@ export async function publishOrderExpirationEvent(payload: any) {
   });
 }
 
+export async function publishRetryPaymentEvent(payload: any) {
+  if (!isProducerConnected) {
+    await producer.connect();
+    isProducerConnected = true;
+  }
+  await producer.send({
+    topic: "order.retry.payment",
+    messages: [{
+      key: `order-retry-${payload.orderId}`,
+      value: JSON.stringify(payload)
+    }],
+  });
+}
+
 const consumer = kafka.consumer({
   groupId: "order-service-group",
 });
@@ -90,18 +104,25 @@ async function handlePaymentEvent(data: any) {
   ) {
     try {
       // Map payment status to OrderStatus enum (lowercase)
+      // Flow:
+      // - PaymentAttempt failed → PaymentIntent REQUIRES_PAYMENT → Order pending (không xóa session để retry)
+      // - PaymentAttempt cancelled → PaymentIntent FAILED → Order cancelled (xóa session)
+      // - PaymentAttempt success → PaymentIntent SUCCESS → Order success (xóa session)
       let orderStatus: "pending" | "success" | "cancelled";
+
       if (data.paymentStatus === "success") {
         orderStatus = "success";
       } else if (data.paymentStatus === "failed") {
+        // failed ở đây nghĩa là PaymentIntent FAILED (do PaymentAttempt cancelled)
         orderStatus = "cancelled";
       } else {
+        // pending: đang chờ thanh toán hoặc PaymentAttempt failed nhưng PaymentIntent vẫn REQUIRES_PAYMENT
         orderStatus = "pending";
       }
 
       await prisma.order.update({
         where: {
-          id: data.orderId, // Sử dụng id thay vì orderId
+          id: data.orderId,
         },
         data: {
           status: orderStatus,
@@ -112,10 +133,11 @@ async function handlePaymentEvent(data: any) {
         `Order ${data.orderId} status updated to: ${orderStatus}`
       );
 
-      // Xóa session trong Redis khi thanh toán thành công hoặc thất bại
-      if (data.paymentStatus === "success" || data.paymentStatus === "failed") {
+      // Chỉ xóa session khi order status = success hoặc cancelled
+      // Không xóa khi pending (để user có thể retry payment)
+      if (orderStatus === "success" || orderStatus === "cancelled") {
         await deleteOrderSession(data.orderId);
-        console.log(`✅ Deleted Redis session for order ${data.orderId} after payment ${data.paymentStatus}`);
+        console.log(`✅ Deleted Redis session for order ${data.orderId} after status: ${orderStatus}`);
       }
 
       // Nếu có paymentUrl, log để frontend có thể sử dụng

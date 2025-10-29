@@ -300,7 +300,7 @@ export const getPaymentUrl = async (
             return;
         }
 
-        // Nếu order đã success hoặc cancelled, không cần payment URL nữa
+        // Nếu order đã success, không cần payment URL nữa
         if (order.status === "success") {
             res.status(200).json({
                 success: true,
@@ -310,10 +310,11 @@ export const getPaymentUrl = async (
             return;
         }
 
+        // Nếu order đã cancelled (hết hạn hoặc thất bại), không thể lấy payment URL
         if (order.status === "cancelled") {
             res.status(200).json({
                 success: false,
-                message: "Đơn hàng đã bị hủy hoặc hết hạn thanh toán. Vui lòng tạo đơn hàng mới",
+                message: "Đơn hàng đã hết hạn thanh toán. Vui lòng tạo đơn hàng mới",
                 paymentStatus: "cancelled",
             });
             return;
@@ -589,3 +590,148 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
         });
     }
 };
+
+/**
+ * Retry payment trong thời gian session còn active
+ * Tạo payment attempt mới và URL thanh toán VNPay mới cho payment intent cũ
+ */
+export const retryPayment = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+        const userId = req.user?.id;
+        const { orderId } = req.params;
+
+        if (!userId) {
+            res.status(401).json({
+                success: false,
+                message: "Unauthorized"
+            });
+            return;
+        }
+
+        if (!orderId) {
+            res.status(400).json({
+                success: false,
+                message: "Order ID là bắt buộc"
+            });
+            return;
+        }
+
+        // Lấy order và kiểm tra quyền sở hữu
+        const order = await prisma.order.findUnique({
+            where: {
+                id: orderId,
+                userId
+            },
+            include: {
+                items: true
+            }
+        });
+
+        if (!order) {
+            res.status(404).json({
+                success: false,
+                message: "Không tìm thấy đơn hàng"
+            });
+            return;
+        }
+
+        // Kiểm tra trạng thái order
+        if (order.status === "success") {
+            res.status(400).json({
+                success: false,
+                message: "Đơn hàng đã được thanh toán thành công"
+            });
+            return;
+        }
+
+        // Kiểm tra nếu order không phải pending (có thể là failed hoặc bất kỳ status nào khác)
+        if (order.status !== "pending") {
+            res.status(400).json({
+                success: false,
+                message: "Đơn hàng không ở trạng thái chờ thanh toán. Vui lòng tạo đơn hàng mới",
+                error: "ORDER_NOT_PENDING"
+            });
+            return;
+        }
+
+        // Kiểm tra session còn tồn tại trong Redis không
+        const { checkOrderSession, getOrderSession, getSessionTTL } = require('../utils/redisSessionManager');
+        const sessionExists = await checkOrderSession(orderId);
+
+        if (!sessionExists) {
+            // Session đã hết hạn
+            // Cập nhật trạng thái order nếu chưa được cập nhật
+            if (order.status === 'pending') {
+                await prisma.order.update({
+                    where: { id: orderId },
+                    data: { status: 'cancelled' }
+                });
+            }
+
+            res.status(400).json({
+                success: false,
+                message: "Phiên thanh toán đã hết hạn. Vui lòng tạo đơn hàng mới",
+                error: "SESSION_EXPIRED"
+            });
+            return;
+        }
+
+        // Lấy thông tin session để kiểm tra thời gian còn lại
+        const sessionData = await getOrderSession(orderId);
+        const ttlSeconds = await getSessionTTL(orderId);
+
+        if (ttlSeconds <= 0) {
+            res.status(400).json({
+                success: false,
+                message: "Phiên thanh toán đã hết hạn. Vui lòng tạo đơn hàng mới",
+                error: "SESSION_EXPIRED"
+            });
+            return;
+        }
+
+        // Publish event riêng cho retry payment
+        // Topic: order.retry.payment (chỉ Payment Service lắng nghe, tránh trigger Inventory Service)
+        // Payment Service sẽ tìm PaymentIntent cũ dựa trên orderId
+        // và tạo PaymentAttempt mới với URL VNPay mới
+        const { publishRetryPaymentEvent } = require('../utils/kafka');
+        const retryPayload = {
+            orderId: order.id,
+            userId: order.userId,
+            totalPrice: order.totalPrice,
+            items: order.items.map(item => ({
+                productId: item.productId,
+                productName: item.productName,
+                productPrice: item.productPrice,
+                quantity: item.quantity
+            })),
+            isRetry: true, // Flag để Payment Service biết đây là retry
+            expiresAt: sessionData.expirationTime,
+            timestamp: new Date().toISOString()
+        };
+
+        await publishRetryPaymentEvent(retryPayload);
+
+        const remainingMinutes = Math.ceil(ttlSeconds / 60);
+
+        res.status(200).json({
+            success: true,
+            message: "Đang xử lý thanh toán lại. Vui lòng chờ URL thanh toán mới",
+            data: {
+                orderId: order.id,
+                status: order.status,
+                totalPrice: order.totalPrice,
+                sessionRemainingMinutes: remainingMinutes,
+                retryInitiated: true
+            }
+        });
+
+    } catch (error: any) {
+        console.error("Retry payment error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Lỗi hệ thống khi thử lại thanh toán",
+            error: error.message || "Lỗi không xác định"
+        });
+    }
+};
+

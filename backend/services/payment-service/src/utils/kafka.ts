@@ -241,12 +241,132 @@ async function handleOrderExpired(data: any) {
   }
 }
 
+/**
+ * Xử lý retry payment - tạo PaymentAttempt mới cho PaymentIntent cũ
+ */
+async function retryPaymentIntent(
+  orderId: string,
+  userId: string,
+  amount: number,
+  description: string
+) {
+  try {
+    console.log(`🔄 Retrying payment for order ${orderId}`);
+
+    // Tìm PaymentIntent cũ
+    const existingPaymentIntent = await prisma.paymentIntent.findUnique({
+      where: { orderId }
+    });
+
+    if (!existingPaymentIntent) {
+      console.error(`PaymentIntent not found for order ${orderId}. Creating new one...`);
+      // Nếu không tìm thấy PaymentIntent cũ, tạo mới
+      return await createPaymentIntent(orderId, userId, amount, description);
+    }
+
+    console.log(`Found existing PaymentIntent: ${existingPaymentIntent.id}`);
+
+    // Cập nhật PaymentIntent status về REQUIRES_PAYMENT nếu đang FAILED
+    if (existingPaymentIntent.status === "FAILED") {
+      await prisma.paymentIntent.update({
+        where: { id: existingPaymentIntent.id },
+        data: { status: "REQUIRES_PAYMENT" }
+      });
+      console.log(`Updated PaymentIntent ${existingPaymentIntent.id} status to REQUIRES_PAYMENT`);
+    }
+
+    // Tạo PaymentAttempt mới
+    const vnpTxnRef = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    const paymentAttempt = await prisma.paymentAttempt.create({
+      data: {
+        paymentIntentId: existingPaymentIntent.id,
+        amount,
+        currency: "VND",
+        status: "CREATED",
+        pspProvider: "VNPAY",
+        vnpTxnRef,
+        metadata: {
+          userId,
+          description,
+          orderId,
+          isRetry: true,
+          retryAt: new Date().toISOString()
+        }
+      }
+    });
+
+    console.log(`✅ Created new PaymentAttempt: ${paymentAttempt.id} (retry) for PaymentIntent ${existingPaymentIntent.id}`);
+
+    // Tạo URL thanh toán VNPay mới
+    const vnpayResult = await processPayment(
+      orderId,
+      userId,
+      amount,
+      description
+    );
+
+    if (vnpayResult.success && vnpayResult.paymentUrl) {
+      // Cập nhật PaymentAttempt với status PROCESSING
+      await prisma.paymentAttempt.update({
+        where: { id: paymentAttempt.id },
+        data: {
+          status: "PROCESSING",
+          vnpRawRequestPayload: {
+            paymentUrl: vnpayResult.paymentUrl,
+            timestamp: new Date().toISOString()
+          }
+        }
+      });
+
+      // Cập nhật PaymentIntent status
+      await prisma.paymentIntent.update({
+        where: { id: existingPaymentIntent.id },
+        data: {
+          status: "PROCESSING"
+        }
+      });
+
+      console.log(`✅ VNPay payment URL created for retry order ${orderId}`);
+
+      return {
+        success: true,
+        paymentIntentId: existingPaymentIntent.id,
+        paymentAttemptId: paymentAttempt.id,
+        paymentUrl: vnpayResult.paymentUrl,
+        isRetry: true
+      };
+    } else {
+      // Cập nhật PaymentAttempt thành FAILED
+      await prisma.paymentAttempt.update({
+        where: { id: paymentAttempt.id },
+        data: {
+          status: "FAILED"
+        }
+      });
+
+      return {
+        success: false,
+        paymentIntentId: existingPaymentIntent.id,
+        error: vnpayResult.error || "Failed to create payment URL for retry"
+      };
+    }
+  } catch (error: any) {
+    console.error("Error retrying PaymentIntent:", error);
+    return {
+      success: false,
+      error: error.message || "Error retrying payment intent"
+    };
+  }
+}
+
 export async function runConsumer() {
   try {
     await consumer.connect();
     await consumer.subscribe({ topic: "order.create", fromBeginning: true });
+    await consumer.subscribe({ topic: "order.retry.payment", fromBeginning: true });
     await consumer.subscribe({ topic: "order.expired", fromBeginning: true });
-    console.log("Consumer is listening to order.create and order.expired");
+    console.log("Consumer is listening to order.create, order.retry.payment, and order.expired");
 
     // Process messages
     await consumer.run({
@@ -259,15 +379,16 @@ export async function runConsumer() {
           return;
         }
 
-        // Xử lý order.create event
-        const { orderId, userId, totalPrice, items } = orderData;
+        // Xử lý order.create event và order.retry.payment event
+        const { orderId, userId, totalPrice, items, isRetry } = orderData;
+        const isRetryPayment = topic === "order.retry.payment" || isRetry === true;
 
         if (!orderId || !userId || !totalPrice) {
           console.error("Invalid order data:", orderData);
           return;
         }
 
-        console.log(`Processing payment for order ${orderId}`);
+        console.log(`Processing payment for order ${orderId}${isRetryPayment ? ' (RETRY)' : ''}`);
 
         // Tạo mô tả đơn hàng từ items
         const orderDescription =
@@ -275,13 +396,25 @@ export async function runConsumer() {
             ? `Order ${orderId} - ${items.length} items`
             : `Order ${orderId}`;
 
-        // Gọi createPaymentIntent để tạo PaymentIntent và PaymentAttempt
-        const result = await createPaymentIntent(
-          orderId,
-          userId,
-          totalPrice,
-          orderDescription
-        );
+        // Kiểm tra nếu là retry payment
+        let result;
+        if (isRetryPayment) {
+          // Gọi retryPaymentIntent để tìm PaymentIntent cũ và tạo PaymentAttempt mới
+          result = await retryPaymentIntent(
+            orderId,
+            userId,
+            totalPrice,
+            orderDescription
+          );
+        } else {
+          // Gọi createPaymentIntent để tạo PaymentIntent và PaymentAttempt mới
+          result = await createPaymentIntent(
+            orderId,
+            userId,
+            totalPrice,
+            orderDescription
+          );
+        }
 
         console.log(`Payment processing result for order ${orderId}:`, result);
 
@@ -302,17 +435,26 @@ export async function runConsumer() {
 
           console.log(`Payment URL sent for order ${orderId}: ${result.paymentUrl}`);
         } else {
-          const paymentIntentId = result.paymentIntentId || "N/A";
-          await publishEvent(
-            orderId,
-            userId,
-            "system@vnpay.com",
-            totalPrice,
-            orderDescription,
-            "failed",
-            paymentIntentId,
-            ""
-          );
+          // Nếu là retry và failed, không publish event "failed"
+          // Vì PaymentIntent vẫn REQUIRES_PAYMENT, user có thể retry lại
+          if (isRetryPayment) {
+            console.error(`❌ Retry payment failed for order ${orderId}: ${'error' in result ? result.error : 'Unknown error'}`);
+            console.log(`User can retry again. PaymentIntent still active.`);
+            // Không publish event để tránh Order Service xóa session
+          } else {
+            // Nếu là lần tạo đầu tiên và failed, publish event "failed"
+            const paymentIntentId = result.paymentIntentId || "N/A";
+            await publishEvent(
+              orderId,
+              userId,
+              "system@vnpay.com",
+              totalPrice,
+              orderDescription,
+              "failed",
+              paymentIntentId,
+              ""
+            );
+          }
         }
       },
     });
