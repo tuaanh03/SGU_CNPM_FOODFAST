@@ -15,7 +15,7 @@ export async function processPayment(
     item: string
 ) {
     try {
-        const txnRef = Date.now().toString();
+        const txnRef = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         const createDate = new Date()
             .toISOString()
             .replace(/[-:TZ]/g, "")
