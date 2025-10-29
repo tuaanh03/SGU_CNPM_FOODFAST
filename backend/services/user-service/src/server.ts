@@ -6,7 +6,6 @@ import express, { NextFunction, Request, Response } from "express";
 
 // Import routes
 import authRoutes from "./routes/auth.routes";
-import storeRoutes from "./routes/store.routes";
 import addressRoutes from "./routes/address.routes";
 import paymentMethodRoutes from "./routes/payment-methods.routes";
 
@@ -26,7 +25,6 @@ server.use(morgan("dev"));
 
 // Routes
 server.use("/auth", authRoutes);
-server.use("/stores", storeRoutes);
 server.use("/addresses", addressRoutes);
 server.use("/payment-methods", paymentMethodRoutes);
 

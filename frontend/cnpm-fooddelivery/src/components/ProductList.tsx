@@ -13,7 +13,6 @@ interface Product {
   description?: string;
   imageUrl?: string;
   isAvailable: boolean;
-  stockOnHand: number;
   category?: {
     id: string;
     name: string;
@@ -122,12 +121,12 @@ const ProductList = ({ products = [], loading = false }: ProductListProps) => {
                         {product.category.name}
                       </Badge>
                     )}
-                    <Badge
-                      variant={product.isAvailable ? "secondary" : "destructive"}
-                      className="text-xs"
-                    >
-                      {product.isAvailable ? `Còn ${product.stockOnHand}` : "Hết hàng"}
-                    </Badge>
+                    {/*<Badge*/}
+                    {/*  variant={product.isAvailable ? "secondary" : "destructive"}*/}
+                    {/*  className="text-xs"*/}
+                    {/*>*/}
+                    {/*  {product.isAvailable ? `Còn ${product.stockOnHand}` : "Hết hàng"}*/}
+                    {/*</Badge>*/}
                   </div>
                 </div>
 
@@ -155,7 +154,7 @@ const ProductList = ({ products = [], loading = false }: ProductListProps) => {
                     <Button
                       className="h-8 px-3"
                       size="sm"
-                      disabled={!product.isAvailable || product.stockOnHand === 0}
+                      disabled={!product.isAvailable }
                       onClick={() => handleAddToCart(product)}
                     >
                       <Plus className="w-4 h-4 mr-1" />
@@ -178,7 +177,7 @@ const ProductList = ({ products = [], loading = false }: ProductListProps) => {
                         size="sm"
                         className="h-8 w-8 p-0"
                         onClick={() => handleUpdateQuantity(product.id, quantity + 1)}
-                        disabled={!product.isAvailable || product.stockOnHand <= quantity}
+                        disabled={!product.isAvailable }
                       >
                         <Plus className="w-3 h-3" />
                       </Button>

@@ -37,8 +37,9 @@ export async function runConsumer() {
     await consumer.connect();
     await consumer.subscribe({ topic: "payment.event", fromBeginning: true });
     await consumer.subscribe({ topic: "inventory.reserve.result", fromBeginning: true });
+    await consumer.subscribe({ topic: "product.sync", fromBeginning: true });
 
-    console.log("Consumer is listening to payment.event and inventory.reserve.result");
+    console.log("Consumer is listening to payment.event, inventory.reserve.result, and product.sync");
 
     // Process messages
     await consumer.run({
@@ -53,6 +54,8 @@ export async function runConsumer() {
             await handlePaymentEvent(data);
           } else if (topic === "inventory.reserve.result") {
             await handleInventoryReserveResult(data);
+          } else if (topic === "product.sync") {
+            await handleProductSync(data);
           }
         } catch (error) {
           console.error(`Error processing ${topic} event:`, error);
@@ -133,6 +136,124 @@ async function handleInventoryReserveResult(data: any) {
     }
   } catch (error) {
     console.error("Error handling inventory reserve result:", error);
+  }
+}
+
+async function handleProductSync(event: any) {
+  const { eventType, data, timestamp } = event;
+
+  try {
+    console.log(`Processing product sync event: ${eventType}`, data);
+
+    if (eventType === 'CREATED' || eventType === 'UPDATED') {
+      // Đồng bộ product vào bảng MenuItemRead
+      const {
+        id,
+        storeId,
+        name,
+        description,
+        price,
+        imageUrl,
+        categoryId,
+        isAvailable,
+        soldOutUntil,
+      } = data;
+
+      // Vì Product không có menuId, ta sẽ dùng storeId làm menuId tạm
+      const menuId = storeId || 'default-menu';
+
+      await prisma.menuItemRead.upsert({
+        where: {
+          menuId_productId: {
+            menuId,
+            productId: id
+          }
+        },
+        update: {
+          name,
+          description,
+          price: parseFloat(price),
+          imageUrl,
+          categoryId,
+          isAvailable,
+          soldOutUntil: soldOutUntil ? new Date(soldOutUntil) : null,
+          lastSyncedAt: new Date()
+        },
+        create: {
+          id: `menu-item-${id}`,
+          storeId: storeId || 'unknown',
+          menuId,
+          productId: id,
+          name,
+          description,
+          price: parseFloat(price),
+          imageUrl,
+          categoryId,
+          isAvailable,
+          soldOutUntil: soldOutUntil ? new Date(soldOutUntil) : null,
+          displayOrder: 0,
+          version: 1,
+          lastSyncedAt: new Date()
+        }
+      });
+
+      console.log(`Product ${id} synchronized to MenuItemRead successfully (${eventType})`);
+
+      // Cập nhật RestaurantSyncStatus
+      if (storeId) {
+        const menuItemsCount = await prisma.menuItemRead.count({
+          where: { storeId }
+        });
+
+        await prisma.restaurantSyncStatus.upsert({
+          where: { storeId },
+          update: {
+            menuId,
+            lastSyncedAt: new Date(),
+            totalMenuItems: menuItemsCount,
+            isHealthy: true
+          },
+          create: {
+            storeId,
+            menuId,
+            lastSyncedAt: new Date(),
+            lastSyncVersion: 1,
+            totalMenuItems: menuItemsCount,
+            isHealthy: true
+          }
+        });
+      }
+
+    } else if (eventType === 'DELETED') {
+      // Xóa product khỏi bảng MenuItemRead
+      const { id, storeId } = data;
+
+      await prisma.menuItemRead.deleteMany({
+        where: {
+          productId: id
+        }
+      });
+
+      console.log(`Product ${id} deleted from MenuItemRead`);
+
+      // Cập nhật count trong RestaurantSyncStatus
+      if (storeId) {
+        const remainingItems = await prisma.menuItemRead.count({
+          where: { storeId }
+        });
+
+        await prisma.restaurantSyncStatus.update({
+          where: { storeId },
+          data: {
+            totalMenuItems: remainingItems,
+            lastSyncedAt: new Date()
+          }
+        });
+      }
+    }
+
+  } catch (error) {
+    console.error("Error handling product sync:", error);
   }
 }
 

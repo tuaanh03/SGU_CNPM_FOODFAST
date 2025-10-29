@@ -1,47 +1,32 @@
-import jwt from "jsonwebtoken";
 import { Request, Response, NextFunction } from "express";
 
 interface AuthenticatedRequest extends Request {
   user?: { id: string };
 }
 
+// Middleware tin tưởng thông tin từ API Gateway
 export const authMiddleware = (
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
 ): void => {
   try {
-    // Lấy token từ cookie với tên 'token' hoặc từ Authorization header
-    let token = req.cookies?.token;
+    // Lấy thông tin user từ headers do API Gateway gửi xuống
+    const userId = req.headers["x-user-id"] as string;
+    const email = req.headers["x-user-email"] as string;
+    const role = req.headers["x-user-role"] as string;
 
-    // Nếu không có cookie 'token', thử lấy từ Authorization header
-    if (!token) {
-      const authHeader = req.headers.authorization;
-      token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
-    }
-
-    if (!token) {
-      res.status(401).json({ message: "Unauthorized: No token provided" });
+    if (!userId) {
+      res.status(401).json({ message: "Unauthorized: No user information" });
       return;
     }
 
-    // Sử dụng JWT_SECRET hoặc JWT_SECRET_KEY tương thích với user-service
-    const jwtSecret =
-      process.env.JWT_SECRET || process.env.JWT_SECRET_KEY || "secret";
-
-    const decoded = jwt.verify(token, jwtSecret) as jwt.JwtPayload;
-
-    if (!decoded.userId) {
-      throw new Error("Token payload is missing UserId");
-    }
-
-    req.user = { id: decoded.userId };
+    // Tin tưởng thông tin từ API Gateway
+    req.user = { id: userId };
 
     next();
   } catch (error: any) {
-    console.error("JWT verification error:", error);
-    res
-      .status(401)
-      .json({ message: "Unauthorized: Invalid token", error: error.message });
+    console.error("Auth error:", error);
+    res.status(401).json({ message: "Unauthorized", error: error.message });
   }
 };

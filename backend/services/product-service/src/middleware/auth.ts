@@ -27,8 +27,8 @@ export const authenticateToken = async (
       });
     }
 
-    // Verify token (dùng cùng JWT_SECRET với user-service)
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret") as any;
+    // Verify token (dùng cùng JWT_SECRET_KEY với user-service)
+    const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY || "secret") as any;
 
     req.user = {
       userId: decoded.userId,

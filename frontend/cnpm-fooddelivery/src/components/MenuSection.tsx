@@ -5,7 +5,7 @@ import { Star, Plus, Minus } from "lucide-react";
 import { useCart } from "@/contexts/cart-context";
 
 interface MenuItem {
-  id: number;
+  id: string | number;
   name: string;
   description: string;
   price: number;
@@ -20,7 +20,7 @@ interface MenuSectionData {
 
 interface MenuSectionProps {
   section: MenuSectionData;
-  restaurantId: number;
+  restaurantId: string | number;
   restaurantName: string;
 }
 
@@ -29,14 +29,14 @@ const MenuSection = ({ section, restaurantId, restaurantName }: MenuSectionProps
 
   const handleAddToCart = (item: MenuItem) => {
     const cartItem = {
-      id: item.id.toString(),
+      id: String(item.id),
       name: item.name,
       price: item.price,
       imageUrl: item.image,
     };
 
     const restaurant = {
-      id: restaurantId.toString(),
+      id: String(restaurantId),
       name: restaurantName,
       imageUrl: "/burger-restaurant-interior-modern.jpg", // Default image
     };
@@ -50,7 +50,7 @@ const MenuSection = ({ section, restaurantId, restaurantName }: MenuSectionProps
 
   const getQuantityInCart = (itemId: string) => {
     // Chỉ hiển thị quantity nếu đang ở cùng restaurant
-    if (state.restaurant?.id !== restaurantId.toString()) {
+    if (state.restaurant?.id !== String(restaurantId)) {
       return 0;
     }
     const cartItem = state.items.find((item) => item.id === itemId);
@@ -63,10 +63,10 @@ const MenuSection = ({ section, restaurantId, restaurantName }: MenuSectionProps
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {section.items.map((item) => {
-          const quantity = getQuantityInCart(item.id.toString());
+          const quantity = getQuantityInCart(String(item.id));
 
           return (
-            <Card key={item.id} className="group cursor-pointer overflow-hidden hover:shadow-lg transition-all duration-300">
+            <Card key={String(item.id)} className="group cursor-pointer overflow-hidden hover:shadow-lg transition-all duration-300">
               <div className="flex">
                 {/* Item Info */}
                 <CardContent className="flex-1 p-4">
@@ -115,7 +115,7 @@ const MenuSection = ({ section, restaurantId, restaurantName }: MenuSectionProps
                           variant="outline"
                           size="sm"
                           className="h-8 w-8 p-0"
-                          onClick={() => handleUpdateQuantity(item.id.toString(), quantity - 1)}
+                          onClick={() => handleUpdateQuantity(String(item.id), quantity - 1)}
                         >
                           <Minus className="w-3 h-3" />
                         </Button>
@@ -125,7 +125,7 @@ const MenuSection = ({ section, restaurantId, restaurantName }: MenuSectionProps
                         <Button
                           size="sm"
                           className="h-8 w-8 p-0"
-                          onClick={() => handleUpdateQuantity(item.id.toString(), quantity + 1)}
+                          onClick={() => handleUpdateQuantity(String(item.id), quantity + 1)}
                         >
                           <Plus className="w-3 h-3" />
                         </Button>

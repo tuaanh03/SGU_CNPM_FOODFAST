@@ -1,0 +1,42 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Store {
+  id      String @id @default(uuid())
+  ownerId String @unique
+
+  name        String
+  description String?
+  avatar      String?
+  cover       String?
+
+  // Địa chỉ cửa hàng
+  address  String
+  ward     String
+  district String
+  province String
+
+  phone String?
+  email String?
+
+  // Thời gian hoạt động
+  openTime  String? // Ví dụ: "08:00"
+  closeTime String? // Ví dụ: "22:00"
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([isActive])
+}

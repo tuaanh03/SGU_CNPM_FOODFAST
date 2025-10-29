@@ -47,16 +47,6 @@ export const createStore = async (req: Request, res: Response) => {
         email,
         openTime,
         closeTime
-      },
-      include: {
-        owner: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true
-          }
-        }
       }
     });
 
@@ -80,17 +70,7 @@ export const getMyStore = async (req: Request, res: Response) => {
     const userId = (req as any).user.userId;
 
     const store = await prisma.store.findUnique({
-      where: { ownerId: userId },
-      include: {
-        owner: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true
-          }
-        }
-      }
+      where: { ownerId: userId }
     });
 
     if (!store) {
@@ -160,16 +140,6 @@ export const updateStore = async (req: Request, res: Response) => {
         ...(openTime && { openTime }),
         ...(closeTime && { closeTime }),
         ...(isActive !== undefined && { isActive })
-      },
-      include: {
-        owner: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true
-          }
-        }
       }
     });
 
@@ -209,15 +179,6 @@ export const getAllStores = async (req: Request, res: Response) => {
         where,
         skip,
         take: Number(limit),
-        include: {
-          owner: {
-            select: {
-              id: true,
-              name: true,
-              email: true
-            }
-          }
-        },
         orderBy: {
           createdAt: 'desc'
         }
@@ -252,16 +213,7 @@ export const getStoreById = async (req: Request, res: Response) => {
     const { id } = req.params;
 
     const store = await prisma.store.findUnique({
-      where: { id },
-      include: {
-        owner: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        }
-      }
+      where: { id }
     });
 
     if (!store) {
@@ -283,3 +235,29 @@ export const getStoreById = async (req: Request, res: Response) => {
     });
   }
 };
+
+// Kiểm tra xem user đã có store hay chưa (internal endpoint)
+export const checkStoreByOwnerId = async (req: Request, res: Response) => {
+  try {
+    const { ownerId } = req.params;
+
+    const store = await prisma.store.findUnique({
+      where: { ownerId }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        hasStore: !!store,
+        store: store || null
+      }
+    });
+  } catch (error) {
+    console.error("Error checking store:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi kiểm tra cửa hàng"
+    });
+  }
+};
+

@@ -25,11 +25,15 @@ model Product {
   categoryId String?
   category   Category? @relation(fields: [categoryId], references: [id])
 
+  // Associate product to a store (from user-service) by opaque id
+  storeId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([categoryId])
   @@index([isAvailable])
+  @@index([storeId])
 }
 
 model Category {

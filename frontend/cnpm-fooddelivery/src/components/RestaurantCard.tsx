@@ -5,7 +5,7 @@ import { Star, Clock, Truck, MapPin } from "lucide-react"
 import { Link } from "react-router"
 
 interface Restaurant {
-  id: number
+  id: string | number
   name: string
   image: string
   rating: number
@@ -43,7 +43,7 @@ export function RestaurantCard({ restaurant }: RestaurantCardProps) {
               {restaurant.name}
             </h3>
             <div className="flex flex-wrap gap-1 mt-1">
-              {restaurant.categories.map((category) => (
+              {(restaurant.categories || []).map((category) => (
                 <Badge key={category} variant="secondary" className="text-xs">
                   {category}
                 </Badge>

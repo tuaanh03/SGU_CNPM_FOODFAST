@@ -1,14 +1,16 @@
 import { Request, Response } from "express";
 import prisma from "../lib/prisma";
+import { publishProductSyncEvent } from "../utils/kafka";
 
 // Lấy tất cả sản phẩm
 export const getAllProducts = async (req: Request, res: Response) => {
   try {
-    const { categoryId, isAvailable } = req.query;
+    const { categoryId, isAvailable, storeId } = req.query;
 
     const where: any = {};
     if (categoryId) where.categoryId = categoryId as string;
     if (isAvailable !== undefined) where.isAvailable = isAvailable === 'true';
+    if (storeId) where.storeId = storeId as string;
 
     const products = await prisma.product.findMany({
       where,
@@ -77,7 +79,8 @@ export const createProduct = async (req: Request, res: Response) => {
       categoryId,
       isAvailable,
       soldOutUntil,
-      unavailableReason
+      unavailableReason,
+      storeId
     } = req.body;
 
     // Kiểm tra SKU đã tồn tại chưa
@@ -116,11 +119,25 @@ export const createProduct = async (req: Request, res: Response) => {
         categoryId,
         isAvailable: isAvailable !== false,
         soldOutUntil,
-        unavailableReason
+        unavailableReason,
+        storeId
       },
       include: {
         category: true
       }
+    });
+
+    // Publish event đồng bộ sang Order Service
+    await publishProductSyncEvent('CREATED', {
+      id: product.id,
+      storeId: product.storeId,
+      name: product.name,
+      description: product.description,
+      price: product.price.toString(),
+      imageUrl: product.imageUrl,
+      categoryId: product.categoryId,
+      isAvailable: product.isAvailable,
+      soldOutUntil: product.soldOutUntil,
     });
 
     res.status(201).json({
@@ -150,7 +167,8 @@ export const updateProduct = async (req: Request, res: Response) => {
       categoryId,
       isAvailable,
       soldOutUntil,
-      unavailableReason
+      unavailableReason,
+      storeId
     } = req.body;
 
     // Kiểm tra sản phẩm tồn tại
@@ -203,6 +221,7 @@ export const updateProduct = async (req: Request, res: Response) => {
     if (isAvailable !== undefined) updateData.isAvailable = isAvailable;
     if (soldOutUntil !== undefined) updateData.soldOutUntil = soldOutUntil;
     if (unavailableReason !== undefined) updateData.unavailableReason = unavailableReason;
+    if (storeId !== undefined) updateData.storeId = storeId;
 
     const product = await prisma.product.update({
       where: { id },
@@ -210,6 +229,19 @@ export const updateProduct = async (req: Request, res: Response) => {
       include: {
         category: true
       }
+    });
+
+    // Publish event đồng bộ sang Order Service
+    await publishProductSyncEvent('UPDATED', {
+      id: product.id,
+      storeId: product.storeId,
+      name: product.name,
+      description: product.description,
+      price: product.price.toString(),
+      imageUrl: product.imageUrl,
+      categoryId: product.categoryId,
+      isAvailable: product.isAvailable,
+      soldOutUntil: product.soldOutUntil,
     });
 
     res.json({
@@ -286,6 +318,19 @@ export const updateProductAvailability = async (req: Request, res: Response) => 
       include: {
         category: true
       }
+    });
+
+    // Publish event đồng bộ sang Order Service
+    await publishProductSyncEvent('UPDATED', {
+      id: product.id,
+      storeId: product.storeId,
+      name: product.name,
+      description: product.description,
+      price: product.price.toString(),
+      imageUrl: product.imageUrl,
+      categoryId: product.categoryId,
+      isAvailable: product.isAvailable,
+      soldOutUntil: product.soldOutUntil,
     });
 
     res.json({

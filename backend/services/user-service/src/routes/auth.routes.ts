@@ -4,7 +4,8 @@ import {
     login,
     getProfile,
     updateProfile,
-    logout
+    logout,
+    verifyToken
 } from "../controllers/auth";
 import { authenticateToken } from "../middleware/auth";
 
@@ -13,6 +14,7 @@ const router = Router();
 // Public routes
 router.post("/register", register);
 router.post("/login", login);
+router.post("/verify-token", verifyToken); // Endpoint cho API Gateway
 
 // Protected routes
 router.get("/profile", authenticateToken, getProfile);

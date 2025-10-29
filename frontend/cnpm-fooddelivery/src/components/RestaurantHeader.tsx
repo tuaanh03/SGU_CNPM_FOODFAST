@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Star, Clock, Truck, MapPin, Heart, Share2 } from "lucide-react";
 
 interface RestaurantData {
-  id: number;
+  id: string | number;
   name: string;
   image: string;
   rating: number;

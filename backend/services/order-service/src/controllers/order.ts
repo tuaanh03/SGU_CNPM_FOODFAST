@@ -2,6 +2,8 @@ import prisma from "../lib/prisma";
 import { Request, Response } from "express";
 import { publishEvent } from "../utils/kafka";
 import { OrderSchema } from "../validations/order.validation";
+import { validateCartItems, checkPriceChanges } from "../utils/menuValidator";
+import { fetchUserCart, clearUserCart } from "../utils/cartHelper";
 
 interface AuthenticatedRequest extends Request {
     user?: { id: string };
@@ -389,6 +391,161 @@ export const getUserOrders = async (
             success: false,
             message: "Lỗi hệ thống khi lấy danh sách đơn hàng",
             error: error instanceof Error ? error.message : "Lỗi không xác định",
+        });
+    }
+};
+
+/**
+ * Tạo order từ giỏ hàng (Workflow mới)
+ * 1. Lấy cart từ Redis (Cart Service)
+ * 2. Validate qua MenuItemRead (Read Model)
+ * 3. Notify nếu giá thay đổi
+ * 4. Tạo Order với snapshot giá từ MenuItemRead
+ */
+export const createOrderFromCart = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const userId = req.user?.id;
+
+        if (!userId) {
+            res.status(401).json({
+                success: false,
+                message: "Unauthorized: No user ID found"
+            });
+            return;
+        }
+
+        const { storeId, deliveryAddress, contactPhone, note } = req.body;
+
+        if (!storeId) {
+            res.status(400).json({
+                success: false,
+                message: "storeId is required"
+            });
+            return;
+        }
+
+        // Lấy token từ request header
+        const authHeader = req.headers.authorization;
+        const token = authHeader?.replace('Bearer ', '');
+
+        if (!token) {
+            res.status(401).json({
+                success: false,
+                message: "No authorization token provided"
+            });
+            return;
+        }
+
+        // Bước 1: Lấy cart từ Cart Service (Redis) - truyền token
+        let cartItems;
+        try {
+            cartItems = await fetchUserCart(token, storeId);
+        } catch (error: any) {
+            res.status(400).json({
+                success: false,
+                message: error.message || "Không thể lấy giỏ hàng"
+            });
+            return;
+        }
+
+        if (!cartItems || cartItems.length === 0) {
+            res.status(400).json({
+                success: false,
+                message: "Giỏ hàng trống"
+            });
+            return;
+        }
+
+        // Bước 2: Validate qua MenuItemRead (Read Model)
+        const validationResult = await validateCartItems(cartItems);
+
+        if (!validationResult.isValid) {
+            res.status(400).json({
+                success: false,
+                message: "Giỏ hàng có lỗi",
+                errors: validationResult.errors
+            });
+            return;
+        }
+
+        // Bước 3: Kiểm tra giá có thay đổi không (optional - nếu cart có lưu expectedPrice)
+        // const priceCheck = await checkPriceChanges(cartItems);
+        // if (priceCheck.hasChanges) {
+        //     return res.status(200).json({
+        //         success: false,
+        //         requireConfirmation: true,
+        //         message: "Giá một số món đã thay đổi. Vui lòng xác nhận lại.",
+        //         priceChanges: priceCheck.changes,
+        //         newTotal: validationResult.totalPrice
+        //     });
+        // }
+
+        // Bước 4: Tạo Order với snapshot giá từ MenuItemRead
+        const savedOrder = await prisma.order.create({
+            data: {
+                userId,
+                totalPrice: validationResult.totalPrice,
+                deliveryAddress,
+                contactPhone,
+                note,
+                status: "pending",
+                items: {
+                    create: validationResult.validItems.map(item => ({
+                        productId: item.productId,
+                        productName: item.productName,
+                        productPrice: item.productPrice,
+                        quantity: item.quantity
+                    }))
+                }
+            },
+            include: {
+                items: true
+            }
+        });
+
+        // Bước 5: Publish event để Product Service reserve inventory
+        const orderPayload = {
+            orderId: savedOrder.id,
+            userId: savedOrder.userId,
+            items: cartItems.map(item => ({
+                productId: item.productId,
+                quantity: item.quantity
+            })),
+            totalPrice: savedOrder.totalPrice,
+            timestamp: new Date().toISOString()
+        };
+
+        await publishEvent(JSON.stringify(orderPayload));
+
+        // Bước 6: Clear cart sau khi tạo order thành công - truyền token
+        await clearUserCart(token, storeId);
+
+        res.status(201).json({
+            success: true,
+            message: "Đơn hàng đã được tạo thành công từ giỏ hàng",
+            data: {
+                orderId: savedOrder.id,
+                items: savedOrder.items.map((item: any) => ({
+                    productId: item.productId,
+                    productName: item.productName,
+                    productPrice: item.productPrice,
+                    quantity: item.quantity,
+                    subtotal: item.productPrice * item.quantity
+                })),
+                totalPrice: savedOrder.totalPrice,
+                status: savedOrder.status,
+                deliveryAddress: savedOrder.deliveryAddress,
+                contactPhone: savedOrder.contactPhone,
+                note: savedOrder.note,
+                createdAt: savedOrder.createdAt
+            }
+        });
+
+    } catch (error: any) {
+        console.error("Create order from cart error:", error);
+        res.status(500).json({
+            success: false,
+            message: error.message || "Lỗi khi tạo đơn hàng từ giỏ hàng"
         });
     }
 };

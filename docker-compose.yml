@@ -59,6 +59,7 @@ services:
       - ./backend/services/user-service/.env
     ports:
       - "1000:1000"
+      - "5555:5555"
     networks:
       - network
     depends_on:
@@ -68,9 +69,10 @@ services:
     command: >
       sh -c "
         npx prisma generate &&
-        npx prisma db push &&
+        npx prisma migrate deploy &&
         node dist/server.js
       "
+
   user-db:
     image: postgres:15-alpine
     container_name: user-db
@@ -79,9 +81,47 @@ services:
       - ./backend/services/user-service/.env
     ports:
       - "5432:5432"
-      - "5554:5555"
     volumes:
       - userdb:/var/lib/postgresql/data
+    networks:
+      - network
+
+  # Restaurant service
+  restaurant-service:
+    build:
+      context: ./backend/services/restaurant-service
+      dockerfile: Dockerfile
+    container_name: restaurant-service
+    env_file:
+      - ./backend/services/restaurant-service/.env
+    ports:
+      - "3005:3005"
+      - "5558:5555"
+    networks:
+      - network
+    depends_on:
+      - restaurant-db
+    volumes:
+      - ./backend/services/restaurant-service/prisma:/app/restaurant-service/prisma:rw
+    command: >
+      sh -c "
+        npx prisma generate &&
+        npx prisma migrate deploy &&
+        node dist/server.js
+      "
+
+  restaurant-db:
+    image: postgres:15-alpine
+    container_name: restaurant-db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: foodfast_restaurant
+    ports:
+      - "5435:5432"
+    volumes:
+      - restaurantdb:/var/lib/postgresql/data
     networks:
       - network
 
@@ -93,6 +133,7 @@ services:
     container_name: order-service
     ports:
       - "2000:2000"
+      - "5556:5555"
     env_file:
       - ./backend/services/order-service/.env
     networks:
@@ -100,6 +141,14 @@ services:
     depends_on:
       - order-db
       - kafka
+    volumes:
+      - ./backend/services/order-service/prisma:/app/order-service/prisma:rw
+    command: >
+      sh -c "
+        npx prisma generate &&
+        npx prisma migrate deploy &&
+        node dist/server.js
+      "
 
   order-db:
     image: postgres:15-alpine
@@ -108,7 +157,6 @@ services:
       - ./backend/services/order-service/.env
     ports:
       - "5433:5432"
-      - "5556:5555"
     volumes:
       - orderdb:/var/lib/postgresql/data
     networks:
@@ -124,11 +172,20 @@ services:
       - ./backend/services/product-service/.env
     ports:
       - "3004:3004"
+      - "5557:5555"
     networks:
       - network
     depends_on:
       - product-db
       - kafka
+    volumes:
+      - ./backend/services/product-service/prisma:/app/product-service/prisma:rw
+    command: >
+      sh -c "
+        npx prisma generate &&
+        npx prisma migrate deploy &&
+        node dist/server.js
+      "
 
   product-db:
     image: postgres:15-alpine
@@ -137,7 +194,6 @@ services:
       - ./backend/services/product-service/.env
     ports:
       - "5434:5432"
-      - "5555:5555"
     volumes:
       - productdb:/var/lib/postgresql/data
     networks:
@@ -173,6 +229,39 @@ services:
     depends_on:
       - kafka
 
+  # Redis for Cart Service
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Cart service
+  cart-service:
+    build:
+      context: ./backend/services/cart-service
+      dockerfile: Dockerfile
+    container_name: cart-service
+    env_file:
+      - ./backend/services/cart-service/.env
+    ports:
+      - "3006:3006"
+    networks:
+      - network
+    depends_on:
+      - redis
+    restart: on-failure
+
 volumes:
   userdb:
   orderdb:
@@ -180,6 +269,8 @@ volumes:
   kafka_data:
   zookeeper_data:
   zookeeper_log:
+  restaurantdb:
+  redis_data:
 
 networks:
   network:
