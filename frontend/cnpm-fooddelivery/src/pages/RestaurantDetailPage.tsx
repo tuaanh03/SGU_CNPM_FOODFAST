@@ -124,7 +124,7 @@ const RestaurantDetailPage = () => {
   }, [store, products]);
 
   const menuSections = useMemo(() => {
-    if (!products.length) return [] as { category: string; items: ProductItem[] }[];
+    if (!products.length) return [];
     const grouped: Record<string, ProductItem[]> = {};
     for (const p of products) {
       const key = p.category?.name || "Khác";
