@@ -13,7 +13,6 @@ enum PaymentIntentStatus {
   PROCESSING
   SUCCEEDED
   FAILED
-  CANCELED
 }
 
 enum PaymentAttemptStatus {

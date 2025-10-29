@@ -176,16 +176,90 @@ const consumer = kafka.consumer({
   groupId: "payment-service-group",
 });
 
+/**
+ * Xử lý khi order hết hạn
+ * Cập nhật PaymentIntent thành FAILED và PaymentAttempt thành CANCELED
+ */
+async function handleOrderExpired(data: any) {
+  const { orderId, reason, timestamp } = data;
+
+  try {
+    console.log(`⏰ Handling expired order: ${orderId}, reason: ${reason}`);
+
+    // Tìm PaymentIntent của order
+    const paymentIntent = await prisma.paymentIntent.findUnique({
+      where: { orderId },
+      include: {
+        attempts: {
+          where: {
+            status: {
+              in: ["CREATED", "PROCESSING"]
+            }
+          }
+        }
+      }
+    });
+
+    if (!paymentIntent) {
+      console.log(`No PaymentIntent found for order ${orderId}`);
+      return;
+    }
+
+    // Cập nhật PaymentIntent thành FAILED
+    await prisma.paymentIntent.update({
+      where: { id: paymentIntent.id },
+      data: {
+        status: "FAILED",
+        metadata: {
+          ...(typeof paymentIntent.metadata === 'object' ? paymentIntent.metadata : {}),
+          expiredAt: timestamp,
+          expiredReason: reason
+        }
+      }
+    });
+
+    console.log(`✅ Updated PaymentIntent ${paymentIntent.id} to FAILED`);
+
+    // Cập nhật tất cả PaymentAttempt đang CREATED hoặc PROCESSING thành CANCELED
+    if (paymentIntent.attempts.length > 0) {
+      const attemptIds = paymentIntent.attempts.map((a: any) => a.id);
+
+      await prisma.paymentAttempt.updateMany({
+        where: {
+          id: { in: attemptIds }
+        },
+        data: {
+          status: "CANCELED"
+        }
+      });
+
+      console.log(`✅ Canceled ${paymentIntent.attempts.length} PaymentAttempt(s) for order ${orderId}`);
+    }
+
+  } catch (error) {
+    console.error(`Error handling expired order ${orderId}:`, error);
+  }
+}
+
 export async function runConsumer() {
   try {
     await consumer.connect();
     await consumer.subscribe({ topic: "order.create", fromBeginning: true });
-    console.log("Consumer is listening to order.create");
+    await consumer.subscribe({ topic: "order.expired", fromBeginning: true });
+    console.log("Consumer is listening to order.create and order.expired");
 
     // Process messages
     await consumer.run({
-      eachMessage: async ({ message }) => {
+      eachMessage: async ({ topic, message }) => {
         const orderData = JSON.parse(message.value?.toString() || "{}");
+
+        // Xử lý order.expired event
+        if (topic === "order.expired") {
+          await handleOrderExpired(orderData);
+          return;
+        }
+
+        // Xử lý order.create event
         const { orderId, userId, totalPrice, items } = orderData;
 
         if (!orderId || !userId || !totalPrice) {
