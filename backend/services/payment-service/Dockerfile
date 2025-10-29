@@ -10,6 +10,9 @@ RUN pnpm install --frozen-lockfile
 
 COPY . .
 
+# Generate Prisma Client
+RUN npx prisma generate
+
 RUN pnpm run build
 
 EXPOSE 4000

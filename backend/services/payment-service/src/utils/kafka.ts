@@ -1,5 +1,6 @@
 import { Kafka, Partitioners } from "kafkajs";
-import { processPayment } from "../utils/vnpay";
+import { processPayment } from "./vnpay";
+import prisma from "../lib/prisma";
 
 const kafka = new Kafka({
   clientId: "payment-service",
@@ -17,6 +18,126 @@ const producer = kafka.producer({
 });
 let isProducerConnected = false;
 
+/**
+ * Logic của Payment Service:
+ * 1. Tạo PaymentIntent với trạng thái REQUIRES_PAYMENT
+ * 2. Tạo PaymentAttempt đầu tiên với trạng thái CREATED
+ * 3. Gọi API VNPay để tạo paymentUrl
+ * 4. Cập nhật PaymentAttempt với paymentUrl
+ */
+async function createPaymentIntent(
+  orderId: string,
+  userId: string,
+  amount: number,
+  description: string
+) {
+  try {
+    // Bước 1: Tạo PaymentIntent
+    const paymentIntent = await prisma.paymentIntent.create({
+      data: {
+        orderId,
+        amount,
+        currency: "VND",
+        status: "REQUIRES_PAYMENT",
+        metadata: {
+          userId,
+          description,
+          createdAt: new Date().toISOString()
+        }
+      }
+    });
+
+    console.log(`PaymentIntent created: ${paymentIntent.id} for order ${orderId}`);
+
+    // Bước 2: Tạo PaymentAttempt đầu tiên
+    const vnpTxnRef = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    const paymentAttempt = await prisma.paymentAttempt.create({
+      data: {
+        paymentIntentId: paymentIntent.id,
+        amount,
+        currency: "VND",
+        status: "CREATED",
+        pspProvider: "VNPAY",
+        vnpTxnRef,
+        metadata: {
+          userId,
+          description,
+          orderId
+        }
+      }
+    });
+
+    console.log(`PaymentAttempt created: ${paymentAttempt.id} for PaymentIntent ${paymentIntent.id}`);
+
+    // Bước 3: Gọi API VNPay để tạo paymentUrl
+    const vnpayResult = await processPayment(
+      orderId,
+      userId,
+      amount,
+      description
+    );
+
+    if (vnpayResult.success && vnpayResult.paymentUrl) {
+      // Cập nhật PaymentAttempt với status PROCESSING
+      await prisma.paymentAttempt.update({
+        where: { id: paymentAttempt.id },
+        data: {
+          status: "PROCESSING",
+          vnpRawRequestPayload: {
+            paymentUrl: vnpayResult.paymentUrl,
+            timestamp: new Date().toISOString()
+          }
+        }
+      });
+
+      // Cập nhật PaymentIntent status
+      await prisma.paymentIntent.update({
+        where: { id: paymentIntent.id },
+        data: {
+          status: "PROCESSING"
+        }
+      });
+
+      console.log(`VNPay payment URL created for order ${orderId}`);
+
+      return {
+        success: true,
+        paymentIntentId: paymentIntent.id,
+        paymentAttemptId: paymentAttempt.id,
+        paymentUrl: vnpayResult.paymentUrl
+      };
+    } else {
+      // Cập nhật PaymentAttempt và PaymentIntent thành FAILED
+      await prisma.paymentAttempt.update({
+        where: { id: paymentAttempt.id },
+        data: {
+          status: "FAILED"
+        }
+      });
+
+      await prisma.paymentIntent.update({
+        where: { id: paymentIntent.id },
+        data: {
+          status: "FAILED"
+        }
+      });
+
+      return {
+        success: false,
+        paymentIntentId: paymentIntent.id,
+        error: vnpayResult.error || "Failed to create payment URL"
+      };
+    }
+  } catch (error: any) {
+    console.error("Error creating PaymentIntent:", error);
+    return {
+      success: false,
+      error: error.message || "Error creating payment intent"
+    };
+  }
+}
+
 export async function publishEvent(
   orderId: string,
   userId: string,
@@ -25,7 +146,7 @@ export async function publishEvent(
   item: string,
   paymentStatus: string,
   paymentIntentId: string,
-  paymentUrl?: string // Thêm paymentUrl vào tham số
+  paymentUrl?: string
 ) {
   if (!isProducerConnected) {
     await producer.connect();
@@ -40,7 +161,7 @@ export async function publishEvent(
     item,
     paymentStatus,
     paymentIntentId,
-    paymentUrl, // Thêm paymentUrl vào messageData
+    paymentUrl,
   };
 
   await producer.send({
@@ -63,7 +184,7 @@ export async function runConsumer() {
 
     // Process messages
     await consumer.run({
-      eachMessage: async ({ topic, partition, message }) => {
+      eachMessage: async ({ message }) => {
         const orderData = JSON.parse(message.value?.toString() || "{}");
         const { orderId, userId, totalPrice, items } = orderData;
 
@@ -80,15 +201,15 @@ export async function runConsumer() {
             ? `Order ${orderId} - ${items.length} items`
             : `Order ${orderId}`;
 
-        // Tạo VNPay payment URL
-        const result = await processPayment(
+        // Gọi createPaymentIntent để tạo PaymentIntent và PaymentAttempt
+        const result = await createPaymentIntent(
           orderId,
           userId,
           totalPrice,
           orderDescription
         );
 
-        console.log(`Payment URL created for order ${orderId}:`, result);
+        console.log(`Payment processing result for order ${orderId}:`, result);
 
         if (result.success && result.paymentUrl) {
           const paymentIntentId = result.paymentIntentId!;
@@ -97,12 +218,12 @@ export async function runConsumer() {
           await publishEvent(
             orderId,
             userId,
-            "system@vnpay.com", // Email không cần thiết cho VNPay
+            "system@vnpay.com",
             totalPrice,
             orderDescription,
-            "pending", // Status pending cho đến khi có callback từ VNPay
+            "pending",
             paymentIntentId,
-            result.paymentUrl // Thêm payment URL vào event
+            result.paymentUrl
           );
 
           console.log(`Payment URL sent for order ${orderId}: ${result.paymentUrl}`);
@@ -116,7 +237,7 @@ export async function runConsumer() {
             orderDescription,
             "failed",
             paymentIntentId,
-            "" // No payment URL for failed cases
+            ""
           );
         }
       },
@@ -130,6 +251,7 @@ export async function runConsumer() {
 process.on("SIGINT", async () => {
   await producer.disconnect();
   await consumer.disconnect();
-  console.log("Kafka producer disconnected");
+  console.log("Kafka producer and consumer disconnected");
   process.exit();
 });
+

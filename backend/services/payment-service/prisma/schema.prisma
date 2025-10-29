@@ -1,0 +1,89 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------
+enum PaymentIntentStatus {
+  REQUIRES_PAYMENT
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+enum PaymentAttemptStatus {
+  CREATED
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+enum PSPProvider {
+  VNPAY
+  MOMO
+  ZALOPAY
+  STRIPE
+}
+
+// ---------- Payment Intent ----------
+// Đại diện cho ý định thanh toán của một order
+model PaymentIntent {
+  id      String @id @default(uuid())
+  orderId String @unique // Reference to Order in order-service (no FK constraint)
+
+  amount   Decimal             @db.Decimal(12, 2)
+  currency String              @default("VND") @db.VarChar(3)
+  status   PaymentIntentStatus @default(REQUIRES_PAYMENT)
+
+  // Metadata
+  metadata Json? // Additional data like user info, order details, etc.
+
+  // Relations
+  attempts PaymentAttempt[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([orderId])
+  @@index([status, createdAt])
+}
+
+// ---------- Payment Attempt ----------
+// Đại diện cho mỗi lần thử thanh toán (có thể có nhiều attempts cho 1 intent)
+model PaymentAttempt {
+  id              String        @id @default(uuid())
+  paymentIntentId String
+  paymentIntent   PaymentIntent @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
+
+  status      PaymentAttemptStatus @default(CREATED)
+  amount      Decimal              @db.Decimal(12, 2)
+  currency    String               @default("VND") @db.VarChar(3)
+  pspProvider PSPProvider          @default(VNPAY)
+
+  // VNPay specific fields
+  vnpTxnRef        String  @unique @db.VarChar(100) // Transaction reference
+  vnpTransactionNo String? @db.VarChar(100) // VNPay transaction number (returned after payment)
+  vnpResponseCode  String? @db.VarChar(10) // Response code from VNPay
+  vnpBankCode      String? @db.VarChar(20) // Bank code used for payment
+
+  // Raw payloads for debugging and audit
+  vnpRawRequestPayload  Json? // Request sent to VNPay
+  vnpRawResponsePayload Json? // IPN/Return data from VNPay
+
+  // Additional metadata
+  metadata Json? // Any additional data (IP address, user agent, etc.)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([paymentIntentId])
+  @@index([vnpTxnRef])
+  @@index([status, createdAt])
+  @@index([pspProvider, status])
+}
