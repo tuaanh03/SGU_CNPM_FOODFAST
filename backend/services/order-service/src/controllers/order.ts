@@ -91,7 +91,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
             // Tính toán tổng tiền và validate sản phẩm
             const { totalPrice, validItems } = await calculateOrderAmount(items);
 
-            // Tạo order với structure mới theo Prisma schema
+            // Tạo order với status PENDING theo workflow mới
             const savedOrder = await prisma.order.create({
                 data: {
                     userId,
@@ -99,7 +99,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
                     deliveryAddress,
                     contactPhone,
                     note,
-                    status: "pending",
+                    status: "pending", // Order ở trạng thái PENDING
                     items: {
                         create: validItems.map(item => ({
                             productId: item.productId,
@@ -114,20 +114,21 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
                 }
             });
 
-            // Payload gửi đến Product Service để reserve inventory
+            // Payload gửi đến Payment Service qua Kafka (bất đồng bộ)
             const orderPayload = {
                 orderId: savedOrder.id,
                 userId: savedOrder.userId,
-                items: items, // Format đơn giản cho Product Service: [{productId, quantity}]
+                items: validItems, // Gửi thông tin items cho payment
                 totalPrice: savedOrder.totalPrice,
                 timestamp: new Date().toISOString()
             };
 
+            // Publish event order.create để Payment Service consumer
             await publishEvent(JSON.stringify(orderPayload));
 
             res.status(201).json({
                 success: true,
-                message: "Đơn hàng đã được tạo và đang chờ kiểm tra tồn kho",
+                message: "Đơn hàng đã được tạo ở trạng thái PENDING, đang xử lý thanh toán",
                 data: {
                     orderId: savedOrder.id,
                     items: savedOrder.items.map((item: any) => ({
@@ -396,11 +397,13 @@ export const getUserOrders = async (
 };
 
 /**
- * Tạo order từ giỏ hàng (Workflow mới)
+ * Tạo order từ giỏ hàng (Workflow chính - Order to Payment)
  * 1. Lấy cart từ Redis (Cart Service)
  * 2. Validate qua MenuItemRead (Read Model)
- * 3. Notify nếu giá thay đổi
- * 4. Tạo Order với snapshot giá từ MenuItemRead
+ * 3. Tạo Order với status PENDING
+ * 4. Publish event order.create cho Payment Service (bất đồng bộ)
+ * 5. Payment Service sẽ tạo PaymentIntent + PaymentAttempt + VNPay URL
+ * 6. Clear cart sau khi order được tạo
  */
 export const createOrderFromCart = async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -480,7 +483,7 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
         //     });
         // }
 
-        // Bước 4: Tạo Order với snapshot giá từ MenuItemRead
+        // Bước 4: Tạo Order với status PENDING theo workflow mới
         const savedOrder = await prisma.order.create({
             data: {
                 userId,
@@ -488,7 +491,7 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
                 deliveryAddress,
                 contactPhone,
                 note,
-                status: "pending",
+                status: "pending", // Order ở trạng thái PENDING
                 items: {
                     create: validationResult.validItems.map(item => ({
                         productId: item.productId,
@@ -503,26 +506,23 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
             }
         });
 
-        // Bước 5: Publish event để Product Service reserve inventory
+        // Bước 5: Publish event order.create cho Payment Service (bất đồng bộ)
         const orderPayload = {
             orderId: savedOrder.id,
             userId: savedOrder.userId,
-            items: cartItems.map(item => ({
-                productId: item.productId,
-                quantity: item.quantity
-            })),
+            items: validationResult.validItems, // Gửi full items info với price snapshot
             totalPrice: savedOrder.totalPrice,
             timestamp: new Date().toISOString()
         };
 
         await publishEvent(JSON.stringify(orderPayload));
 
-        // Bước 6: Clear cart sau khi tạo order thành công - truyền token
+        // Bước 6: Clear cart sau khi tạo order thành công
         await clearUserCart(token, storeId);
 
         res.status(201).json({
             success: true,
-            message: "Đơn hàng đã được tạo thành công từ giỏ hàng",
+            message: "Đơn hàng đã được tạo ở trạng thái PENDING, đang xử lý thanh toán",
             data: {
                 orderId: savedOrder.id,
                 items: savedOrder.items.map((item: any) => ({

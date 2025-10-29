@@ -209,10 +209,35 @@ services:
       - ./backend/services/payment-service/.env
     ports:
       - "4000:4000"
+      - "5559:5555"
     networks:
       - network
     depends_on:
+      - payment-db
       - kafka
+    volumes:
+      - ./backend/services/payment-service/prisma:/app/payment-service/prisma:rw
+    command: >
+      sh -c "
+        npx prisma generate &&
+        npx prisma migrate deploy &&
+        node dist/server.js
+      "
+
+  payment-db:
+    image: postgres:15-alpine
+    container_name: payment-db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: foodfast_payment
+    ports:
+      - "5436:5432"
+    volumes:
+      - paymentdb:/var/lib/postgresql/data
+    networks:
+      - network
 
   # Notification service
   notification-service:
@@ -266,6 +291,7 @@ volumes:
   userdb:
   orderdb:
   productdb:
+  paymentdb:
   kafka_data:
   zookeeper_data:
   zookeeper_log:
