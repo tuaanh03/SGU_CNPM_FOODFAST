@@ -11,19 +11,19 @@
 
 import request from 'supertest';
 import express, { Express } from 'express';
-import prisma from '../../src/lib/prisma';
-import redisClient from '../../src/lib/redis';
-import { publishEvent } from '../../src/utils/kafka';
-import { createOrder, getOrderStatus } from '../../src/controllers/order';
+import prisma from '../../../src/lib/prisma';
+import redisClient from '../../../src/lib/redis';
+import { publishEvent } from '../../../src/utils/kafka';
+import { createOrder, getOrderStatus } from '../../../src/controllers/order';
 import {
   mockUser,
   mockProductResponse,
   mockProductResponse2,
   mockValidOrderRequest
-} from '../fixtures/mockData';
+} from '../../fixtures/mockData';
 
 // Mock modules
-jest.mock('../../src/lib/prisma', () => ({
+jest.mock('../../../src/lib/prisma', () => ({
   __esModule: true,
   default: {
     order: {
@@ -34,12 +34,12 @@ jest.mock('../../src/lib/prisma', () => ({
   },
 }));
 
-jest.mock('../../src/utils/kafka', () => ({
+jest.mock('../../../src/utils/kafka', () => ({
   publishEvent: jest.fn(),
   publishOrderExpirationEvent: jest.fn(),
 }));
 
-jest.mock('../../src/lib/redis', () => ({
+jest.mock('../../../src/lib/redis', () => ({
   __esModule: true,
   default: {
     setex: jest.fn(),
@@ -352,7 +352,7 @@ describe('Integration Test Suite: Order Creation Workflow', () => {
 
       // Assert
       expect(response.body.success).toBe(false);
-      expect(response.body.message).toContain('lớn hơn 0');
+      expect(response.body.message).toContain('Số lượng phải >= 1');
     });
   });
 
@@ -375,11 +375,13 @@ describe('Integration Test Suite: Order Creation Workflow', () => {
       expect(response.body.message).toBeDefined();
     });
 
-    it('should return 400 error when deliveryAddress is missing', async () => {
+    it('should return 400 error when productId is invalid', async () => {
       // Arrange
       const invalidRequest = {
         ...mockValidOrderRequest,
-        deliveryAddress: undefined,
+        items: [
+          { productId: 'invalid-uuid', quantity: 1 },
+        ],
       };
 
       // Act
@@ -390,6 +392,7 @@ describe('Integration Test Suite: Order Creation Workflow', () => {
 
       // Assert
       expect(response.body.success).toBe(false);
+      expect(response.body.message).toContain('UUID');
     });
   });
 

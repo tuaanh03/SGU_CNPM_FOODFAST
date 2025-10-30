@@ -13,10 +13,10 @@
  * 6. Error handling and retry logic
  */
 
-import { publishEvent } from '../../src/utils/kafka';
+import { publishEvent } from '../../../src/utils/kafka';
 
 // Mock Kafka
-jest.mock('../../src/utils/kafka', () => ({
+jest.mock('../../../src/utils/kafka', () => ({
   publishEvent: jest.fn(),
   publishOrderExpirationEvent: jest.fn(),
 }));

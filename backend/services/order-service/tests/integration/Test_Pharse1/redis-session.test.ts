@@ -9,17 +9,17 @@
  * 5. TTL remaining check
  */
 
-import redisClient from '../../src/lib/redis';
+import redisClient from '../../../src/lib/redis';
 import {
   createOrderSession,
   checkOrderSession,
   getOrderSession,
   deleteOrderSession,
   getSessionTTL,
-} from '../../src/utils/redisSessionManager';
+} from '../../../src/utils/redisSessionManager';
 
 // Mock Redis client
-jest.mock('../../src/lib/redis', () => ({
+jest.mock('../../../src/lib/redis', () => ({
   __esModule: true,
   default: {
     setex: jest.fn(),
