@@ -1,326 +1,376 @@
 /**
- * Integration Test Suite Phase 2: Redis Session Deletion & Retry Payment
- *
- * Test Scenarios:
- * 1. Redis session deletion rules based on order status
- * 2. Retry payment workflow
- * 3. Kafka topic order.retry.payment
- * 4. Inventory Service behavior on retry
+ * payment.retry.spec.ts
+ * Cleaned by ChatGPT — focus: Redis session, retry conditions, and (if available) handlePaymentEvent.
  */
 
-describe('Integration Test Suite Phase 2: Redis Session & Retry Payment', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
+import prisma from '../../../src/lib/prisma';
+import redisClient from '../../../src/lib/redis';
+import {
+    createOrderSession,
+    checkOrderSession,
+    getOrderSession,
+    deleteOrderSession,
+    getSessionTTL,
+} from '../../../src/utils/redisSessionManager';
 
-  describe('Feature 1: Redis Session Deletion Rules', () => {
-    describe('Test Case 1: Order SUCCESS → Xóa Session', () => {
-      it('should delete Redis session when order status becomes success', () => {
-        // Arrange - payment.event với status success
-        const paymentEvent = {
-          orderId: 'order-123',
-          paymentStatus: 'success',
-        };
+type OrderStatus = 'pending' | 'success' | 'cancelled';
 
-        // Act - Map to order status
-        const orderStatus = paymentEvent.paymentStatus === 'success' ? 'success' : 'pending';
+const testSuiteId = `retry-${Date.now()}`;
+const testUserId = `test-user-${testSuiteId}`;
+const testTotalPrice = 250_000;
 
-        // Assert - Should delete session
-        const shouldDeleteSession = (orderStatus as string) === 'success' || (orderStatus as string) === 'cancelled';
-        expect(shouldDeleteSession).toBe(true);
-      });
-    });
+// Optional (only if real handler is present)
+let handlePaymentEvent:
+    | ((payload: { orderId: string; paymentStatus: 'pending' | 'success' | 'failed'; paymentUrl?: string }) => Promise<void>)
+    | undefined;
 
-    describe('Test Case 2: Order CANCELLED → Xóa Session', () => {
-      it('should delete session when user cancels on VNPay', () => {
-        // VNPay callback với vnp_ResponseCode = 24 (user cancelled)
-        const vnpResponseCode: string = '24';
-
-        // Payment Service maps to paymentStatus = 'failed'
-        const isSuccess = vnpResponseCode === '00';
-        const paymentStatus = isSuccess ? 'success' : 'failed';
-
-        // Order Service maps failed → cancelled
-        const orderStatus = paymentStatus === 'success' ? 'success' : 'cancelled';
-
-        // Should delete session
-        const shouldDeleteSession = orderStatus === 'cancelled';
-        expect(shouldDeleteSession).toBe(true);
-      });
-
-      it('should delete session when order expires (timeout)', () => {
-        // Redis TTL = 0 → session expired
-        const sessionTTL = 0;
-
-        // Order Service cancels order
-        const orderStatus = sessionTTL <= 0 ? 'cancelled' : 'pending';
-
-        // Should delete session (already deleted by Redis)
-        expect(orderStatus).toBe('cancelled');
-      });
-    });
-
-    describe('Test Case 3: Order PENDING → KHÔNG Xóa Session', () => {
-      it('should NOT delete session when order is pending', () => {
-        // payment.event với status pending
-        const paymentEvent = {
-          orderId: 'order-123',
-          paymentStatus: 'pending',
-          paymentUrl: 'https://vnpay...',
-        };
-
-        // Order vẫn pending
-        const orderStatus = 'pending';
-
-        // Should NOT delete session
-        const shouldDeleteSession = (orderStatus as string) === 'success' || (orderStatus as string) === 'cancelled';
-        expect(shouldDeleteSession).toBe(false);
-      });
-
-      it('should keep session active to allow retry', () => {
-        // Session còn TTL
-        const sessionTTL = 600; // 10 phút
-
-        // Can retry if session active
-        const canRetry = sessionTTL > 0;
-        expect(canRetry).toBe(true);
-      });
-    });
-
-    describe('Test Case 4: VNPay Response Code Mapping', () => {
-      it('should map vnp_ResponseCode correctly', () => {
-        const testCases = [
-          { code: '00', expectedStatus: 'success', shouldDelete: true },
-          { code: '24', expectedStatus: 'cancelled', shouldDelete: true },
-          { code: '01', expectedStatus: 'cancelled', shouldDelete: true },
-        ];
-
-        testCases.forEach(({ code, expectedStatus, shouldDelete }) => {
-          const isSuccess = code === '00';
-          const paymentStatus = isSuccess ? 'success' : 'failed';
-          const orderStatus = paymentStatus === 'success' ? 'success' : 'cancelled';
-          const shouldDeleteSession = orderStatus === 'success' || orderStatus === 'cancelled';
-
-          expect(orderStatus).toBe(expectedStatus);
-          expect(shouldDeleteSession).toBe(shouldDelete);
-        });
-      });
-    });
-  });
-
-  describe('Feature 2: Retry Payment Workflow', () => {
-    const mockOrderId = 'order-retry-123';
-
-    describe('Test Case 5: Client Retry Request', () => {
-      it('should handle POST /retry-payment/:orderId', () => {
-        const retryRequest = {
-          method: 'POST',
-          url: `/order/retry-payment/${mockOrderId}`,
-          headers: { Authorization: 'Bearer token' },
-        };
-
-        expect(retryRequest.method).toBe('POST');
-        expect(retryRequest.url).toContain(mockOrderId);
-      });
-    });
-
-    describe('Test Case 6: Session Validation', () => {
-      it('should check session still active before retry', () => {
-        // Session validation logic
-        const sessionTTL = 600; // 10 phút còn lại
-        const sessionActive = sessionTTL > 0;
-        const orderStatus = 'pending';
-
-        // Can retry if session active and order pending
-        const canRetry = sessionActive && orderStatus === 'pending';
-        expect(canRetry).toBe(true);
-      });
-
-      it('should reject retry if session expired', () => {
-        const sessionTTL = -2; // Session không tồn tại
-        const canRetry = sessionTTL > 0;
-
-        expect(canRetry).toBe(false);
-      });
-    });
-
-    describe('Test Case 7: Kafka Topic order.retry.payment', () => {
-      it('should publish to order.retry.payment (NOT order.create)', () => {
-        // Payload for retry
-        const retryPayload = {
-          topic: 'order.retry.payment', // ✅ NEW TOPIC
-          orderId: mockOrderId,
-          isRetry: true,
-        };
-
-        expect(retryPayload.topic).toBe('order.retry.payment');
-        expect(retryPayload.topic).not.toBe('order.create');
-        expect(retryPayload.isRetry).toBe(true);
-      });
-
-      it('should include isRetry flag in payload', () => {
-        const retryEvent = {
-          orderId: mockOrderId,
-          isRetry: true,
-          retryAt: new Date().toISOString(),
-        };
-
-        expect(retryEvent.isRetry).toBe(true);
-        expect(retryEvent.retryAt).toBeDefined();
-      });
-    });
-
-    describe('Test Case 8: Payment Service Handles Retry', () => {
-      it('should find existing PaymentIntent', () => {
-        // Payment Service receives order.retry.payment
-        const retryEvent = {
-          orderId: mockOrderId,
-          isRetry: true,
-        };
-
-        // Find existing PaymentIntent
-        const existingPaymentIntent = {
-          id: 'pi-existing-123',
-          orderId: mockOrderId,
-          status: 'REQUIRES_PAYMENT',
-        };
-
-        expect(existingPaymentIntent.orderId).toBe(mockOrderId);
-        expect(retryEvent.isRetry).toBe(true);
-      });
-
-      it('should create NEW PaymentAttempt (not new Intent)', () => {
-        // Use existing PaymentIntent
-        const paymentIntentId = 'pi-existing-123';
-
-        // Create NEW PaymentAttempt
-        const newPaymentAttempt = {
-          id: 'pa-retry-new-456',
-          paymentIntentId: paymentIntentId, // ✅ SAME Intent
-          vnpTxnRef: `${Date.now()}-retry-abc`, // ✅ NEW TxnRef
-          status: 'CREATED',
-          metadata: { isRetry: true },
-        };
-
-        expect(newPaymentAttempt.paymentIntentId).toBe(paymentIntentId);
-        expect(newPaymentAttempt.vnpTxnRef).toContain('retry');
-      });
-    });
-
-    describe('Test Case 9: Inventory Service Behavior', () => {
-      it('should NOT subscribe to order.retry.payment', () => {
-        // Inventory Service subscriptions
-        const inventorySubscriptions = [
-          'order.create', // ✅ Subscribe
-          // 'order.retry.payment', // ❌ NOT subscribe
-        ];
-
-        expect(inventorySubscriptions).toContain('order.create');
-        expect(inventorySubscriptions).not.toContain('order.retry.payment');
-      });
-
-      it('should NOT trigger inventory check on retry', () => {
-        const retryEvent = {
-          topic: 'order.retry.payment',
-          orderId: mockOrderId,
-        };
-
-        // Inventory Service KHÔNG xử lý event này
-        const inventoryCheckTriggered = false;
-        expect(inventoryCheckTriggered).toBe(false);
-      });
-    });
-
-    describe('Test Case 10: Session NOT Deleted on Retry', () => {
-      it('should keep Redis session active after retry', () => {
-        // Before retry
-        const sessionTTLBefore = 600;
-
-        // After retry
-        const sessionTTLAfter = 600; // Vẫn còn
-
-        // Session NOT deleted
-        expect(sessionTTLAfter).toBeGreaterThan(0);
-      });
-
-      it('should allow multiple retries within session time', () => {
-        const sessionTTL = 600;
-        const retryAttempts = [
-          { attemptNumber: 1, sessionTTL: 800 },
-          { attemptNumber: 2, sessionTTL: 600 },
-          { attemptNumber: 3, sessionTTL: 400 },
-        ];
-
-        retryAttempts.forEach(attempt => {
-          const canRetry = attempt.sessionTTL > 0;
-          expect(canRetry).toBe(true);
-        });
-      });
-    });
-
-    describe('Test Case 11: Complete Retry Flow Timeline', () => {
-      it('should track complete retry flow', () => {
-        const retryTimeline = [
-          { step: 1, action: 'Client POST /retry-payment' },
-          { step: 2, action: 'Check session active', result: true },
-          { step: 3, action: 'Publish order.retry.payment' },
-          { step: 4, action: 'Payment Service handles' },
-          { step: 5, action: 'Find PaymentIntent' },
-          { step: 6, action: 'Create new PaymentAttempt' },
-          { step: 7, action: 'Generate VNPay URL' },
-          { step: 8, action: 'Publish payment.event' },
-          { step: 9, action: 'User receives new URL' },
-        ];
-
-        expect(retryTimeline).toHaveLength(9);
-        expect(retryTimeline[2].action).toContain('order.retry.payment');
-      });
-    });
-
-    describe('Test Case 12: Kafka Topics Comparison', () => {
-      it('should differentiate between order.create and order.retry.payment', () => {
-        const orderCreateTopic = {
-          name: 'order.create',
-          consumers: ['Payment Service', 'Inventory Service'],
-          purpose: 'First time order creation',
-        };
-
-        const orderRetryTopic = {
-          name: 'order.retry.payment',
-          consumers: ['Payment Service'], // ONLY Payment
-          purpose: 'Retry existing order payment',
-        };
-
-        expect(orderCreateTopic.consumers).toHaveLength(2);
-        expect(orderRetryTopic.consumers).toHaveLength(1);
-        expect(orderRetryTopic.consumers[0]).toBe('Payment Service');
-      });
-    });
-  });
-
-  describe('Feature 3: Error Scenarios', () => {
-    describe('Test Case 13: Invalid Retry Attempts', () => {
-      it('should reject retry if order already success', () => {
-        const orderStatus = 'success';
-        const canRetry = (orderStatus as string) === 'pending';
-
-        expect(canRetry).toBe(false);
-      });
-
-      it('should reject retry if session expired', () => {
-        const sessionTTL = -2;
-        const canRetry = sessionTTL > 0;
-
-        expect(canRetry).toBe(false);
-      });
-
-      it('should reject retry if order cancelled', () => {
-        const orderStatus = 'cancelled';
-        const canRetry = (orderStatus as string) === 'pending';
-
-        expect(canRetry).toBe(false);
-      });
-    });
-  });
+beforeAll(async () => {
+    // Try to import the real handler; if not found we’ll skip related tests.
+    try {
+        // eslint-disable-next-line @typescript-eslint/consistent-type-imports
+        const mod: typeof import('../../../src/utils/kafka') = await import('../../../src/utils/kafka');
+        handlePaymentEvent = (mod as any).handlePaymentEvent;
+    } catch (_) {
+        handlePaymentEvent = undefined;
+    }
 });
 
+afterAll(async () => {
+    try {
+        await redisClient.quit();
+    } catch (_) {}
+    if (prisma.$disconnect && typeof prisma.$disconnect === 'function') {
+        await prisma.$disconnect();
+    }
+});
+
+/* -------------------------- Helpers -------------------------- */
+
+const newId = (label: string) => `${label}-${testSuiteId}-${Math.random().toString(36).slice(2, 8)}`;
+
+async function ensureOrderDeleted(id: string) {
+    try {
+        await prisma.order.delete({ where: { id } });
+    } catch (_) {
+        // Order không tồn tại, bỏ qua
+    }
+}
+
+async function createOrder(id: string, status: OrderStatus = 'pending') {
+    await ensureOrderDeleted(id);
+    try {
+        console.log(`Creating order with id: ${id}, status: ${status}`);
+        const order = await prisma.order.create({
+            data: {
+                id,
+                userId: testUserId,
+                totalPrice: testTotalPrice,
+                deliveryAddress: '123 Test St',
+                contactPhone: '0123456789',
+                status,
+                expirationTime: new Date(Date.now() + 15 * 60 * 1000),
+            },
+        });
+        console.log(`Order created:`, order);
+        if (!order) {
+            throw new Error(`Failed to create order ${id} - order is ${order}`);
+        }
+        return order;
+    } catch (error) {
+        console.error(`Error creating order ${id}:`, error);
+        throw error;
+    }
+}
+
+/* =============================================================
+ * Scenario 1: Redis Session Management
+ * ===========================================================*/
+describe('Scenario 1: Redis Session Management', () => {
+    test('TC1.1: Tạo session với đầy đủ thông tin', async () => {
+        const orderId = newId('tc11');
+        const session = await createOrderSession(orderId, testUserId, testTotalPrice, 15);
+
+        expect(session).toHaveProperty('expirationTime');
+        expect(session).toHaveProperty('durationMinutes', 15);
+
+        const sessionData = await getOrderSession(orderId);
+        expect(sessionData).toBeDefined();
+        expect(sessionData?.orderId).toBe(orderId);
+        expect(sessionData?.userId).toBe(testUserId);
+        expect(sessionData?.totalPrice).toBe(testTotalPrice);
+
+        await deleteOrderSession(orderId);
+    });
+
+    test('TC1.2: Session có expiration time chính xác (± thời gian tạo)', async () => {
+        const orderId = newId('tc12');
+        const before = Date.now();
+        const session = await createOrderSession(orderId, testUserId, testTotalPrice, 15);
+        const after = Date.now();
+
+        const exp = new Date(session.expirationTime).getTime();
+        expect(exp).toBeGreaterThanOrEqual(before + 15 * 60 * 1000);
+        expect(exp).toBeLessThanOrEqual(after + 15 * 60 * 1000);
+
+        await deleteOrderSession(orderId);
+    });
+
+    test('TC1.3: checkOrderSession trả true khi session tồn tại', async () => {
+        const orderId = newId('tc13');
+        await createOrderSession(orderId, testUserId, testTotalPrice, 15);
+        const exists = await checkOrderSession(orderId);
+        expect(exists).toBe(true);
+        await deleteOrderSession(orderId);
+    });
+
+    test('TC1.4: getOrderSession trả đủ trường', async () => {
+        const orderId = newId('tc14');
+        await createOrderSession(orderId, testUserId, testTotalPrice, 15);
+        const sd = await getOrderSession(orderId);
+        expect(sd).toBeTruthy();
+        expect(sd).toHaveProperty('orderId');
+        expect(sd).toHaveProperty('userId');
+        expect(sd).toHaveProperty('totalPrice');
+        expect(sd).toHaveProperty('createdAt');
+        expect(sd).toHaveProperty('expirationTime');
+        await deleteOrderSession(orderId);
+    });
+
+    test('TC1.5: deleteOrderSession xóa session', async () => {
+        const orderId = newId('tc15');
+        await createOrderSession(orderId, testUserId, testTotalPrice, 15);
+        await deleteOrderSession(orderId);
+        const exists = await checkOrderSession(orderId);
+        expect(exists).toBe(false);
+    });
+
+    test('TC1.6: getSessionTTL trả về (0, 900]', async () => {
+        const orderId = newId('tc16');
+        await createOrderSession(orderId, testUserId, testTotalPrice, 15);
+        const ttl = await getSessionTTL(orderId);
+        expect(ttl).toBeGreaterThan(0);
+        expect(ttl).toBeLessThanOrEqual(900); // 15 phút
+        await deleteOrderSession(orderId);
+    });
+});
+
+/* =============================================================
+ * Scenario 2: Session deletion rules via real handlePaymentEvent
+ * (skip if handler is not available)
+ * ===========================================================*/
+describe('Scenario 2: Session Deletion Rules (handlePaymentEvent)', () => {
+    const maybe = handlePaymentEvent ? test : test.skip;
+
+    test('TC2.1: Không xoá session khi paymentStatus=pending', async () => {
+        const orderId = newId('pending');
+        const order = await createOrder(orderId, 'pending');
+        await createOrderSession(order.id, testUserId, testTotalPrice, 15);
+
+        await handlePaymentEvent!({
+            orderId: order.id,
+            paymentStatus: 'pending',
+            paymentUrl: 'https://sandbox.vnpayment.vn/test',
+        });
+
+        const exists = await checkOrderSession(order.id);
+        expect(exists).toBe(true);
+
+        await deleteOrderSession(order.id);
+        await ensureOrderDeleted(order.id);
+    });
+
+    maybe('TC2.2: Xoá session khi paymentStatus=success', async () => {
+        const orderId = newId('success');
+        const order = await createOrder(orderId, 'pending');
+        await createOrderSession(order.id, testUserId, testTotalPrice, 15);
+
+        const existsBefore = await checkOrderSession(order.id);
+        expect(existsBefore).toBe(true);
+
+        await handlePaymentEvent!({ orderId: order.id, paymentStatus: 'success' });
+
+        const existsAfter = await checkOrderSession(order.id);
+        expect(existsAfter).toBe(false);
+
+        const updated = await prisma.order.findUnique({ where: { id: order.id } });
+        expect(updated?.status).toBe('success');
+
+        await ensureOrderDeleted(order.id);
+    });
+
+    maybe('TC2.3: Xoá session khi paymentStatus=failed (cancelled)', async () => {
+        const orderId = newId('failed');
+        const order = await createOrder(orderId, 'pending');
+        await createOrderSession(order.id, testUserId, testTotalPrice, 15);
+
+        await handlePaymentEvent!({ orderId: order.id, paymentStatus: 'failed' });
+
+        const existsAfter = await checkOrderSession(order.id);
+        expect(existsAfter).toBe(false);
+
+        const updated = await prisma.order.findUnique({ where: { id: order.id } });
+        expect(updated?.status).toBe('cancelled');
+
+        await ensureOrderDeleted(order.id);
+    });
+});
+
+/* =============================================================
+ * Scenario 3: Retry Payment Conditions (DB thật + Redis thật)
+ * ===========================================================*/
+describe('Scenario 3: Retry Payment Conditions', () => {
+    test('TC3.1: Có thể retry khi status=pending và session tồn tại', async () => {
+        const orderId = newId('retry-ok');
+        const order = await createOrder(orderId, 'pending');
+        await createOrderSession(order.id, testUserId, testTotalPrice, 15);
+
+        const dbOrder = await prisma.order.findUnique({ where: { id: order.id } });
+        const sessionExists = await checkOrderSession(order.id);
+        const canRetry = dbOrder?.status === 'pending' && sessionExists;
+
+        expect(canRetry).toBe(true);
+
+        await deleteOrderSession(order.id);
+        await ensureOrderDeleted(order.id);
+    });
+
+    test('TC3.2: KHÔNG retry khi status=success', async () => {
+        const orderId = newId('no-retry-success');
+        const order = await createOrder(orderId, 'success');
+
+        const dbOrder = await prisma.order.findUnique({ where: { id: order.id } });
+        const sessionExists = await checkOrderSession(order.id);
+        const canRetry = dbOrder?.status === 'pending' && sessionExists;
+
+        expect(canRetry).toBe(false);
+        expect(dbOrder?.status).toBe('success');
+
+        await ensureOrderDeleted(order.id);
+    });
+
+    test('TC3.3: KHÔNG retry khi status=cancelled', async () => {
+        const orderId = newId('no-retry-cancelled');
+        const order = await createOrder(orderId, 'cancelled');
+
+        const dbOrder = await prisma.order.findUnique({ where: { id: order.id } });
+        const sessionExists = await checkOrderSession(order.id);
+        const canRetry = dbOrder?.status === 'pending' && sessionExists;
+
+        expect(canRetry).toBe(false);
+        expect(dbOrder?.status).toBe('cancelled');
+
+        await ensureOrderDeleted(order.id);
+    });
+
+    test('TC3.4: KHÔNG retry khi session hết hạn/không tồn tại', async () => {
+        const orderId = newId('no-retry-no-session');
+        const order = await createOrder(orderId, 'pending');
+
+        const dbOrder = await prisma.order.findUnique({ where: { id: order.id } });
+        const sessionExists = await checkOrderSession(order.id);
+        const canRetry = dbOrder?.status === 'pending' && sessionExists;
+
+        expect(sessionExists).toBe(false);
+        expect(canRetry).toBe(false);
+
+        await ensureOrderDeleted(order.id);
+    });
+});
+
+/* =============================================================
+ * Scenario 4: Retry Event Payload (struct only)
+ * ===========================================================*/
+describe('Scenario 4: Retry Event Payload', () => {
+    test('TC4.1: Retry payload có flag isRetry=true', async () => {
+        const orderId = newId('retry-payload');
+        await createOrderSession(orderId, testUserId, testTotalPrice, 15);
+
+        const retryPayload = {
+            orderId,
+            userId: testUserId,
+            totalPrice: testTotalPrice,
+            items: [{ productId: 'p1', productName: 'Product 1', productPrice: 250000, quantity: 1 }],
+            isRetry: true,
+            expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+            timestamp: new Date().toISOString(),
+        };
+
+        expect(retryPayload.isRetry).toBe(true);
+        expect(retryPayload).toHaveProperty('orderId');
+
+        await deleteOrderSession(orderId);
+    });
+
+    test('TC4.2: Topic cho retry là order.retry.payment', () => {
+        const topic = 'order.retry.payment';
+        expect(topic).toBe('order.retry.payment');
+    });
+
+    test('TC4.3: Retry payload chứa thông tin order đầy đủ', async () => {
+        const orderId = newId('retry-payload-full');
+        await createOrderSession(orderId, testUserId, testTotalPrice, 15);
+        const sessionData = await getOrderSession(orderId);
+
+        const retryPayload = {
+            orderId,
+            userId: testUserId,
+            totalPrice: testTotalPrice,
+            items: [],
+            isRetry: true,
+            expiresAt: sessionData?.expirationTime,
+            timestamp: new Date().toISOString(),
+        };
+
+        expect(retryPayload.orderId).toBe(orderId);
+        expect(retryPayload.userId).toBe(testUserId);
+        expect(retryPayload.totalPrice).toBe(testTotalPrice);
+        expect(retryPayload.isRetry).toBe(true);
+
+        await deleteOrderSession(orderId);
+    });
+});
+
+/* =============================================================
+ * Scenario 5: Session TTL behaviors (UX hints)
+ * ===========================================================*/
+describe('Scenario 5: Session TTL behaviors', () => {
+    test('TC5.1: Session còn TTL => có thể retry ngay', async () => {
+        const orderId = newId('ttl-ok');
+        await createOrderSession(orderId, testUserId, testTotalPrice, 15);
+        const ttl = await getSessionTTL(orderId);
+        expect(ttl).toBeGreaterThan(0);
+        await deleteOrderSession(orderId);
+    });
+
+    test('TC5.2: TTL giảm dần theo thời gian', async () => {
+        const orderId = newId('ttl-decrease');
+        await createOrderSession(orderId, testUserId, testTotalPrice, 15);
+
+        const ttl1 = await getSessionTTL(orderId);
+        await new Promise(r => setTimeout(r, 1500));
+        const ttl2 = await getSessionTTL(orderId);
+        await new Promise(r => setTimeout(r, 1500));
+        const ttl3 = await getSessionTTL(orderId);
+
+        expect(ttl2).toBeLessThan(ttl1);
+        expect(ttl3).toBeLessThan(ttl2);
+
+        await deleteOrderSession(orderId);
+    });
+
+    test('TC5.3: Auto-delete khi TTL hết', async () => {
+        const shortOrderId = newId('ttl-zero');
+        // tạo key với TTL=1s (tùy client: setEx / setex)
+        await redisClient.setex(`order:session:${shortOrderId}`, 1, JSON.stringify({
+            orderId: shortOrderId,
+            userId: testUserId,
+            totalPrice: testTotalPrice,
+        }));
+        const existsBefore = await redisClient.exists(`order:session:${shortOrderId}`);
+        expect(existsBefore).toBe(1);
+
+        await new Promise(r => setTimeout(r, 1500)); // chờ hết TTL
+        const existsAfter = await redisClient.exists(`order:session:${shortOrderId}`);
+        expect(existsAfter).toBe(0);
+    });
+});

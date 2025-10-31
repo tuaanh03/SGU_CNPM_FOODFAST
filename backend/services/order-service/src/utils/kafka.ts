@@ -96,7 +96,7 @@ export async function runConsumer() {
   }
 }
 
-async function handlePaymentEvent(data: any) {
+export async function handlePaymentEvent(data: any) {
   if (
     data.paymentStatus === "success" ||
     data.paymentStatus === "failed" ||

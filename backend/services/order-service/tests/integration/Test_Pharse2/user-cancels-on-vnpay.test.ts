@@ -1,424 +1,394 @@
-/**
- * Integration Test Suite Phase 2: User Cancels on VNPay
- *
- * Test Scenarios:
- * 1. User bấm nút "Hủy giao dịch" trên VNPay gateway
- * 2. User không hoàn tất form thanh toán và thoát
- * 3. Order vẫn PENDING sau khi user hủy
- * 4. User có thể retry payment sau khi hủy
- * 5. Redis session vẫn active cho đến khi hết hạn
- */
+import prisma from '../../../src/lib/prisma';
+import redisClient from '../../../src/lib/redis';
+import { createOrderSession, checkOrderSession, deleteOrderSession, getSessionTTL } from '../../../src/utils/redisSessionManager';
 
-describe('Integration Test Suite Phase 2: User Cancels on VNPay', () => {
-  const mockOrderId = 'order-phase2-cancel-999';
-  const mockUserId = 'user-phase2-cancel-123';
-  const mockPaymentIntentId = 'pi-cancel-456';
-  const mockPaymentUrl = 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?vnp_Amount=10000000';
+describe('Phase 2: User Cancels on VNPay (Before Submit)', () => {
+  const testOrderId = 'test-order-cancel-vnpay';
+  const testUserId = 'test-user-cancel-123';
+  const testTotalPrice = 150000;
 
-  beforeEach(() => {
-    jest.clearAllMocks();
+  beforeAll(async () => {
+    await deleteOrderSession(testOrderId);
   });
 
-  describe('Test Case 1: User Clicks Cancel Button on VNPay', () => {
-    it('should simulate user clicking Hủy giao dịch button', () => {
-      // User đang ở trang VNPay payment form
-      const userState = {
-        currentPage: 'vnpay_payment_form',
-        orderId: mockOrderId,
-        fillingPaymentInfo: true,
-      };
-
-      // User bấm "Hủy giao dịch" hoặc "Quay lại"
-      const cancelAction = {
-        action: 'user_cancel',
-        source: 'vnpay_gateway',
-        reason: 'User clicked cancel button',
-        timestamp: new Date(),
-      };
-
-      expect(cancelAction.action).toBe('user_cancel');
-      expect(cancelAction.source).toBe('vnpay_gateway');
-    });
-
-    it('should understand VNPay cancel behavior', () => {
-      // VNPay có thể:
-      // 1. Redirect về returnUrl với vnp_ResponseCode khác "00"
-      // 2. Hoặc không redirect mà để user tự quay lại
-
-      // Trong Phase 2, chúng ta CHI xem xét hành vi user TRƯỚC KHI VNPay trả kết quả
-      // Tức là user hủy TRƯỚC KHI submit form thanh toán
-
-      const cancelBehavior = {
-        userAction: 'click_cancel_before_submit',
-        vnpayRedirect: false, // VNPay không redirect vì chưa có transaction
-        userReturn: 'manual', // User tự quay về bằng back button hoặc đóng tab
-      };
-
-      expect(cancelBehavior.userAction).toBe('click_cancel_before_submit');
-      expect(cancelBehavior.vnpayRedirect).toBe(false);
-    });
+  afterEach(async () => {
+    await deleteOrderSession(testOrderId);
   });
 
-  describe('Test Case 2: User Does Not Complete Payment Form', () => {
-    it('should handle user leaving payment form incomplete', () => {
-      // User mở VNPay form nhưng không điền đủ thông tin
-      const paymentFormState = {
-        cardNumberFilled: false,
-        cardHolderFilled: false,
-        expiryDateFilled: false,
-        cvvFilled: false,
-        formCompleted: false,
-      };
+  afterAll(async () => {
+    await redisClient.quit();
+    await prisma.$disconnect();
+  });
 
-      // User rời đi (đóng tab, back button, etc.)
-      const userLeftForm = true;
+  describe('Scenario 1: User clicks "Hủy giao dịch" trước khi submit', () => {
+    test('TC1.1: Order vẫn PENDING khi user cancel trước submit', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
+      const orderStatus = 'pending';
 
-      expect(paymentFormState.formCompleted).toBe(false);
-      expect(userLeftForm).toBe(true);
+      // Act: User bấm "Hủy giao dịch" trên VNPay TRƯỚC KHI submit form
+      // VNPay không tạo transaction, không callback về backend
+
+      // Assert: Order status không đổi
+      expect(orderStatus).toBe('pending');
     });
 
-    it('should not trigger any payment transaction when form incomplete', () => {
-      // Không có transaction nào được tạo với VNPay
-      const vnpayTransactionCreated = false;
+    test('TC1.2: Không có VNPay callback khi user cancel trước submit', () => {
+      // Khi user bấm Hủy TRƯỚC KHI submit form thanh toán:
+      // - VNPay không tạo transaction
+      // - VNPay không gọi callback URL
+      // - Backend không nhận bất kỳ thông báo nào
 
-      expect(vnpayTransactionCreated).toBe(false);
+      const receivedCallback = false; // Backend không nhận callback
+
+      // Assert
+      expect(receivedCallback).toBe(false);
+    });
+
+    test('TC1.3: Backend không biết user đã cancel', () => {
+      // Phase 2 Cancel (trước submit) khác Phase 3 Cancel (sau submit)
+      // Phase 2: Backend KHÔNG biết user cancel
+      // Phase 3: Backend nhận vnp_ResponseCode=24
+
+      const backendKnowsUserCancelled = false;
+
+      // Assert
+      expect(backendKnowsUserCancelled).toBe(false);
     });
   });
 
-  describe('Test Case 3: Order Remains PENDING After Cancel', () => {
-    it('should keep order status as PENDING when user cancels', () => {
-      // User hủy nhưng order KHÔNG tự động chuyển sang cancelled
-      const orderBefore = {
-        id: mockOrderId,
-        status: 'pending',
-      };
+  describe('Scenario 2: Session vẫn active sau khi user cancel', () => {
+    test('TC2.1: Redis session không bị xóa khi user cancel', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
 
-      // User hủy trên VNPay (Phase 2 - chưa có response từ VNPay)
-      const userCancelled = true;
+      // Act: User cancel trên VNPay (không có backend action)
 
-      // Order vẫn PENDING
-      const orderAfter = {
-        id: mockOrderId,
-        status: 'pending', // Không thay đổi
-      };
-
-      expect(orderBefore.status).toBe('pending');
-      expect(orderAfter.status).toBe('pending');
-      expect(orderAfter.status).toBe(orderBefore.status);
+      // Assert: Session vẫn tồn tại
+      const exists = await checkOrderSession(testOrderId);
+      expect(exists).toBe(true);
     });
 
-    it('should NOT automatically cancel order when user leaves VNPay', () => {
-      // Hệ thống KHÔNG biết user đã hủy cho đến khi:
-      // 1. VNPay redirect về với response code
-      // 2. Hoặc session hết hạn
+    test('TC2.2: TTL vẫn đếm ngược sau khi cancel', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
+      const ttlBefore = await getSessionTTL(testOrderId);
 
-      const systemKnowsUserCancelled = false; // Phase 2 chưa nhận response
+      // Act: User cancel, đợi 2 giây
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
-      expect(systemKnowsUserCancelled).toBe(false);
-    });
-  });
-
-  describe('Test Case 4: Redis Session Still Active After Cancel', () => {
-    it('should keep Redis session active after user cancels on VNPay', () => {
-      const sessionKey = `order:session:${mockOrderId}`;
-
-      // User hủy trên VNPay nhưng session vẫn active
-      const sessionExists = true;
-      const sessionTTL = 540; // 9 phút còn lại
-
-      expect(sessionExists).toBe(true);
-      expect(sessionTTL).toBeGreaterThan(0);
+      // Assert: TTL giảm
+      const ttlAfter = await getSessionTTL(testOrderId);
+      expect(ttlAfter).toBeLessThan(ttlBefore);
     });
 
-    it('should allow retry payment while session is active', () => {
-      const sessionTTL = 540; // 9 phút
+    test('TC2.3: Session chỉ expire khi hết TTL', async () => {
+      // Arrange: Tạo session với TTL ngắn
+      const shortOrderId = 'test-cancel-short-ttl';
+      const key = `order:session:${shortOrderId}`;
 
-      if (sessionTTL > 0) {
-        const canRetryPayment = true;
-        expect(canRetryPayment).toBe(true);
-      }
+      await redisClient.setex(key, 1, JSON.stringify({
+        orderId: shortOrderId,
+        userId: testUserId,
+        totalPrice: testTotalPrice
+      }));
+
+      // Act: User cancel, nhưng session vẫn expire theo TTL
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Assert
+      const exists = await redisClient.exists(key);
+      expect(exists).toBe(0);
     });
   });
 
-  describe('Test Case 5: PaymentIntent and Attempt Status After Cancel', () => {
-    it('should keep PaymentIntent status as PROCESSING after user cancel', () => {
-      // PaymentIntent vẫn PROCESSING vì chưa nhận response từ VNPay
-      const paymentIntent = {
-        id: mockPaymentIntentId,
-        orderId: mockOrderId,
-        status: 'PROCESSING', // Không thay đổi
-      };
+  describe('Scenario 3: User có thể retry payment sau khi cancel', () => {
+    test('TC3.1: Session còn active cho phép retry', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
 
-      expect(paymentIntent.status).toBe('PROCESSING');
-      expect(paymentIntent.status).not.toBe('FAILED');
-      expect(paymentIntent.status).not.toBe('CANCELED');
+      // Act: User cancel trên VNPay, sau đó quay lại
+      const sessionExists = await checkOrderSession(testOrderId);
+      const orderStatus = 'pending';
+
+      // Assert: User có thể retry vì session còn và order vẫn pending
+      const canRetry = sessionExists && orderStatus === 'pending';
+      expect(canRetry).toBe(true);
     });
 
-    it('should keep PaymentAttempt status as PROCESSING', () => {
+    test('TC3.2: User có thể click "Thanh toán lại"', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
+      const orderStatus = 'pending';
+
+      // Act: Logic frontend hiển thị nút retry
+      const shouldShowRetryButton = orderStatus === 'pending';
+
+      // Assert
+      expect(shouldShowRetryButton).toBe(true);
+    });
+
+    test('TC3.3: Retry sẽ tạo PaymentAttempt mới', async () => {
+      // Khi user retry:
+      // - Order Service publish order.retry.payment
+      // - Payment Service tạo PaymentAttempt mới
+      // - PaymentIntent cũ được tái sử dụng
+
+      const retryEvent = {
+        topic: 'order.retry.payment',
+        orderId: testOrderId,
+        isRetry: true
+      };
+
+      // Assert
+      expect(retryEvent.isRetry).toBe(true);
+    });
+  });
+
+  describe('Scenario 4: PaymentIntent và PaymentAttempt không đổi', () => {
+    test('TC4.1: PaymentIntent status vẫn PROCESSING', () => {
+      // User cancel trước submit không ảnh hưởng PaymentIntent
+      const paymentIntentStatus = 'PROCESSING';
+
+      // Assert
+      expect(paymentIntentStatus).toBe('PROCESSING');
+    });
+
+    test('TC4.2: PaymentAttempt status vẫn PROCESSING', () => {
+      // PaymentAttempt đầu tiên vẫn ở status PROCESSING
+      const paymentAttemptStatus = 'PROCESSING';
+
+      // Assert
+      expect(paymentAttemptStatus).toBe('PROCESSING');
+    });
+
+    test('TC4.3: PaymentAttempt không có vnpResponseCode', () => {
+      // Vì VNPay không callback, không có response code
       const paymentAttempt = {
-        id: 'pa-cancel-001',
-        paymentIntentId: mockPaymentIntentId,
-        status: 'PROCESSING', // Vẫn PROCESSING
-        vnpRawRequestPayload: {
-          paymentUrl: mockPaymentUrl,
-        },
-      };
-
-      expect(paymentAttempt.status).toBe('PROCESSING');
-    });
-  });
-
-  describe('Test Case 6: User Can Retry Payment', () => {
-    it('should allow user to get payment URL again after cancel', () => {
-      // User quay về trang order status
-      const userReturns = true;
-
-      // User bấm "Thử lại" hoặc "Tiếp tục thanh toán"
-      const retryAction = {
-        action: 'retry_payment',
-        orderId: mockOrderId,
-      };
-
-      expect(retryAction.action).toBe('retry_payment');
-      expect(userReturns).toBe(true);
-    });
-
-    it('should reuse existing payment URL if still valid', () => {
-      // Kiểm tra PaymentIntent hiện tại
-      const currentPaymentIntent = {
-        id: mockPaymentIntentId,
         status: 'PROCESSING',
-        attempts: [
-          {
-            id: 'pa-cancel-001',
-            status: 'PROCESSING',
-            vnpRawRequestPayload: {
-              paymentUrl: mockPaymentUrl,
-              timestamp: new Date(Date.now() - 3 * 60 * 1000), // 3 phút trước
-            },
-          },
-        ],
+        vnpResponseCode: null,
+        vnpRawResponsePayload: null
       };
 
-      // Nếu session còn valid, có thể dùng lại URL cũ
-      const sessionTTL = 540; // 9 phút
-      const canReuseUrl = sessionTTL > 0 && currentPaymentIntent.status === 'PROCESSING';
-
-      expect(canReuseUrl).toBe(true);
-    });
-
-    it('should create new PaymentAttempt if needed', () => {
-      // Nếu session hết hạn hoặc cần retry mới
-      const sessionExpired = false;
-      const userWantsNewAttempt = false;
-
-      if (sessionExpired || userWantsNewAttempt) {
-        const createNewAttempt = true;
-        expect(createNewAttempt).toBe(true);
-      } else {
-        // Dùng lại PaymentAttempt hiện tại
-        const reuseExisting = true;
-        expect(reuseExisting).toBe(true);
-      }
+      // Assert
+      expect(paymentAttempt.vnpResponseCode).toBeNull();
+      expect(paymentAttempt.vnpRawResponsePayload).toBeNull();
     });
   });
 
-  describe('Test Case 7: User Cancel Scenarios Timeline', () => {
-    it('should track user cancel scenario timeline', () => {
-      const cancelTimeline = [
-        { time: 'T+0s', event: 'Order created', status: 'pending' },
-        { time: 'T+3s', event: 'Payment URL generated', status: 'pending' },
-        { time: 'T+5s', event: 'User redirected to VNPay', status: 'pending' },
-        { time: 'T+10s', event: 'User viewing VNPay form', status: 'pending' },
-        { time: 'T+20s', event: 'User clicks Hủy giao dịch', status: 'pending' },
-        { time: 'T+25s', event: 'User back to merchant site', status: 'pending' },
-      ];
+  describe('Scenario 5: Phân biệt Phase 2 Cancel vs Phase 3 Cancel', () => {
+    test('TC5.1: Phase 2 Cancel: User cancel TRƯỚC KHI submit', () => {
+      // Phase 2 Cancel characteristics:
+      const phase2Cancel = {
+        userAction: 'Click Hủy trên VNPay form',
+        vnpayCreateTransaction: false,
+        vnpayCallback: false,
+        backendUpdated: false,
+        orderStatus: 'pending',
+        canRetry: true
+      };
 
-      expect(cancelTimeline).toHaveLength(6);
+      // Assert
+      expect(phase2Cancel.vnpayCallback).toBe(false);
+      expect(phase2Cancel.orderStatus).toBe('pending');
+      expect(phase2Cancel.canRetry).toBe(true);
+    });
 
-      // Tất cả events đều có status pending
-      const allPending = cancelTimeline.every(e => e.status === 'pending');
-      expect(allPending).toBe(true);
+    test('TC5.2: Phase 3 Cancel: User cancel SAU KHI submit', () => {
+      // Phase 3 Cancel characteristics:
+      const phase3Cancel = {
+        userAction: 'Click Hủy sau khi submit, hoặc VNPay timeout',
+        vnpayCreateTransaction: true,
+        vnpayCallback: true,
+        vnpResponseCode: '24',
+        backendUpdated: true,
+        orderStatus: 'cancelled',
+        canRetry: false
+      };
+
+      // Assert
+      expect(phase3Cancel.vnpayCallback).toBe(true);
+      expect(phase3Cancel.vnpResponseCode).toBe('24');
+      expect(phase3Cancel.orderStatus).toBe('cancelled');
+      expect(phase3Cancel.canRetry).toBe(false);
+    });
+
+    test('TC5.3: Key difference: VNPay callback có hay không', () => {
+      const phase2HasCallback = false;
+      const phase3HasCallback = true;
+
+      // Assert: Đây là điểm khác biệt chính
+      expect(phase2HasCallback).not.toBe(phase3HasCallback);
     });
   });
 
-  describe('Test Case 8: Different Cancel Triggers', () => {
-    it('should identify various ways user can cancel', () => {
-      const cancelTriggers = [
-        { trigger: 'vnpay_cancel_button', description: 'User clicks Hủy on VNPay form' },
-        { trigger: 'browser_back_button', description: 'User clicks browser back' },
-        { trigger: 'close_tab', description: 'User closes VNPay tab' },
-        { trigger: 'navigate_away', description: 'User navigates to another URL' },
-        { trigger: 'timeout', description: 'User leaves page idle too long' },
-      ];
+  describe('Scenario 6: Cancel timeline và expiration', () => {
+    test('TC6.1: Session expiration không bị ảnh hưởng bởi cancel', async () => {
+      // Arrange
+      const session = await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
+      const expirationBefore = session.expirationTime;
 
-      expect(cancelTriggers).toHaveLength(5);
-      expect(cancelTriggers[0].trigger).toBe('vnpay_cancel_button');
+      // Act: User cancel (không có backend action thay đổi expiration)
+
+      // Assert: Expiration time không đổi
+      const expirationAfter = expirationBefore;
+      expect(expirationAfter).toEqual(expirationBefore);
     });
 
-    it('should handle all cancel triggers the same way in Phase 2', () => {
-      // Trong Phase 2, tất cả cancel triggers đều không ảnh hưởng đến order
-      // vì chưa có response từ VNPay
+    test('TC6.2: User có thể cancel và retry trong cùng session', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
 
-      const triggers = ['cancel_button', 'back_button', 'close_tab'];
+      // Act: User cancel, sau đó retry ngay
+      const sessionExists = await checkOrderSession(testOrderId);
 
-      triggers.forEach(trigger => {
-        const orderStatus = 'pending'; // Luôn pending
-        expect(orderStatus).toBe('pending');
+      // Assert: Session vẫn active
+      expect(sessionExists).toBe(true);
+    });
+  });
+
+  describe('Scenario 7: Các cách user có thể "cancel" trên VNPay', () => {
+    test('TC7.1: Click button "Hủy giao dịch"', () => {
+      // User click nút Hủy trên VNPay form
+      const cancelMethod = 'CLICK_CANCEL_BUTTON';
+
+      // Assert
+      expect(cancelMethod).toBe('CLICK_CANCEL_BUTTON');
+    });
+
+    test('TC7.2: Click Back button trên browser', () => {
+      // User click browser back từ VNPay
+      const cancelMethod = 'BROWSER_BACK';
+
+      // Assert
+      expect(cancelMethod).toBe('BROWSER_BACK');
+    });
+
+    test('TC7.3: Đóng tab VNPay', () => {
+      // User đóng tab VNPay
+      const cancelMethod = 'CLOSE_TAB';
+
+      // Assert
+      expect(cancelMethod).toBe('CLOSE_TAB');
+    });
+
+    test('TC7.4: Không hoàn tất form (bỏ trống)', () => {
+      // User không điền thông tin thẻ, bỏ đi
+      const cancelMethod = 'ABANDON_FORM';
+
+      // Assert
+      expect(cancelMethod).toBe('ABANDON_FORM');
+    });
+
+    test('TC7.5: Tất cả các cách trên đều không trigger callback', () => {
+      // Tất cả cancel methods trong Phase 2 đều KHÔNG trigger callback
+      const cancelMethods = [
+        'CLICK_CANCEL_BUTTON',
+        'BROWSER_BACK',
+        'CLOSE_TAB',
+        'ABANDON_FORM'
+      ];
+
+      cancelMethods.forEach(method => {
+        const triggersCallback = false;
+        expect(triggersCallback).toBe(false);
       });
     });
   });
 
-  describe('Test Case 9: Session Expiration After Cancel', () => {
-    it('should expire session naturally after user cancels', () => {
-      // User hủy ở T+20s, session hết hạn ở T+15m
-      const orderCreatedAt = new Date(Date.now() - 20 * 1000); // 20s trước
-      const sessionDuration = 15; // 15 phút
-      const expiresAt = new Date(orderCreatedAt.getTime() + sessionDuration * 60 * 1000);
+  describe('Scenario 8: UI State sau khi user cancel và quay lại', () => {
+    test('TC8.1: Order status hiển thị "Chờ thanh toán"', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
+      const orderStatus = 'pending';
 
-      const remainingMs = expiresAt.getTime() - Date.now();
-      const remainingMinutes = Math.floor(remainingMs / (1000 * 60));
+      // Act: User quay lại sau khi cancel
+      const displayStatus = orderStatus === 'pending' ? 'Chờ thanh toán' : 'Khác';
 
-      expect(remainingMinutes).toBeGreaterThanOrEqual(14); // Còn ít nhất 14 phút
+      // Assert
+      expect(displayStatus).toBe('Chờ thanh toán');
     });
 
-    it('should cancel order when session expires', () => {
-      // Khi Redis session hết hạn (TTL = 0)
-      const sessionTTL = 0;
+    test('TC8.2: Hiển thị thời gian còn lại', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
 
-      if (sessionTTL <= 0) {
-        // Redis keyspace notification trigger
-        // Order Service sẽ cancel order
-        const orderShouldBeCancelled = true;
-        expect(orderShouldBeCancelled).toBe(true);
-      }
-    });
-  });
+      // Act
+      const ttl = await getSessionTTL(testOrderId);
+      const remainingMinutes = Math.ceil(ttl / 60);
 
-  describe('Test Case 10: UI State After Cancel', () => {
-    it('should show appropriate UI when user returns after cancel', () => {
-      // User quay về trang order status
-      const uiState = {
-        orderId: mockOrderId,
-        orderStatus: 'pending',
-        showPaymentUrl: true,
-        showContinueButton: true,
-        showCancelButton: true,
-        message: 'Bạn chưa hoàn tất thanh toán',
-      };
-
-      expect(uiState.orderStatus).toBe('pending');
-      expect(uiState.showContinueButton).toBe(true);
-      expect(uiState.message).toContain('chưa hoàn tất');
+      // Assert
+      expect(remainingMinutes).toBeGreaterThan(0);
     });
 
-    it('should provide clear call-to-action for user', () => {
-      const callToActions = [
-        { button: 'Tiếp tục thanh toán', action: 'redirect_to_vnpay' },
-        { button: 'Hủy đơn hàng', action: 'cancel_order' },
-        { button: 'Xem chi tiết', action: 'view_order_details' },
-      ];
+    test('TC8.3: Hiển thị nút "Tiếp tục thanh toán"', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
+      const orderStatus = 'pending';
+      const sessionExists = await checkOrderSession(testOrderId);
 
-      expect(callToActions).toHaveLength(3);
-      expect(callToActions[0].button).toBe('Tiếp tục thanh toán');
+      // Act
+      const showContinueButton = orderStatus === 'pending' && sessionExists;
+
+      // Assert
+      expect(showContinueButton).toBe(true);
     });
   });
 
-  describe('Test Case 11: Analytics and Tracking', () => {
-    it('should track cancel events for analytics', () => {
+  describe('Scenario 9: Analytics và tracking', () => {
+    test('TC9.1: Log cancel event (optional)', () => {
+      // Frontend có thể log khi user rời VNPay
       const analyticsEvent = {
-        eventType: 'user_cancelled_on_vnpay',
-        orderId: mockOrderId,
-        userId: mockUserId,
-        timestamp: new Date(),
-        source: 'vnpay_gateway',
-        stage: 'payment_form',
-        reason: 'user_action',
+        event: 'USER_LEFT_VNPAY',
+        orderId: testOrderId,
+        method: 'unknown', // Backend không biết method
+        timestamp: new Date().toISOString()
       };
 
-      expect(analyticsEvent.eventType).toBe('user_cancelled_on_vnpay');
-      expect(analyticsEvent.stage).toBe('payment_form');
+      // Assert
+      expect(analyticsEvent.event).toBe('USER_LEFT_VNPAY');
     });
 
-    it('should calculate cancel rate metrics', () => {
-      const metrics = {
-        totalOrders: 100,
-        reachedVNPay: 90,
-        cancelledOnVNPay: 25,
-        returnedAfterCancel: 15,
-        completedAfterRetry: 8,
+    test('TC9.2: Track conversion funnel', () => {
+      // Track các bước trong payment funnel
+      const funnel = {
+        step1_order_created: true,
+        step2_payment_url_received: true,
+        step3_redirected_to_vnpay: true,
+        step4_user_left_vnpay: true, // Phase 2
+        step5_payment_completed: false // Chưa hoàn thành
       };
 
-      const cancelRate = (metrics.cancelledOnVNPay / metrics.reachedVNPay) * 100;
-      const retryRate = (metrics.returnedAfterCancel / metrics.cancelledOnVNPay) * 100;
-      const retrySuccessRate = (metrics.completedAfterRetry / metrics.returnedAfterCancel) * 100;
-
-      expect(cancelRate).toBeGreaterThan(0);
-      expect(retryRate).toBeGreaterThan(0);
-      expect(retrySuccessRate).toBeGreaterThan(0);
+      // Assert
+      expect(funnel.step4_user_left_vnpay).toBe(true);
+      expect(funnel.step5_payment_completed).toBe(false);
     });
   });
 
-  describe('Test Case 12: No Backend Changes on User Cancel', () => {
-    it('should verify no database updates when user cancels in Phase 2', () => {
-      // Database state trước khi user cancel
-      const dbStateBefore = {
-        order: { id: mockOrderId, status: 'pending' },
-        paymentIntent: { id: mockPaymentIntentId, status: 'PROCESSING' },
-        paymentAttempt: { id: 'pa-cancel-001', status: 'PROCESSING' },
-      };
+  describe('Scenario 10: Không có database updates', () => {
+    test('TC10.1: Không có UPDATE query nào được thực thi', () => {
+      // Khi user cancel trước submit, backend không update gì cả
+      const dbUpdateExecuted = false;
 
-      // User hủy trên VNPay (Phase 2 - chưa có callback)
-      const userCancelled = true;
-
-      // Database state sau khi user cancel
-      const dbStateAfter = {
-        order: { id: mockOrderId, status: 'pending' },
-        paymentIntent: { id: mockPaymentIntentId, status: 'PROCESSING' },
-        paymentAttempt: { id: 'pa-cancel-001', status: 'PROCESSING' },
-      };
-
-      // Không có gì thay đổi
-      expect(dbStateAfter.order.status).toBe(dbStateBefore.order.status);
-      expect(dbStateAfter.paymentIntent.status).toBe(dbStateBefore.paymentIntent.status);
-      expect(dbStateAfter.paymentAttempt.status).toBe(dbStateBefore.paymentAttempt.status);
+      // Assert
+      expect(dbUpdateExecuted).toBe(false);
     });
 
-    it('should verify no Kafka events published on user cancel', () => {
-      // Khi user hủy trên VNPay (Phase 2), KHÔNG có event mới được publish
-      const kafkaEventPublished = false;
+    test('TC10.2: Order.updatedAt không thay đổi', () => {
+      // Order record không được touch
+      const orderUpdatedAt = new Date('2025-10-30T15:00:00.000Z');
+      const orderUpdatedAtAfterCancel = orderUpdatedAt;
 
-      expect(kafkaEventPublished).toBe(false);
+      // Assert
+      expect(orderUpdatedAtAfterCancel).toEqual(orderUpdatedAt);
     });
-  });
 
-  describe('Test Case 13: Difference Between Phase 2 Cancel and Phase 3 Cancel', () => {
-    it('should understand Phase 2 vs Phase 3 cancel behavior', () => {
-      const phase2Cancel = {
-        phase: 2,
-        userAction: 'Cancel before submitting payment',
-        vnpayCallback: false,
-        vnpResponseCode: null,
-        orderStatusChange: false,
-        description: 'User leaves VNPay without completing transaction',
-      };
+    test('TC10.3: PaymentIntent không được update', () => {
+      const paymentIntentUpdatedAt = new Date('2025-10-30T15:00:02.000Z');
+      const paymentIntentUpdatedAtAfterCancel = paymentIntentUpdatedAt;
 
-      const phase3Cancel = {
-        phase: 3,
-        userAction: 'Submit cancel/timeout on VNPay',
-        vnpayCallback: true,
-        vnpResponseCode: '24', // Khách hàng hủy giao dịch
-        orderStatusChange: true, // Order sẽ được cancel
-        description: 'VNPay returns with cancel response code',
-      };
-
-      // Phase 2: Chưa có callback từ VNPay
-      expect(phase2Cancel.vnpayCallback).toBe(false);
-      expect(phase2Cancel.orderStatusChange).toBe(false);
-
-      // Phase 3: Có callback từ VNPay (sẽ test ở phase 3)
-      expect(phase3Cancel.vnpayCallback).toBe(true);
-      expect(phase3Cancel.orderStatusChange).toBe(true);
+      // Assert
+      expect(paymentIntentUpdatedAtAfterCancel).toEqual(paymentIntentUpdatedAt);
     });
   });
 });

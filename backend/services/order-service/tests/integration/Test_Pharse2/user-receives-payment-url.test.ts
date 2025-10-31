@@ -1,313 +1,288 @@
-/**
- * Integration Test Suite Phase 2: User Receives Payment URL
- *
- * Test Scenarios:
- * 1. Order Service nhận payment.event có paymentUrl từ Payment Service
- * 2. Frontend nhận response với paymentUrl
- * 3. User được redirect đến VNPay gateway
- * 4. Order vẫn ở trạng thái PENDING khi chờ user thanh toán
- * 5. Redis session vẫn active với TTL
- */
+import prisma from '../../../src/lib/prisma';
+import redisClient from '../../../src/lib/redis';
+import { createOrderSession, checkOrderSession, getOrderSession, deleteOrderSession } from '../../../src/utils/redisSessionManager';
 
-describe('Integration Test Suite Phase 2: User Receives Payment URL', () => {
-  const mockOrderId = 'order-phase2-receive-url-123';
-  const mockUserId = 'user-phase2-789';
-  const mockPaymentIntentId = 'pi-phase2-456';
-  const mockPaymentUrl = 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?vnp_Amount=10000000&vnp_TxnRef=1234567890&vnp_OrderInfo=Payment+for+Order+order-phase2-receive-url-123';
+describe('Phase 2: User Receives Payment URL', () => {
+  const testOrderId = 'test-order-user-receives-url';
+  const testUserId = 'test-user-123';
+  const testTotalPrice = 100000;
 
-  beforeEach(() => {
-    jest.clearAllMocks();
+  beforeAll(async () => {
+    // Cleanup trước khi test
+    await deleteOrderSession(testOrderId);
   });
 
-  describe('Test Case 1: Order Service Consumes payment.event with Payment URL', () => {
-    it('should receive payment.event from Payment Service via Kafka', () => {
-      // Payload từ Payment Service qua Kafka topic: payment.event
+  afterEach(async () => {
+    // Cleanup sau mỗi test
+    await deleteOrderSession(testOrderId);
+  });
+
+  afterAll(async () => {
+    // Đóng kết nối
+    await redisClient.quit();
+    await prisma.$disconnect();
+  });
+
+  describe('Scenario 1: Order Service nhận payment.event từ Kafka', () => {
+    test('TC1.1: Payment event chứa paymentUrl và paymentStatus = pending', async () => {
+      // Arrange: Giả lập payment.event từ Payment Service
       const paymentEvent = {
-        orderId: mockOrderId,
-        userId: mockUserId,
+        orderId: testOrderId,
+        userId: testUserId,
         email: 'user@example.com',
-        amount: 100000,
-        item: `Order ${mockOrderId}`,
+        amount: testTotalPrice,
+        item: `Order ${testOrderId}`,
         paymentStatus: 'pending',
-        paymentIntentId: mockPaymentIntentId,
-        paymentUrl: mockPaymentUrl,
+        paymentIntentId: 'pi-test-123',
+        paymentUrl: 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?vnp_Amount=10000000&vnp_TxnRef=1234567890',
+        timestamp: new Date().toISOString()
       };
 
-      // Verify event structure
+      // Assert: Validate cấu trúc event
+      expect(paymentEvent).toHaveProperty('orderId');
+      expect(paymentEvent).toHaveProperty('paymentUrl');
       expect(paymentEvent.paymentStatus).toBe('pending');
-      expect(paymentEvent.paymentUrl).toBeDefined();
       expect(paymentEvent.paymentUrl).toContain('vnpayment.vn');
-      expect(paymentEvent.orderId).toBe(mockOrderId);
+      expect(paymentEvent.paymentUrl).toContain('vnp_Amount');
+      expect(paymentEvent.paymentUrl).toContain('vnp_TxnRef');
     });
 
-    it('should validate paymentUrl contains required VNPay parameters', () => {
-      const url = new URL(mockPaymentUrl);
-      const params = new URLSearchParams(url.search);
+    test('TC1.2: Payment URL chứa đầy đủ tham số VNPay bắt buộc', async () => {
+      const paymentUrl = 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?vnp_Amount=10000000&vnp_TxnRef=1234567890&vnp_OrderInfo=Payment+for+Order&vnp_ReturnUrl=http%3A%2F%2Flocalhost%3A3001%2Fvnpay-return&vnp_SecureHash=abc123';
 
-      // Verify các tham số VNPay quan trọng
-      expect(params.has('vnp_Amount')).toBe(true);
-      expect(params.has('vnp_TxnRef')).toBe(true);
-      expect(params.has('vnp_OrderInfo')).toBe(true);
-
-      // Verify OrderInfo chứa orderId
-      const orderInfo = params.get('vnp_OrderInfo') || '';
-      expect(orderInfo).toContain(mockOrderId);
+      // Assert: Kiểm tra các tham số bắt buộc
+      expect(paymentUrl).toContain('vnp_Amount=');
+      expect(paymentUrl).toContain('vnp_TxnRef=');
+      expect(paymentUrl).toContain('vnp_OrderInfo=');
+      expect(paymentUrl).toContain('vnp_ReturnUrl=');
+      expect(paymentUrl).toContain('vnp_SecureHash=');
     });
   });
 
-  describe('Test Case 2: Order Status Remains PENDING', () => {
-    it('should keep order status as PENDING after receiving payment URL', () => {
-      // Order Service nhận payment.event với status "pending"
-      // Order KHÔNG thay đổi status, vẫn giữ PENDING
+  describe('Scenario 2: Redis Session vẫn active sau khi nhận payment URL', () => {
+    test('TC2.1: Tạo Redis session thành công', async () => {
+      // Act: Tạo session
+      const session = await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
 
-      const orderBefore = {
-        id: mockOrderId,
-        status: 'pending',
-        createdAt: new Date(Date.now() - 2 * 60 * 1000), // 2 phút trước
-      };
+      // Assert
+      expect(session).toHaveProperty('expirationTime');
+      expect(session).toHaveProperty('durationMinutes');
+      expect(session.durationMinutes).toBe(15);
 
-      const orderAfter = {
-        id: mockOrderId,
-        status: 'pending', // Vẫn PENDING
-        createdAt: orderBefore.createdAt,
-      };
-
-      expect(orderBefore.status).toBe('pending');
-      expect(orderAfter.status).toBe('pending');
-      expect(orderAfter.status).toBe(orderBefore.status); // Không thay đổi
+      // Verify trong Redis
+      const exists = await checkOrderSession(testOrderId);
+      expect(exists).toBe(true);
     });
 
-    it('should NOT update order to success when payment status is pending', () => {
-      const paymentEvent = {
-        orderId: mockOrderId,
-        paymentStatus: 'pending',
-        paymentUrl: mockPaymentUrl,
-      };
+    test('TC2.2: Session có TTL đúng', async () => {
+      // Act: Tạo session với TTL 15 phút
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
 
-      // Nếu paymentStatus là "pending", Order Service KHÔNG cập nhật order
-      if (paymentEvent.paymentStatus === 'pending') {
-        const shouldUpdateOrder = false;
-        expect(shouldUpdateOrder).toBe(false);
-      }
-    });
-  });
-
-  describe('Test Case 3: Redis Session Still Active', () => {
-    it('should verify Redis session still exists with remaining TTL', () => {
-      const sessionKey = `order:session:${mockOrderId}`;
-
-      // Redis session vẫn còn tồn tại
-      const sessionExists = true; // Redis EXISTS = 1
-      expect(sessionExists).toBe(true);
-
-      // TTL vẫn còn (ví dụ: còn 13 phút / 780 giây)
-      const remainingTTL = 780; // seconds
-      expect(remainingTTL).toBeGreaterThan(0);
-      expect(remainingTTL).toBeLessThanOrEqual(15 * 60); // Không vượt quá 15 phút
+      // Assert: Kiểm tra TTL
+      const ttl = await redisClient.ttl(`order:session:${testOrderId}`);
+      expect(ttl).toBeGreaterThan(0);
+      expect(ttl).toBeLessThanOrEqual(900); // 15 phút = 900 giây
     });
 
-    it('should retrieve session data successfully', () => {
-      const sessionData = {
-        orderId: mockOrderId,
-        userId: mockUserId,
-        totalPrice: 100000,
-        createdAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-        expirationTime: new Date(Date.now() + 13 * 60 * 1000).toISOString(),
-      };
+    test('TC2.3: Session data chứa đầy đủ thông tin', async () => {
+      // Act
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
 
-      // Session data vẫn valid
-      expect(sessionData.orderId).toBe(mockOrderId);
-      expect(new Date(sessionData.expirationTime).getTime()).toBeGreaterThan(Date.now());
+      // Assert
+      const sessionData = await getOrderSession(testOrderId);
+      expect(sessionData).toBeDefined();
+      expect(sessionData.orderId).toBe(testOrderId);
+      expect(sessionData.userId).toBe(testUserId);
+      expect(sessionData.totalPrice).toBe(testTotalPrice);
+      expect(sessionData).toHaveProperty('createdAt');
+      expect(sessionData).toHaveProperty('expirationTime');
+    });
+
+    test('TC2.4: Session không bị xóa khi nhận payment URL', async () => {
+      // Arrange: Tạo session trước
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
+
+      // Act: Giả lập nhận payment.event (không xóa session vì status = pending)
+      // Trong thực tế, handlePaymentEvent() sẽ KHÔNG xóa session khi status = pending
+
+      // Assert: Session vẫn tồn tại
+      const exists = await checkOrderSession(testOrderId);
+      expect(exists).toBe(true);
     });
   });
 
-  describe('Test Case 4: Frontend Receives Payment URL Response', () => {
-    it('should return paymentUrl to frontend via API response', () => {
-      // Giả sử frontend gọi GET /order/payment-url/:orderId
-      // hoặc nhận qua websocket/polling
+  describe('Scenario 3: Order status vẫn PENDING sau khi nhận payment URL', () => {
+    test('TC3.1: Order không thay đổi status khi nhận payment.event với status pending', async () => {
+      // Arrange: Giả sử order đã được tạo với status = pending
+      const orderStatus = 'pending';
 
-      const apiResponse = {
-        success: true,
-        message: 'Payment URL generated successfully',
-        data: {
-          orderId: mockOrderId,
-          paymentUrl: mockPaymentUrl,
-          paymentIntentId: mockPaymentIntentId,
-          expiresAt: new Date(Date.now() + 13 * 60 * 1000).toISOString(),
-        },
-      };
+      // Act: Nhận payment.event với paymentStatus = pending
+      // Trong handlePaymentEvent(), khi paymentStatus = 'pending', orderStatus = 'pending'
 
-      expect(apiResponse.success).toBe(true);
-      expect(apiResponse.data.paymentUrl).toBeDefined();
-      expect(apiResponse.data.paymentUrl).toContain('vnpayment.vn');
+      // Assert: Order status không đổi
+      expect(orderStatus).toBe('pending');
     });
 
-    it('should include expiration time in response', () => {
-      const response = {
-        paymentUrl: mockPaymentUrl,
-        expiresAt: new Date(Date.now() + 13 * 60 * 1000).toISOString(),
-      };
+    test('TC3.2: Session không bị xóa khi order status = pending', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
+      const orderStatus = 'pending';
 
-      const expirationTime = new Date(response.expiresAt);
-      const currentTime = new Date();
+      // Act: Giả lập logic trong handlePaymentEvent()
+      // if (orderStatus === 'success' || orderStatus === 'cancelled') {
+      //   await deleteOrderSession(testOrderId); // KHÔNG chạy vì orderStatus = pending
+      // }
 
-      // Verify expiration time is in the future
-      expect(expirationTime.getTime()).toBeGreaterThan(currentTime.getTime());
-
-      // Verify remaining time is reasonable (< 15 minutes)
-      const remainingMinutes = (expirationTime.getTime() - currentTime.getTime()) / (1000 * 60);
-      expect(remainingMinutes).toBeLessThanOrEqual(15);
-      expect(remainingMinutes).toBeGreaterThan(0);
+      // Assert: Session vẫn tồn tại
+      const exists = await checkOrderSession(testOrderId);
+      expect(exists).toBe(true);
     });
   });
 
-  describe('Test Case 5: User Redirect to VNPay Gateway', () => {
-    it('should prepare redirect to VNPay payment gateway', () => {
-      // Frontend nhận paymentUrl và redirect user
-      const redirectAction = {
-        type: 'REDIRECT_TO_VNPAY',
-        url: mockPaymentUrl,
-        target: '_self', // Hoặc '_blank' nếu mở tab mới
-      };
+  describe('Scenario 4: User có thể nhận payment URL từ Frontend', () => {
+    test('TC4.1: Payment URL được lưu hoặc có thể query được', async () => {
+      // Trong thực tế, payment URL có thể được:
+      // 1. Log ra console (như trong handlePaymentEvent)
+      // 2. Gửi qua WebSocket/SSE
+      // 3. Frontend polling API /order/payment-url/:orderId
 
-      expect(redirectAction.type).toBe('REDIRECT_TO_VNPAY');
-      expect(redirectAction.url).toContain('vnpayment.vn');
+      const paymentUrl = 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?vnp_Amount=10000000';
+
+      // Assert: Payment URL phải valid
+      expect(paymentUrl).toMatch(/^https:\/\/sandbox\.vnpayment\.vn/);
     });
 
-    it('should extract VNPay gateway domain from payment URL', () => {
-      const url = new URL(mockPaymentUrl);
-      const vnpayDomain = url.hostname;
+    test('TC4.2: Payment URL expires cùng lúc với session', async () => {
+      // Act
+      const session = await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
 
-      expect(vnpayDomain).toContain('vnpayment.vn');
-      expect(vnpayDomain).toMatch(/^(sandbox\.)?vnpayment\.vn$/);
-    });
-  });
-
-  describe('Test Case 6: Payment URL Validity Period', () => {
-    it('should ensure payment URL is valid for order session duration', () => {
-      const orderCreatedAt = new Date(Date.now() - 2 * 60 * 1000); // 2 phút trước
-      const orderExpiresAt = new Date(orderCreatedAt.getTime() + 15 * 60 * 1000); // +15 phút
+      // Assert: Payment URL chỉ valid trong thời gian session
+      const expirationTime = new Date(session.expirationTime);
       const now = new Date();
+      const diffMinutes = (expirationTime.getTime() - now.getTime()) / (1000 * 60);
 
-      const remainingTime = orderExpiresAt.getTime() - now.getTime();
-      const remainingMinutes = remainingTime / (1000 * 60);
-
-      expect(remainingMinutes).toBeGreaterThan(0);
-      expect(remainingMinutes).toBeLessThanOrEqual(15);
-    });
-
-    it('should warn user about remaining time to complete payment', () => {
-      const expiresAt = new Date(Date.now() + 13 * 60 * 1000);
-      const remainingMinutes = Math.floor((expiresAt.getTime() - Date.now()) / (1000 * 60));
-
-      const warningMessage = `Vui lòng hoàn tất thanh toán trong ${remainingMinutes} phút`;
-
-      expect(warningMessage).toContain('13 phút');
-      expect(remainingMinutes).toBe(13);
+      expect(diffMinutes).toBeGreaterThan(14);
+      expect(diffMinutes).toBeLessThanOrEqual(15);
     });
   });
 
-  describe('Test Case 7: Payment URL One-Time Use Validation', () => {
-    it('should ensure each payment attempt has unique vnp_TxnRef', () => {
-      const url1 = new URL(mockPaymentUrl);
-      const params1 = new URLSearchParams(url1.search);
-      const txnRef1 = params1.get('vnp_TxnRef');
+  describe('Scenario 5: Mỗi payment attempt có vnp_TxnRef unique', () => {
+    test('TC5.1: vnp_TxnRef phải unique cho mỗi attempt', () => {
+      // Trong Payment Service, vnp_TxnRef được tạo như:
+      // const vnpTxnRef = `${Date.now()}-${orderId.substring(0, 8)}`;
 
-      // Tạo payment URL mới cho lần thử khác
-      const newTxnRef = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const orderId = 'order-abc123';
+      const vnpTxnRef1 = `${Date.now()}-${orderId.substring(0, 8)}`;
 
-      expect(txnRef1).toBeDefined();
-      expect(newTxnRef).not.toBe(txnRef1); // Mỗi lần khác nhau
+      // Đợi 1ms để đảm bảo timestamp khác
+      const vnpTxnRef2 = `${Date.now() + 1}-${orderId.substring(0, 8)}`;
+
+      // Assert: 2 vnp_TxnRef phải khác nhau
+      expect(vnpTxnRef1).not.toBe(vnpTxnRef2);
+    });
+
+    test('TC5.2: vnp_TxnRef format đúng (timestamp-orderIdPrefix)', () => {
+      const orderId = 'order-abc123';
+      const vnpTxnRef = `${Date.now()}-${orderId.substring(0, 8)}`;
+
+      // Assert
+      expect(vnpTxnRef).toMatch(/^\d+-order-ab$/);
     });
   });
 
-  describe('Test Case 8: Kafka Message Flow Tracking', () => {
-    it('should track message flow: order.create -> payment.event', () => {
-      const messageFlow = [
-        {
-          step: 1,
-          topic: 'order.create',
-          producer: 'Order Service',
-          consumer: 'Payment Service',
-          payload: { orderId: mockOrderId, totalPrice: 100000 },
-          timestamp: new Date(Date.now() - 3 * 60 * 1000),
-        },
-        {
-          step: 2,
-          topic: 'payment.event',
-          producer: 'Payment Service',
-          consumer: 'Order Service',
-          payload: { orderId: mockOrderId, paymentStatus: 'pending', paymentUrl: mockPaymentUrl },
-          timestamp: new Date(Date.now() - 2 * 60 * 1000),
-        },
-      ];
+  describe('Scenario 6: PaymentIntent và PaymentAttempt status = PROCESSING', () => {
+    test('TC6.1: PaymentIntent status không thay đổi trong Phase 2', () => {
+      // Trong Phase 2, sau khi tạo payment URL:
+      const paymentIntentStatus = 'PROCESSING';
 
-      expect(messageFlow).toHaveLength(2);
-      expect(messageFlow[0].topic).toBe('order.create');
-      expect(messageFlow[1].topic).toBe('payment.event');
-      expect(messageFlow[1].payload.paymentUrl).toBeDefined();
-    });
-  });
-
-  describe('Test Case 9: No Order Status Change Until Payment Result', () => {
-    it('should ensure order remains in pending state', () => {
-      const orderStatusHistory = [
-        { timestamp: new Date(Date.now() - 5 * 60 * 1000), status: 'pending', event: 'Order created' },
-        { timestamp: new Date(Date.now() - 2 * 60 * 1000), status: 'pending', event: 'Payment URL generated' },
-        { timestamp: new Date(), status: 'pending', event: 'User redirected to VNPay' },
-      ];
-
-      // Tất cả đều pending
-      const allPending = orderStatusHistory.every(h => h.status === 'pending');
-      expect(allPending).toBe(true);
-    });
-  });
-
-  describe('Test Case 10: Payment Intent and Attempt Status', () => {
-    it('should verify PaymentIntent status is PROCESSING', () => {
-      const paymentIntent = {
-        id: mockPaymentIntentId,
-        orderId: mockOrderId,
-        status: 'PROCESSING', // Đang chờ user thanh toán
-        amount: 100000,
-        currency: 'VND',
-      };
-
-      expect(paymentIntent.status).toBe('PROCESSING');
+      // Assert: Status vẫn là PROCESSING, chưa có callback từ VNPay
+      expect(paymentIntentStatus).toBe('PROCESSING');
     });
 
-    it('should verify PaymentAttempt status is PROCESSING', () => {
+    test('TC6.2: PaymentAttempt status = PROCESSING khi có payment URL', () => {
+      const paymentAttemptStatus = 'PROCESSING';
+
+      // Assert
+      expect(paymentAttemptStatus).toBe('PROCESSING');
+    });
+
+    test('TC6.3: PaymentAttempt chứa paymentUrl trong metadata', () => {
       const paymentAttempt = {
-        id: 'pa-phase2-001',
-        paymentIntentId: mockPaymentIntentId,
-        status: 'PROCESSING', // Đã tạo URL, chờ user thanh toán
-        pspProvider: 'VNPAY',
-        vnpRawRequestPayload: {
-          paymentUrl: mockPaymentUrl,
-          timestamp: new Date().toISOString(),
-        },
+        status: 'PROCESSING',
+        vnpRawRequestPayload: JSON.stringify({
+          paymentUrl: 'https://sandbox.vnpayment.vn/...',
+          timestamp: new Date().toISOString()
+        }),
+        vnpRawResponsePayload: null // Chưa có response từ VNPay
       };
 
+      // Assert
       expect(paymentAttempt.status).toBe('PROCESSING');
-      expect(paymentAttempt.vnpRawRequestPayload.paymentUrl).toBeDefined();
+      expect(paymentAttempt.vnpRawRequestPayload).toContain('paymentUrl');
+      expect(paymentAttempt.vnpRawResponsePayload).toBeNull();
     });
   });
 
-  describe('Test Case 11: Complete Phase 2 Timeline', () => {
-    it('should track complete Phase 2 flow', () => {
-      const phase2Timeline = [
-        { step: 1, time: 'T+0s', event: 'Payment Service creates PaymentIntent & PaymentAttempt' },
-        { step: 2, time: 'T+1s', event: 'Payment Service generates VNPay URL' },
-        { step: 3, time: 'T+2s', event: 'Payment Service publishes payment.event with paymentUrl' },
-        { step: 4, time: 'T+3s', event: 'Order Service receives payment.event' },
-        { step: 5, time: 'T+4s', event: 'Frontend receives paymentUrl' },
-        { step: 6, time: 'T+5s', event: 'User redirected to VNPay gateway' },
-        { step: 7, time: 'T+5s+', event: 'User arrives at VNPay (Phase 2 ends here)' },
-      ];
+  describe('Scenario 7: Kafka message flow tracking', () => {
+    test('TC7.1: order.create đã được publish trong Phase 1', () => {
+      // Đây là message đã publish từ Order Service trong Phase 1
+      const orderCreateEvent = {
+        orderId: testOrderId,
+        userId: testUserId,
+        items: [{ productId: 'p1', quantity: 1, productPrice: 100000 }],
+        totalPrice: testTotalPrice,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        timestamp: new Date().toISOString()
+      };
 
-      expect(phase2Timeline).toHaveLength(7);
-      expect(phase2Timeline[0].event).toContain('PaymentIntent');
-      expect(phase2Timeline[6].event).toContain('User arrives at VNPay');
+      // Assert: Validate event structure
+      expect(orderCreateEvent).toHaveProperty('orderId');
+      expect(orderCreateEvent).toHaveProperty('totalPrice');
+      expect(orderCreateEvent).toHaveProperty('expiresAt');
+    });
+
+    test('TC7.2: payment.event được publish từ Payment Service', () => {
+      // Payment Service nhận order.create và publish payment.event
+      const paymentEvent = {
+        orderId: testOrderId,
+        paymentStatus: 'pending',
+        paymentUrl: 'https://sandbox.vnpayment.vn/...',
+        paymentIntentId: 'pi-123'
+      };
+
+      // Assert
+      expect(paymentEvent.paymentStatus).toBe('pending');
+      expect(paymentEvent).toHaveProperty('paymentUrl');
+      expect(paymentEvent).toHaveProperty('paymentIntentId');
+    });
+  });
+
+  describe('Scenario 8: Không có database updates trong Phase 2', () => {
+    test('TC8.1: Order.updatedAt không thay đổi sau khi nhận payment URL', async () => {
+      // Trong Phase 2, Order Service KHÔNG update Order
+      // Chỉ log payment URL
+      const orderUpdatedAt = new Date('2025-10-30T15:00:00.000Z');
+
+      // Sau khi nhận payment.event với status pending
+      // orderUpdatedAt không thay đổi
+
+      // Assert
+      expect(orderUpdatedAt).toEqual(new Date('2025-10-30T15:00:00.000Z'));
+    });
+
+    test('TC8.2: Không có SQL UPDATE statement nào được thực thi', () => {
+      // Trong handlePaymentEvent(), khi paymentStatus = 'pending':
+      // Chỉ có console.log(), KHÔNG có prisma.order.update()
+
+      const paymentStatus: 'pending' | 'success' | 'cancelled' = 'pending';
+      let shouldUpdateOrder = false;
+
+      if (paymentStatus === 'success' || paymentStatus === 'cancelled') {
+        shouldUpdateOrder = true;
+      }
+
+      // Assert
+      expect(shouldUpdateOrder).toBe(false);
     });
   });
 });

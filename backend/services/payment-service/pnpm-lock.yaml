@@ -32,6 +32,9 @@ importers:
       stripe:
         specifier: ^17.5.0
         version: 17.5.0
+      vnpay:
+        specifier: ^2.4.4
+        version: 2.4.4
     devDependencies:
       '@types/cors':
         specifier: ^2.8.17
@@ -689,6 +692,9 @@ packages:
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
     engines: {node: '>= 8'}
+
+  dayjs@1.11.18:
+    resolution: {integrity: sha512-zFBQ7WFRvVRhKcWoUh+ZA1g2HVgUbsZm9sbddh8EC5iv93sui8DVVz1Npvz+r6meo9VKfa8NyLWBsQK1VvIKPA==}
 
   debug@2.6.9:
     resolution: {integrity: sha512-bC7ElrdJaJnPbAP+1EotYvqZsb3ecl5wi6Bfi6BJTUcNowp6cvspg0jXznRTKDjm/E7AdgFBVeAPVMNcKGsHMA==}
@@ -1718,6 +1724,9 @@ packages:
     resolution: {integrity: sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==}
     engines: {node: '>= 0.8'}
 
+  vnpay@2.4.4:
+    resolution: {integrity: sha512-NvftKF1K+JRAyZ7I11Nz/nxmSOaya6Txy/fcW2xFGpBzUsKjfyr2YEg210YitgVHvgtZ94j2/8DFRm8PwjUHjA==}
+
   walker@1.0.8:
     resolution: {integrity: sha512-ts/8E8l5b7kY0vlWLewOkDXMmPdLcVV4GmOQLyxuSswIJsweeFZtAsMF7k1Nszz+TYBQrlYRmzOnr398y1JemQ==}
 
@@ -2583,6 +2592,8 @@ snapshots:
       path-key: 3.1.1
       shebang-command: 2.0.0
       which: 2.0.2
+
+  dayjs@1.11.18: {}
 
   debug@2.6.9:
     dependencies:
@@ -3717,6 +3728,10 @@ snapshots:
       convert-source-map: 2.0.0
 
   vary@1.1.2: {}
+
+  vnpay@2.4.4:
+    dependencies:
+      dayjs: 1.11.18
 
   walker@1.0.8:
     dependencies:

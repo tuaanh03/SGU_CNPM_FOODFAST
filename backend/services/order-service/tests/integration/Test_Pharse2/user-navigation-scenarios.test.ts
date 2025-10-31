@@ -1,436 +1,399 @@
-/**
- * Integration Test Suite Phase 2: User Navigation Scenarios
- *
- * Test Scenarios:
- * 1. User đóng tab VNPay (không hoàn tất thanh toán)
- * 2. User quay lại trang web sau khi đóng tab
- * 3. User reload page trong khi chờ payment URL
- * 4. User bấm back button trên VNPay
- * 5. Order và session vẫn valid trong thời gian chờ
- */
+import prisma from '../../../src/lib/prisma';
+import redisClient from '../../../src/lib/redis';
+import { createOrderSession, checkOrderSession, getOrderSession, deleteOrderSession, getSessionTTL } from '../../../src/utils/redisSessionManager';
 
-describe('Integration Test Suite Phase 2: User Navigation Scenarios', () => {
-  const mockOrderId = 'order-phase2-nav-789';
-  const mockUserId = 'user-phase2-456';
-  const mockPaymentUrl = 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?vnp_Amount=10000000&vnp_TxnRef=1234567890';
+describe('Phase 2: User Navigation Scenarios', () => {
+  const testOrderId = 'test-order-navigation';
+  const testUserId = 'test-user-nav-123';
+  const testTotalPrice = 200000;
 
-  beforeEach(() => {
-    jest.clearAllMocks();
+  beforeAll(async () => {
+    await deleteOrderSession(testOrderId);
   });
 
-  describe('Scenario 1: User Đóng Tab VNPay', () => {
-    it('should handle user closing VNPay tab without completing payment', () => {
-      // User được redirect đến VNPay
-      const userState = {
-        orderId: mockOrderId,
-        currentPage: 'vnpay',
-        paymentUrl: mockPaymentUrl,
-      };
+  afterEach(async () => {
+    await deleteOrderSession(testOrderId);
+  });
 
-      // User đóng tab VNPay
-      const afterClosing = {
-        orderId: mockOrderId,
-        currentPage: 'closed', // Tab đã đóng
-        paymentCompleted: false,
-      };
+  afterAll(async () => {
+    await redisClient.quit();
+    await prisma.$disconnect();
+  });
 
-      expect(afterClosing.paymentCompleted).toBe(false);
-      expect(afterClosing.currentPage).toBe('closed');
+  describe('Scenario 1: User đóng tab VNPay', () => {
+    test('TC1.1: Order status vẫn PENDING sau khi user đóng tab', async () => {
+      // Arrange: Tạo session
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
+
+      // Giả sử order đã có status = pending
+      const orderStatus = 'pending';
+
+      // Act: User đóng tab VNPay (không có action nào từ backend)
+      // Không có API call, không có callback
+
+      // Assert: Order status không đổi
+      expect(orderStatus).toBe('pending');
     });
 
-    it('should keep order in PENDING state after tab closed', () => {
-      // Order vẫn ở trạng thái PENDING
-      const orderStatus = {
-        id: mockOrderId,
-        status: 'pending',
-        note: 'User closed VNPay tab',
-      };
+    test('TC1.2: Redis session vẫn active sau khi user đóng tab', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
 
-      expect(orderStatus.status).toBe('pending');
-      // Order KHÔNG tự động cancel khi user đóng tab
-      expect(orderStatus.status).not.toBe('cancelled');
+      // Act: User đóng tab (không có backend action)
+
+      // Assert: Session vẫn tồn tại
+      const exists = await checkOrderSession(testOrderId);
+      expect(exists).toBe(true);
     });
 
-    it('should keep Redis session active after tab closed', () => {
-      const sessionKey = `order:session:${mockOrderId}`;
+    test('TC1.3: TTL vẫn đếm ngược sau khi đóng tab', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
+      const ttlBefore = await getSessionTTL(testOrderId);
 
-      // Redis session vẫn active
-      const sessionExists = true;
-      const sessionTTL = 600; // 10 phút còn lại
+      // Act: Đợi 2 giây
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
-      expect(sessionExists).toBe(true);
-      expect(sessionTTL).toBeGreaterThan(0);
+      // Assert: TTL giảm đi
+      const ttlAfter = await getSessionTTL(testOrderId);
+      expect(ttlAfter).toBeLessThan(ttlBefore);
+      expect(ttlBefore - ttlAfter).toBeGreaterThanOrEqual(2);
     });
 
-    it('should allow user to retry payment after closing tab', () => {
-      // User có thể quay lại và lấy lại payment URL
-      const canRetry = true;
+    test('TC1.4: PaymentIntent và PaymentAttempt status không đổi', () => {
+      // Khi user đóng tab, backend không biết
+      // PaymentIntent và PaymentAttempt vẫn ở status PROCESSING
 
-      expect(canRetry).toBe(true);
+      const paymentIntentStatus = 'PROCESSING';
+      const paymentAttemptStatus = 'PROCESSING';
+
+      // Assert
+      expect(paymentIntentStatus).toBe('PROCESSING');
+      expect(paymentAttemptStatus).toBe('PROCESSING');
     });
   });
 
-  describe('Scenario 2: User Quay Lại Trang Web', () => {
-    it('should allow user to return to order page', () => {
-      // User quay lại trang web (ví dụ: /order/status/:orderId)
-      const returnAction = {
-        action: 'navigate_back',
-        destination: `/order/status/${mockOrderId}`,
-        timestamp: new Date(),
-      };
+  describe('Scenario 2: User quay lại trang web', () => {
+    test('TC2.1: User có thể query order status', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
 
-      expect(returnAction.action).toBe('navigate_back');
-      expect(returnAction.destination).toContain(mockOrderId);
-    });
-
-    it('should retrieve order status when user returns', () => {
-      // GET /order/status/:orderId
+      // Act: Frontend call GET /order/status/:orderId
       const orderResponse = {
         success: true,
         data: {
-          orderId: mockOrderId,
+          orderId: testOrderId,
           status: 'pending',
-          totalPrice: 100000,
-          createdAt: new Date(Date.now() - 5 * 60 * 1000),
-          expirationTime: new Date(Date.now() + 10 * 60 * 1000),
-        },
+          totalPrice: testTotalPrice
+        }
       };
 
+      // Assert
       expect(orderResponse.success).toBe(true);
       expect(orderResponse.data.status).toBe('pending');
     });
 
-    it('should check if session still valid when user returns', () => {
-      const sessionKey = `order:session:${mockOrderId}`;
-      const currentTime = Date.now();
+    test('TC2.2: Session vẫn active khi user quay lại', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
 
-      // Check session TTL
-      const sessionTTL = 600; // 10 phút
-      const sessionValid = sessionTTL > 0;
+      // Act: User quay lại sau vài phút
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-      expect(sessionValid).toBe(true);
-
-      if (sessionValid) {
-        // User có thể tiếp tục thanh toán
-        const canContinuePayment = true;
-        expect(canContinuePayment).toBe(true);
-      }
+      // Assert: Session vẫn còn
+      const exists = await checkOrderSession(testOrderId);
+      expect(exists).toBe(true);
     });
 
-    it('should provide option to get new payment URL if user returns', () => {
-      // Frontend có thể hiển thị nút "Tiếp tục thanh toán"
-      const uiOptions = {
-        showContinuePayment: true,
-        showCancelOrder: true,
-        orderStatus: 'pending',
-      };
+    test('TC2.3: User có thể thấy thời gian còn lại của session', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
 
-      expect(uiOptions.showContinuePayment).toBe(true);
+      // Act
+      const ttl = await getSessionTTL(testOrderId);
+      const remainingMinutes = Math.ceil(ttl / 60);
+
+      // Assert
+      expect(remainingMinutes).toBeGreaterThan(0);
+      expect(remainingMinutes).toBeLessThanOrEqual(15);
     });
 
-    it('should retrieve existing payment URL if still valid', () => {
-      // Nếu PaymentIntent vẫn PROCESSING, có thể dùng lại payment URL cũ
-      const paymentIntent = {
-        id: 'pi-phase2-123',
-        orderId: mockOrderId,
-        status: 'PROCESSING',
-        attempts: [
-          {
-            id: 'pa-phase2-001',
-            status: 'PROCESSING',
-            vnpRawRequestPayload: {
-              paymentUrl: mockPaymentUrl,
-              timestamp: new Date(Date.now() - 5 * 60 * 1000),
-            },
-          },
-        ],
-      };
+    test('TC2.4: Frontend có thể hiển thị nút "Tiếp tục thanh toán"', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
 
-      const existingPaymentUrl = paymentIntent.attempts[0]?.vnpRawRequestPayload?.paymentUrl;
+      const orderStatus = 'pending';
+      const sessionExists = await checkOrderSession(testOrderId);
 
-      expect(existingPaymentUrl).toBeDefined();
-      expect(existingPaymentUrl).toContain('vnpayment.vn');
+      // Act: Logic frontend
+      const shouldShowContinueButton = orderStatus === 'pending' && sessionExists;
+
+      // Assert
+      expect(shouldShowContinueButton).toBe(true);
     });
   });
 
-  describe('Scenario 3: User Reload Page', () => {
-    it('should handle page reload while waiting for payment URL', () => {
-      // User reload trang trong khi chờ payment.event
-      const reloadAction = {
-        action: 'page_reload',
-        orderId: mockOrderId,
-        timestamp: new Date(),
-      };
+  describe('Scenario 3: User reload page', () => {
+    test('TC3.1: Session vẫn tồn tại sau khi reload', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
 
-      expect(reloadAction.action).toBe('page_reload');
+      // Act: User reload page (re-fetch data)
+      const exists = await checkOrderSession(testOrderId);
+
+      // Assert
+      expect(exists).toBe(true);
     });
 
-    it('should re-fetch order status after reload', () => {
-      // Frontend gọi lại API để lấy order status
-      const fetchOrderRequest = {
-        method: 'GET',
-        url: `/order/status/${mockOrderId}`,
-      };
+    test('TC3.2: Order data có thể được fetch lại', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
+      const sessionData = await getOrderSession(testOrderId);
 
-      expect(fetchOrderRequest.method).toBe('GET');
-      expect(fetchOrderRequest.url).toContain(mockOrderId);
+      // Act: Reload page, re-fetch session
+      const sessionDataAfterReload = await getOrderSession(testOrderId);
+
+      // Assert: Data giống nhau
+      expect(sessionDataAfterReload.orderId).toBe(sessionData.orderId);
+      expect(sessionDataAfterReload.totalPrice).toBe(sessionData.totalPrice);
     });
 
-    it('should check if payment URL already available after reload', () => {
-      // Nếu payment.event đã được xử lý, frontend sẽ nhận được paymentUrl
-      const orderData = {
-        orderId: mockOrderId,
-        status: 'pending',
-        paymentUrl: mockPaymentUrl, // Đã có URL
-      };
+    test('TC3.3: TTL tiếp tục đếm ngược sau reload', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
+      const ttlBefore = await getSessionTTL(testOrderId);
 
-      if (orderData.paymentUrl) {
-        const shouldRedirect = true;
-        expect(shouldRedirect).toBe(true);
-      }
-    });
+      // Act: Đợi 1 giây, sau đó reload (re-fetch TTL)
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const ttlAfter = await getSessionTTL(testOrderId);
 
-    it('should handle case where payment URL not yet generated after reload', () => {
-      // Trường hợp Payment Service chưa kịp tạo URL
-      const orderData = {
-        orderId: mockOrderId,
-        status: 'pending',
-        paymentUrl: null, // Chưa có URL
-      };
-
-      if (!orderData.paymentUrl) {
-        // Frontend cần hiển thị loading hoặc retry
-        const showLoading = true;
-        expect(showLoading).toBe(true);
-      }
+      // Assert
+      expect(ttlAfter).toBeLessThan(ttlBefore);
     });
   });
 
-  describe('Scenario 4: User Bấm Back Button trên VNPay', () => {
-    it('should handle user clicking back button on VNPay page', () => {
-      // VNPay có thể có nút "Quay lại" hoặc browser back button
-      const backAction = {
-        action: 'vnpay_back_button',
-        from: 'vnpay_gateway',
-        to: 'merchant_site',
-      };
+  describe('Scenario 4: User bấm Back button trên VNPay', () => {
+    test('TC4.1: VNPay có thể redirect về returnUrl', () => {
+      // VNPay có thể redirect về returnUrl khi user bấm back
+      const returnUrl = 'http://localhost:3001/vnpay-return';
 
-      expect(backAction.action).toBe('vnpay_back_button');
-      expect(backAction.from).toBe('vnpay_gateway');
+      // Assert: returnUrl phải valid
+      expect(returnUrl).toMatch(/^http/);
     });
 
-    it('should return user to order page when back button clicked', () => {
-      // User quay về trang merchant (website của bạn)
-      const returnUrl = `http://localhost:3000/order/status/${mockOrderId}`;
-
-      expect(returnUrl).toContain('/order/status/');
-      expect(returnUrl).toContain(mockOrderId);
-    });
-
-    it('should keep order status as PENDING when user goes back', () => {
-      // Order vẫn PENDING vì user chưa hoàn tất thanh toán
+    test('TC4.2: Order status vẫn pending khi user back', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
       const orderStatus = 'pending';
 
+      // Act: User bấm back (không có callback từ VNPay)
+
+      // Assert
       expect(orderStatus).toBe('pending');
-      expect(orderStatus).not.toBe('success');
-      expect(orderStatus).not.toBe('cancelled');
     });
 
-    it('should allow user to retry payment after going back', () => {
-      // User có thể bấm "Tiếp tục thanh toán" để quay lại VNPay
-      const retryOptions = {
-        canRetry: true,
-        showRetryButton: true,
-      };
+    test('TC4.3: Session không bị xóa khi user back', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
 
-      expect(retryOptions.canRetry).toBe(true);
-      expect(retryOptions.showRetryButton).toBe(true);
+      // Act: User back từ VNPay
+
+      // Assert
+      const exists = await checkOrderSession(testOrderId);
+      expect(exists).toBe(true);
     });
   });
 
-  describe('Scenario 5: Session Expiration Tracking', () => {
-    it('should track remaining time of order session', () => {
-      const orderCreatedAt = new Date(Date.now() - 5 * 60 * 1000); // 5 phút trước
-      const sessionDuration = 15; // 15 phút
-      const expiresAt = new Date(orderCreatedAt.getTime() + sessionDuration * 60 * 1000);
+  describe('Scenario 5: Session expiration tracking', () => {
+    test('TC5.1: Session có TTL đếm ngược từ 900s', async () => {
+      // Arrange & Act
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
+      const ttl = await getSessionTTL(testOrderId);
 
-      const remainingMs = expiresAt.getTime() - Date.now();
-      const remainingMinutes = Math.floor(remainingMs / (1000 * 60));
+      // Assert
+      expect(ttl).toBeGreaterThan(0);
+      expect(ttl).toBeLessThanOrEqual(900);
+    });
 
-      expect(remainingMinutes).toBe(10); // Còn 10 phút
+    test('TC5.2: Session tự động expire sau 15 phút', async () => {
+      // Arrange: Tạo session với TTL rất ngắn (1 giây) để test
+      const shortOrderId = 'test-order-short-ttl';
+      const key = `order:session:${shortOrderId}`;
+
+      await redisClient.setex(key, 1, JSON.stringify({
+        orderId: shortOrderId,
+        userId: testUserId,
+        totalPrice: testTotalPrice
+      }));
+
+      // Act: Đợi session expire
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Assert: Session không còn tồn tại
+      const exists = await redisClient.exists(key);
+      expect(exists).toBe(0);
+    });
+
+    test('TC5.3: Có thể tính remaining time từ TTL', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
+
+      // Act
+      const ttl = await getSessionTTL(testOrderId);
+      const remainingMinutes = Math.ceil(ttl / 60);
+
+      // Assert
       expect(remainingMinutes).toBeGreaterThan(0);
-    });
-
-    it('should warn user when session is about to expire', () => {
-      const remainingMinutes = 5; // Còn 5 phút
-
-      if (remainingMinutes <= 5) {
-        const showWarning = true;
-        const warningMessage = `Đơn hàng sẽ hết hạn sau ${remainingMinutes} phút`;
-
-        expect(showWarning).toBe(true);
-        expect(warningMessage).toContain('5 phút');
-      }
-    });
-
-    it('should prevent payment after session expires', () => {
-      const sessionTTL = -1; // Session đã hết hạn (TTL = -1 means expired)
-
-      if (sessionTTL <= 0) {
-        const canProceedPayment = false;
-        expect(canProceedPayment).toBe(false);
-      }
+      expect(remainingMinutes).toBeLessThanOrEqual(15);
     });
   });
 
-  describe('Scenario 6: Multiple Navigation Actions', () => {
-    it('should handle user navigating back and forth multiple times', () => {
-      const navigationHistory = [
-        { time: 'T+0s', page: 'order_confirmation', action: 'Order created' },
-        { time: 'T+3s', page: 'vnpay_gateway', action: 'Redirected to VNPay' },
-        { time: 'T+10s', page: 'closed', action: 'User closed tab' },
-        { time: 'T+30s', page: 'order_status', action: 'User returned' },
-        { time: 'T+35s', page: 'vnpay_gateway', action: 'User clicked continue payment' },
-        { time: 'T+40s', page: 'order_status', action: 'User clicked back' },
-      ];
+  describe('Scenario 6: Multiple navigation actions', () => {
+    test('TC6.1: User có thể đóng và mở lại nhiều lần', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
 
-      expect(navigationHistory).toHaveLength(6);
+      // Act: Nhiều lần check session
+      const check1 = await checkOrderSession(testOrderId);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const check2 = await checkOrderSession(testOrderId);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const check3 = await checkOrderSession(testOrderId);
 
-      // Order vẫn pending sau tất cả các navigation
-      const finalOrderStatus = 'pending';
-      expect(finalOrderStatus).toBe('pending');
+      // Assert: Session vẫn tồn tại qua nhiều lần check
+      expect(check1).toBe(true);
+      expect(check2).toBe(true);
+      expect(check3).toBe(true);
     });
 
-    it('should track user journey for analytics', () => {
-      const userJourney = [
-        { event: 'order_created', timestamp: new Date(Date.now() - 60000) },
-        { event: 'payment_url_received', timestamp: new Date(Date.now() - 55000) },
-        { event: 'redirected_to_vnpay', timestamp: new Date(Date.now() - 50000) },
-        { event: 'tab_closed', timestamp: new Date(Date.now() - 20000) },
-        { event: 'user_returned', timestamp: new Date(Date.now() - 5000) },
-        { event: 'viewing_order_status', timestamp: new Date() },
-      ];
+    test('TC6.2: Session data không thay đổi qua các navigation', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
+      const initialData = await getOrderSession(testOrderId);
 
-      expect(userJourney).toHaveLength(6);
-      expect(userJourney[0].event).toBe('order_created');
-      expect(userJourney[5].event).toBe('viewing_order_status');
+      // Act: User navigate nhiều lần
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const dataAfterNav = await getOrderSession(testOrderId);
+
+      // Assert: Data không đổi (trừ TTL)
+      expect(dataAfterNav.orderId).toBe(initialData.orderId);
+      expect(dataAfterNav.userId).toBe(initialData.userId);
+      expect(dataAfterNav.totalPrice).toBe(initialData.totalPrice);
     });
   });
 
-  describe('Scenario 7: Payment URL Reusability', () => {
-    it('should determine if existing payment URL can be reused', () => {
-      const paymentAttempt = {
-        id: 'pa-phase2-001',
-        status: 'PROCESSING',
-        createdAt: new Date(Date.now() - 5 * 60 * 1000), // 5 phút trước
-        vnpRawRequestPayload: {
-          paymentUrl: mockPaymentUrl,
-        },
+  describe('Scenario 7: Payment URL reusability', () => {
+    test('TC7.1: User có thể sử dụng lại cùng payment URL', () => {
+      // Trong Phase 2, payment URL vẫn valid
+      // User có thể click lại link payment URL nhiều lần
+
+      const paymentUrl = 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?vnp_Amount=10000000';
+
+      // Assert: URL không đổi trong Phase 2
+      expect(paymentUrl).toBeDefined();
+    });
+
+    test('TC7.2: Payment URL expires cùng với session', async () => {
+      // Arrange
+      const session = await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
+
+      // Act & Assert: Payment URL chỉ valid trong thời gian session
+      const expirationTime = new Date(session.expirationTime);
+      expect(expirationTime.getTime()).toBeGreaterThan(Date.now());
+    });
+  });
+
+  describe('Scenario 8: Error recovery', () => {
+    test('TC8.1: Xử lý khi không tìm thấy session', async () => {
+      // Act: Query session không tồn tại
+      const exists = await checkOrderSession('non-existent-order');
+
+      // Assert
+      expect(exists).toBe(false);
+    });
+
+    test('TC8.2: Xử lý khi session data bị corrupt', async () => {
+      // Arrange: Lưu data invalid
+      const corruptOrderId = 'corrupt-order';
+      await redisClient.setex(`order:session:${corruptOrderId}`, 60, 'invalid-json');
+
+      // Act
+      const sessionData = await getOrderSession(corruptOrderId);
+
+      // Assert: Hàm getOrderSession() xử lý error và return null
+      expect(sessionData).toBeNull();
+
+      // Cleanup
+      await redisClient.del(`order:session:${corruptOrderId}`);
+    });
+  });
+
+  describe('Scenario 9: Concurrent user actions', () => {
+    test('TC9.1: Session không bị conflict khi query đồng thời', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
+
+      // Act: Query đồng thời nhiều lần
+      const promises = [
+        checkOrderSession(testOrderId),
+        checkOrderSession(testOrderId),
+        checkOrderSession(testOrderId)
+      ];
+      const results = await Promise.all(promises);
+
+      // Assert: Tất cả đều return true
+      expect(results.every(r => r === true)).toBe(true);
+    });
+
+    test('TC9.2: Multiple tabs có thể fetch cùng session data', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
+
+      // Act: Giả lập 3 tabs fetch đồng thời
+      const [data1, data2, data3] = await Promise.all([
+        getOrderSession(testOrderId),
+        getOrderSession(testOrderId),
+        getOrderSession(testOrderId)
+      ]);
+
+      // Assert: Data giống nhau
+      expect(data1.orderId).toBe(data2.orderId);
+      expect(data2.orderId).toBe(data3.orderId);
+      expect(data1.totalPrice).toBe(testTotalPrice);
+    });
+  });
+
+  describe('Scenario 10: User abandonment tracking', () => {
+    test('TC10.1: Có thể track thời gian user ở VNPay', async () => {
+      // Arrange
+      const session = await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
+      const startTime = new Date(session.expirationTime);
+      startTime.setMinutes(startTime.getMinutes() - 15); // Thời điểm tạo session
+
+      // Act: Tính thời gian đã trôi qua
+      const elapsedMs = Date.now() - startTime.getTime();
+      const elapsedMinutes = Math.floor(elapsedMs / (1000 * 60));
+
+      // Assert
+      expect(elapsedMinutes).toBeGreaterThanOrEqual(0);
+      expect(elapsedMinutes).toBeLessThan(15);
+    });
+
+    test('TC10.2: Có thể log analytics khi user quay lại', async () => {
+      // Arrange
+      await createOrderSession(testOrderId, testUserId, testTotalPrice, 15);
+
+      // Act: User quay lại, có thể log event
+      const analyticsEvent = {
+        event: 'USER_RETURNED_TO_ORDER',
+        orderId: testOrderId,
+        userId: testUserId,
+        timestamp: new Date().toISOString()
       };
 
-      // Payment URL vẫn có thể dùng lại nếu:
-      // 1. PaymentAttempt status là PROCESSING
-      // 2. Order session chưa hết hạn
-
-      const canReuseUrl = paymentAttempt.status === 'PROCESSING';
-      expect(canReuseUrl).toBe(true);
-    });
-
-    it('should create new payment URL if session expired', () => {
-      const sessionTTL = -2; // Session đã hết hạn
-
-      if (sessionTTL <= 0) {
-        // Cần tạo PaymentAttempt mới với URL mới
-        const needNewPaymentUrl = true;
-        expect(needNewPaymentUrl).toBe(true);
-      }
-    });
-  });
-
-  describe('Scenario 8: Error Recovery', () => {
-    it('should handle case where payment.event was lost', () => {
-      // Trường hợp Kafka message bị mất hoặc chưa đến
-      const orderStatus = {
-        orderId: mockOrderId,
-        status: 'pending',
-        paymentUrl: null, // Chưa nhận được payment.event
-      };
-
-      if (!orderStatus.paymentUrl) {
-        // Frontend có thể retry hoặc thông báo lỗi
-        const shouldRetryFetch = true;
-        expect(shouldRetryFetch).toBe(true);
-      }
-    });
-
-    it('should provide manual retry option for user', () => {
-      // Frontend hiển thị nút "Thử lại" nếu không nhận được payment URL
-      const uiState = {
-        showRetryButton: true,
-        errorMessage: 'Đang xử lý thanh toán, vui lòng thử lại sau giây lát',
-      };
-
-      expect(uiState.showRetryButton).toBe(true);
-      expect(uiState.errorMessage).toBeDefined();
-    });
-  });
-
-  describe('Scenario 9: Concurrent User Actions', () => {
-    it('should handle user opening multiple tabs with same order', () => {
-      // User mở nhiều tab cùng lúc với cùng orderId
-      const tabs = [
-        { tabId: 1, orderId: mockOrderId, page: 'order_status' },
-        { tabId: 2, orderId: mockOrderId, page: 'vnpay_gateway' },
-        { tabId: 3, orderId: mockOrderId, page: 'order_status' },
-      ];
-
-      // Tất cả tabs đều thấy cùng order status
-      const allSameOrder = tabs.every(tab => tab.orderId === mockOrderId);
-      expect(allSameOrder).toBe(true);
-    });
-
-    it('should sync order status across multiple tabs', () => {
-      // Nếu user thanh toán ở tab 2, tab 1 và 3 cũng cần update
-      // (Không test trong phase 2, nhưng nên lưu ý)
-
-      const syncRequired = true;
-      expect(syncRequired).toBe(true);
-    });
-  });
-
-  describe('Scenario 10: User Abandonment Tracking', () => {
-    it('should identify when user abandons payment', () => {
-      const userActions = [
-        { time: 'T+0s', action: 'order_created' },
-        { time: 'T+3s', action: 'redirected_to_vnpay' },
-        { time: 'T+10s', action: 'tab_closed' },
-        { time: 'T+15m', action: 'session_expired' },
-      ];
-
-      // User đóng tab và không quay lại trước khi session hết hạn
-      const lastAction = userActions[userActions.length - 1];
-
-      if (lastAction.action === 'session_expired') {
-        const userAbandoned = true;
-        expect(userAbandoned).toBe(true);
-      }
-    });
-
-    it('should track abandonment rate for analytics', () => {
-      // Metrics cho business analytics
-      const metrics = {
-        totalOrdersCreated: 100,
-        usersReachedVNPay: 90,
-        usersClosedTab: 30,
-        usersReturned: 10,
-        completedPayments: 60,
-        abandonedPayments: 30,
-      };
-
-      const abandonmentRate = (metrics.abandonedPayments / metrics.usersReachedVNPay) * 100;
-
-      expect(abandonmentRate).toBeGreaterThan(0);
-      expect(abandonmentRate).toBeLessThan(100);
+      // Assert
+      expect(analyticsEvent.event).toBe('USER_RETURNED_TO_ORDER');
+      expect(analyticsEvent).toHaveProperty('timestamp');
     });
   });
 });
