@@ -3,6 +3,13 @@
  * Cleaned by ChatGPT — focus: Redis session, retry conditions, and (if available) handlePaymentEvent.
  */
 
+// Unmock Prisma và Kafka cho integration test
+jest.unmock('../../../src/lib/prisma');
+jest.unmock('../../../src/utils/kafka');
+
+// Set NODE_ENV=test để auto-detect localhost
+process.env.NODE_ENV = 'test';
+
 import prisma from '../../../src/lib/prisma';
 import redisClient from '../../../src/lib/redis';
 import {
@@ -25,7 +32,7 @@ let handlePaymentEvent:
     | undefined;
 
 beforeAll(async () => {
-    // Try to import the real handler; if not found we’ll skip related tests.
+    // Try to import the real handler; if not found we'll skip related tests.
     try {
         // eslint-disable-next-line @typescript-eslint/consistent-type-imports
         const mod: typeof import('../../../src/utils/kafka') = await import('../../../src/utils/kafka');
@@ -58,28 +65,23 @@ async function ensureOrderDeleted(id: string) {
 
 async function createOrder(id: string, status: OrderStatus = 'pending') {
     await ensureOrderDeleted(id);
-    try {
-        console.log(`Creating order with id: ${id}, status: ${status}`);
-        const order = await prisma.order.create({
-            data: {
-                id,
-                userId: testUserId,
-                totalPrice: testTotalPrice,
-                deliveryAddress: '123 Test St',
-                contactPhone: '0123456789',
-                status,
-                expirationTime: new Date(Date.now() + 15 * 60 * 1000),
-            },
-        });
-        console.log(`Order created:`, order);
-        if (!order) {
-            throw new Error(`Failed to create order ${id} - order is ${order}`);
-        }
-        return order;
-    } catch (error) {
-        console.error(`Error creating order ${id}:`, error);
-        throw error;
+    const order = await prisma.order.create({
+        data: {
+            id,
+            userId: testUserId,
+            totalPrice: testTotalPrice,
+            deliveryAddress: '123 Test St',
+            contactPhone: '0123456789',
+            status,
+            expirationTime: new Date(Date.now() + 15 * 60 * 1000),
+        },
+    });
+
+    if (!order) {
+        throw new Error(`Failed to create order ${id}`);
     }
+
+    return order;
 }
 
 /* =============================================================
@@ -159,8 +161,6 @@ describe('Scenario 1: Redis Session Management', () => {
  * (skip if handler is not available)
  * ===========================================================*/
 describe('Scenario 2: Session Deletion Rules (handlePaymentEvent)', () => {
-    const maybe = handlePaymentEvent ? test : test.skip;
-
     test('TC2.1: Không xoá session khi paymentStatus=pending', async () => {
         const orderId = newId('pending');
         const order = await createOrder(orderId, 'pending');
@@ -179,7 +179,7 @@ describe('Scenario 2: Session Deletion Rules (handlePaymentEvent)', () => {
         await ensureOrderDeleted(order.id);
     });
 
-    maybe('TC2.2: Xoá session khi paymentStatus=success', async () => {
+    test('TC2.2: Xoá session khi paymentStatus=success', async () => {
         const orderId = newId('success');
         const order = await createOrder(orderId, 'pending');
         await createOrderSession(order.id, testUserId, testTotalPrice, 15);
@@ -198,7 +198,7 @@ describe('Scenario 2: Session Deletion Rules (handlePaymentEvent)', () => {
         await ensureOrderDeleted(order.id);
     });
 
-    maybe('TC2.3: Xoá session khi paymentStatus=failed (cancelled)', async () => {
+    test('TC2.3: Xoá session khi paymentStatus=failed (cancelled)', async () => {
         const orderId = newId('failed');
         const order = await createOrder(orderId, 'pending');
         await createOrderSession(order.id, testUserId, testTotalPrice, 15);
@@ -278,55 +278,259 @@ describe('Scenario 3: Retry Payment Conditions', () => {
 });
 
 /* =============================================================
- * Scenario 4: Retry Event Payload (struct only)
+ * Scenario 4: Retry Payment Controller - TEST HÀM THẬT
+ * Test hàm retryPayment() từ controller với các tình huống thực tế
  * ===========================================================*/
-describe('Scenario 4: Retry Event Payload', () => {
-    test('TC4.1: Retry payload có flag isRetry=true', async () => {
-        const orderId = newId('retry-payload');
-        await createOrderSession(orderId, testUserId, testTotalPrice, 15);
+describe('Scenario 4: Retry Payment Controller - TEST HÀM THẬT', () => {
+    let retryPayment: any;
+    let mockReq: any;
+    let mockRes: any;
+    let originalPublishRetryPaymentEvent: any;
 
-        const retryPayload = {
-            orderId,
-            userId: testUserId,
-            totalPrice: testTotalPrice,
-            items: [{ productId: 'p1', productName: 'Product 1', productPrice: 250000, quantity: 1 }],
-            isRetry: true,
-            expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-            timestamp: new Date().toISOString(),
-        };
+    beforeAll(async () => {
+        try {
+            const controller = await import('../../../src/controllers/order');
+            retryPayment = controller.retryPayment;
 
-        expect(retryPayload.isRetry).toBe(true);
-        expect(retryPayload).toHaveProperty('orderId');
-
-        await deleteOrderSession(orderId);
+            // Mock Kafka publisher để tránh timeout
+            const kafkaModule = require('../../../src/utils/kafka');
+            originalPublishRetryPaymentEvent = kafkaModule.publishRetryPaymentEvent;
+            kafkaModule.publishRetryPaymentEvent = jest.fn().mockResolvedValue(undefined);
+        } catch (error) {
+            console.error('Cannot import retryPayment controller:', error);
+        }
     });
 
-    test('TC4.2: Topic cho retry là order.retry.payment', () => {
-        const topic = 'order.retry.payment';
-        expect(topic).toBe('order.retry.payment');
+    afterAll(() => {
+        // Restore original Kafka publisher
+        if (originalPublishRetryPaymentEvent) {
+            const kafkaModule = require('../../../src/utils/kafka');
+            kafkaModule.publishRetryPaymentEvent = originalPublishRetryPaymentEvent;
+        }
     });
 
-    test('TC4.3: Retry payload chứa thông tin order đầy đủ', async () => {
-        const orderId = newId('retry-payload-full');
-        await createOrderSession(orderId, testUserId, testTotalPrice, 15);
-        const sessionData = await getOrderSession(orderId);
-
-        const retryPayload = {
-            orderId,
-            userId: testUserId,
-            totalPrice: testTotalPrice,
-            items: [],
-            isRetry: true,
-            expiresAt: sessionData?.expirationTime,
-            timestamp: new Date().toISOString(),
+    beforeEach(() => {
+        // Mock Express Request và Response
+        mockReq = {
+            user: { id: testUserId },
+            params: {},
+            body: {},
+            headers: {}
         };
 
-        expect(retryPayload.orderId).toBe(orderId);
-        expect(retryPayload.userId).toBe(testUserId);
-        expect(retryPayload.totalPrice).toBe(testTotalPrice);
-        expect(retryPayload.isRetry).toBe(true);
+        mockRes = {
+            status: jest.fn().mockReturnThis(),
+            json: jest.fn().mockReturnThis()
+        };
+    });
 
-        await deleteOrderSession(orderId);
+    test('TC4.1: Retry thành công khi order PENDING và session CÒN TỒN TẠI', async () => {
+        if (!retryPayment) {
+            console.warn('retryPayment not available, skipping test');
+            return;
+        }
+
+        // Arrange: Tạo order pending với session
+        const orderId = newId('retry-success');
+        const order = await createOrder(orderId, 'pending');
+        await createOrderSession(order.id, testUserId, testTotalPrice, 15);
+
+        mockReq.params.orderId = order.id;
+
+        // Act: Gọi hàm retryPayment thật
+        await retryPayment(mockReq, mockRes);
+
+        // Assert: Kiểm tra response
+        expect(mockRes.status).toHaveBeenCalledWith(200);
+        expect(mockRes.json).toHaveBeenCalledWith(
+            expect.objectContaining({
+                success: true,
+                message: expect.stringContaining('Đang xử lý thanh toán lại'),
+                data: expect.objectContaining({
+                    orderId: order.id,
+                    status: 'pending',
+                    retryInitiated: true,
+                    sessionRemainingMinutes: expect.any(Number)
+                })
+            })
+        );
+
+        // Verify session vẫn còn tồn tại (không bị xóa khi retry)
+        const sessionExists = await checkOrderSession(order.id);
+        expect(sessionExists).toBe(true);
+
+        // Cleanup
+        await deleteOrderSession(order.id);
+        await ensureOrderDeleted(order.id);
+    });
+
+    test('TC4.2: Retry THẤT BẠI khi session ĐÃ HẾT HẠN', async () => {
+        if (!retryPayment) {
+            console.warn('retryPayment not available, skipping test');
+            return;
+        }
+
+        // Arrange: Tạo order pending nhưng KHÔNG có session (đã hết hạn)
+        const orderId = newId('retry-expired');
+        const order = await createOrder(orderId, 'pending');
+        // KHÔNG tạo session => giả lập session đã hết hạn
+
+        mockReq.params.orderId = order.id;
+
+        // Act: Gọi hàm retryPayment thật
+        await retryPayment(mockReq, mockRes);
+
+        // Assert: Phải trả về lỗi SESSION_EXPIRED
+        expect(mockRes.status).toHaveBeenCalledWith(400);
+        expect(mockRes.json).toHaveBeenCalledWith(
+            expect.objectContaining({
+                success: false,
+                message: expect.stringContaining('Phiên thanh toán đã hết hạn'),
+                error: 'SESSION_EXPIRED'
+            })
+        );
+
+        // Verify order được chuyển sang cancelled
+        const updatedOrder = await prisma.order.findUnique({ where: { id: order.id } });
+        expect(updatedOrder?.status).toBe('cancelled');
+
+        // Cleanup
+        await ensureOrderDeleted(order.id);
+    });
+
+    test('TC4.3: Retry THẤT BẠI khi order đã SUCCESS', async () => {
+        if (!retryPayment) {
+            console.warn('retryPayment not available, skipping test');
+            return;
+        }
+
+        // Arrange: Tạo order đã SUCCESS
+        const orderId = newId('retry-already-success');
+        const order = await createOrder(orderId, 'success');
+
+        mockReq.params.orderId = order.id;
+
+        // Act: Gọi hàm retryPayment thật
+        await retryPayment(mockReq, mockRes);
+
+        // Assert: Phải trả về lỗi đã thanh toán
+        expect(mockRes.status).toHaveBeenCalledWith(400);
+        expect(mockRes.json).toHaveBeenCalledWith(
+            expect.objectContaining({
+                success: false,
+                message: expect.stringContaining('Đơn hàng đã được thanh toán thành công')
+            })
+        );
+
+        // Cleanup
+        await ensureOrderDeleted(order.id);
+    });
+
+    test('TC4.4: Retry THẤT BẠI khi order đã CANCELLED', async () => {
+        if (!retryPayment) {
+            console.warn('retryPayment not available, skipping test');
+            return;
+        }
+
+        // Arrange: Tạo order đã CANCELLED
+        const orderId = newId('retry-cancelled');
+        const order = await createOrder(orderId, 'cancelled');
+
+        mockReq.params.orderId = order.id;
+
+        // Act: Gọi hàm retryPayment thật
+        await retryPayment(mockReq, mockRes);
+
+        // Assert: Phải trả về lỗi ORDER_NOT_PENDING
+        expect(mockRes.status).toHaveBeenCalledWith(400);
+        expect(mockRes.json).toHaveBeenCalledWith(
+            expect.objectContaining({
+                success: false,
+                message: expect.stringContaining('không ở trạng thái chờ thanh toán'),
+                error: 'ORDER_NOT_PENDING'
+            })
+        );
+
+        // Cleanup
+        await ensureOrderDeleted(order.id);
+    });
+
+    test('TC4.5: Retry THẤT BẠI khi TTL <= 0 (session sắp hết hạn)', async () => {
+        if (!retryPayment) {
+            console.warn('retryPayment not available, skipping test');
+            return;
+        }
+
+        // Arrange: Tạo order với session có TTL rất ngắn
+        const orderId = newId('retry-ttl-zero');
+        const order = await createOrder(orderId, 'pending');
+
+        // Tạo session với TTL 1 giây
+        await createOrderSession(order.id, testUserId, testTotalPrice, 1/60); // 1 giây = 1/60 phút
+
+        // Đợi session hết hạn
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        mockReq.params.orderId = order.id;
+
+        // Act: Gọi hàm retryPayment thật
+        await retryPayment(mockReq, mockRes);
+
+        // Assert: Phải trả về lỗi 400
+        // Có thể là SESSION_EXPIRED hoặc ORDER_NOT_PENDING (nếu cron job đã chuyển sang cancelled)
+        expect(mockRes.status).toHaveBeenCalledWith(400);
+        expect(mockRes.json).toHaveBeenCalledWith(
+            expect.objectContaining({
+                success: false,
+                message: expect.any(String),
+                error: expect.stringMatching(/SESSION_EXPIRED|ORDER_NOT_PENDING/)
+            })
+        );
+
+        // Cleanup
+        await ensureOrderDeleted(order.id);
+    });
+
+    test('TC4.6: Verify publishRetryPaymentEvent được gọi với đúng payload', async () => {
+        if (!retryPayment) {
+            console.warn('retryPayment not available, skipping test');
+            return;
+        }
+
+        // Arrange: Mock publishRetryPaymentEvent để spy
+        const kafkaModule = require('../../../src/utils/kafka');
+        const originalPublish = kafkaModule.publishRetryPaymentEvent;
+        const mockPublish = jest.fn().mockResolvedValue(undefined);
+        kafkaModule.publishRetryPaymentEvent = mockPublish;
+
+        const orderId = newId('retry-verify-event');
+        const order = await createOrder(orderId, 'pending');
+        await createOrderSession(order.id, testUserId, testTotalPrice, 15);
+
+        mockReq.params.orderId = order.id;
+
+        // Act: Gọi hàm retryPayment thật
+        await retryPayment(mockReq, mockRes);
+
+        // Assert: Verify publishRetryPaymentEvent được gọi với đúng payload
+        expect(mockPublish).toHaveBeenCalledWith(
+            expect.objectContaining({
+                orderId: order.id,
+                userId: testUserId,
+                totalPrice: testTotalPrice,
+                isRetry: true, // Đây là điểm quan trọng - flag isRetry phải được set
+                items: expect.any(Array),
+                expiresAt: expect.any(String),
+                timestamp: expect.any(String)
+            })
+        );
+
+        // Restore original function
+        kafkaModule.publishRetryPaymentEvent = originalPublish;
+
+        // Cleanup
+        await deleteOrderSession(order.id);
+        await ensureOrderDeleted(order.id);
     });
 });
 
@@ -374,3 +578,4 @@ describe('Scenario 5: Session TTL behaviors', () => {
         expect(existsAfter).toBe(0);
     });
 });
+
