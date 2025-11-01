@@ -1,6 +1,8 @@
 "use client";
 
 import React, { createContext, useContext, useReducer, type ReactNode } from 'react';
+import { cartService } from '@/services/cart.service';
+import { toast } from 'sonner';
 
 interface CartItem {
   id: string;
@@ -186,37 +188,134 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 export function CartProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(cartReducer, initialState);
 
-  const addItem = (item: Omit<CartItem, 'quantity'>, restaurant: Restaurant) => {
+  const addItem = async (item: Omit<CartItem, 'quantity'>, restaurant: Restaurant) => {
+    const token = localStorage.getItem('token');
+
     // Nếu đang có giỏ hàng từ nhà hàng khác, hiện thông báo xác nhận
     if (state.restaurant && state.restaurant.id !== restaurant.id && state.items.length > 0) {
       const confirmChange = window.confirm(
         `Bạn có muốn xóa giỏ hàng hiện tại từ "${state.restaurant.name}" và tạo giỏ hàng mới từ "${restaurant.name}" không?`
       );
 
-      if (confirmChange) {
-        dispatch({
-          type: 'CHANGE_RESTAURANT',
-          payload: { restaurant, item }
-        });
+      if (!confirmChange) {
+        return;
       }
+
+      // Nếu có token, xóa giỏ hàng cũ trên backend
+      if (token) {
+        try {
+          await cartService.clearCart(state.restaurant.id);
+        } catch (error) {
+          console.error('Error clearing old cart:', error);
+        }
+      }
+
+      // Nếu có token, đồng bộ với backend
+      if (token) {
+        try {
+          await cartService.addToCart({
+            restaurantId: restaurant.id,
+            productId: item.id,
+            quantity: 1,
+            productName: item.name,
+            productPrice: item.price,
+            productImage: item.imageUrl,
+          });
+        } catch (error: any) {
+          console.error('Error syncing cart to backend:', error);
+        }
+      }
+
+      // Cập nhật local state
+      dispatch({
+        type: 'CHANGE_RESTAURANT',
+        payload: { restaurant, item }
+      });
+      toast.success('Đã thêm vào giỏ hàng');
     } else {
+      // Cùng nhà hàng hoặc giỏ hàng rỗng
+
+      // Nếu có token, đồng bộ với backend
+      if (token) {
+        try {
+          await cartService.addToCart({
+            restaurantId: restaurant.id,
+            productId: item.id,
+            quantity: 1,
+            productName: item.name,
+            productPrice: item.price,
+            productImage: item.imageUrl,
+          });
+        } catch (error: any) {
+          console.error('Error syncing cart to backend:', error);
+        }
+      }
+
+      // Cập nhật local state
       dispatch({
         type: 'ADD_ITEM',
         payload: { item, restaurant }
       });
+      toast.success('Đã thêm vào giỏ hàng');
     }
   };
 
-  const removeItem = (id: string) => {
+  const removeItem = async (id: string) => {
+    if (!state.restaurant) return;
+
+    const token = localStorage.getItem('token');
+
+    // Nếu có token, đồng bộ với backend
+    if (token) {
+      try {
+        await cartService.removeFromCart(state.restaurant.id, id);
+      } catch (error: any) {
+        console.error('Error syncing remove to backend:', error);
+      }
+    }
+
+    // Cập nhật local state
     dispatch({ type: 'REMOVE_ITEM', payload: { id } });
+    toast.success('Đã xóa khỏi giỏ hàng');
   };
 
-  const updateQuantity = (id: string, quantity: number) => {
+  const updateQuantity = async (id: string, quantity: number) => {
+    if (!state.restaurant) return;
+
+    const token = localStorage.getItem('token');
+
+    // Nếu có token, đồng bộ với backend
+    if (token) {
+      try {
+        if (quantity <= 0) {
+          await cartService.removeFromCart(state.restaurant.id, id);
+        } else {
+          await cartService.updateQuantity(state.restaurant.id, id, quantity);
+        }
+      } catch (error: any) {
+        console.error('Error syncing quantity to backend:', error);
+      }
+    }
+
+    // Cập nhật local state
     dispatch({ type: 'UPDATE_QUANTITY', payload: { id, quantity } });
   };
 
-  const clearCart = () => {
+  const clearCart = async () => {
+    const token = localStorage.getItem('token');
+
+    // Nếu có token và có restaurant, đồng bộ với backend
+    if (token && state.restaurant) {
+      try {
+        await cartService.clearCart(state.restaurant.id);
+      } catch (error: any) {
+        console.error('Error syncing clear to backend:', error);
+      }
+    }
+
+    // Cập nhật local state
     dispatch({ type: 'CLEAR_CART' });
+    toast.success('Đã xóa giỏ hàng');
   };
 
   const toggleCart = () => {
@@ -269,3 +368,4 @@ export function useCart() {
   }
   return context;
 }
+

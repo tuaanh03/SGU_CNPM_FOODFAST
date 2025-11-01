@@ -2,7 +2,8 @@
 // Khi chạy trong Docker, Nginx sẽ proxy /api/* tới api-gateway
 // Khi chạy local dev, sẽ dùng localhost:3000
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+// @ts-ignore - Vite env
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
 
 export const API_CONFIG = {
   baseURL: API_BASE_URL,
