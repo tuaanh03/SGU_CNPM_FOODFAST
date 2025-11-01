@@ -22,7 +22,12 @@ server.use(
 server.use(morgan("dev"));
 
 // Routes
+// VNPay callbacks được gọi trực tiếp không qua /api prefix
 server.use("/", paymentRoute);
+
+// API endpoints được gọi qua /api/payment prefix từ Gateway
+// Gateway sẽ remove /api và gửi /payment/xxx đến đây
+server.use("/payment", paymentRoute);
 
 // Health Check Route
 server.get("/", (req: Request, res: Response) => {

@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { publishEvent } from "../utils/kafka";
 import { vnpay } from "../utils/vnpay";
+import prisma from "../lib/prisma";
 import {
     IpnFailChecksum,
     IpnOrderNotFound,
@@ -132,6 +133,95 @@ export const vnpayReturn = async (req: Request, res: Response) => {
     } catch (error) {
         console.error("Error processing VNPay Return callback:", error);
         res.redirect(`${frontendUrl}/payment-result?status=error&message=processing_error`);
+    }
+};
+
+/**
+ * API để lấy payment URL của một order
+ * Frontend sẽ gọi API này sau khi tạo order để lấy payment URL và redirect
+ */
+export const getPaymentUrl = async (req: Request, res: Response) => {
+    try {
+        const { orderId } = req.params;
+
+        if (!orderId) {
+            return res.status(400).json({
+                success: false,
+                message: "orderId là bắt buộc"
+            });
+        }
+
+        console.log(`Getting payment URL for order: ${orderId}`);
+
+        // Tìm PaymentIntent của order
+        const paymentIntent = await prisma.paymentIntent.findUnique({
+            where: { orderId },
+            include: {
+                attempts: {
+                    where: {
+                        status: {
+                            in: ["PROCESSING", "CREATED"]
+                        }
+                    },
+                    orderBy: {
+                        createdAt: 'desc'
+                    },
+                    take: 1
+                }
+            }
+        });
+
+        if (!paymentIntent) {
+            return res.status(404).json({
+                success: false,
+                message: "Không tìm thấy thông tin thanh toán cho đơn hàng này"
+            });
+        }
+
+        // Kiểm tra nếu payment đã thành công
+        if (paymentIntent.status === "SUCCEEDED") {
+            return res.status(200).json({
+                success: true,
+                status: "SUCCEEDED",
+                message: "Đơn hàng đã được thanh toán thành công"
+            });
+        }
+
+        // Kiểm tra nếu có PaymentAttempt đang PROCESSING
+        if (paymentIntent.attempts && paymentIntent.attempts.length > 0) {
+            const latestAttempt = paymentIntent.attempts[0];
+
+            // Lấy payment URL từ vnpRawRequestPayload
+            const rawPayload = latestAttempt.vnpRawRequestPayload as any;
+            const paymentUrl = rawPayload?.paymentUrl;
+
+            if (paymentUrl) {
+                console.log(`✅ Found payment URL for order ${orderId}: ${paymentUrl}`);
+
+                return res.status(200).json({
+                    success: true,
+                    status: paymentIntent.status,
+                    paymentUrl,
+                    paymentIntentId: paymentIntent.id,
+                    paymentAttemptId: latestAttempt.id,
+                    amount: latestAttempt.amount
+                });
+            }
+        }
+
+        // Nếu chưa có payment URL, có thể payment service đang xử lý
+        return res.status(202).json({
+            success: false,
+            status: paymentIntent.status,
+            message: "Đang xử lý thanh toán, vui lòng thử lại sau"
+        });
+
+    } catch (error: any) {
+        console.error("Error getting payment URL:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Lỗi khi lấy thông tin thanh toán"
+        });
     }
 };
 

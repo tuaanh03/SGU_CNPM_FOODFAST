@@ -9,4 +9,5 @@ orderRoute.post("/create-from-cart", authMiddleware, createOrderFromCart); // Wo
 orderRoute.get("/status/:orderId", authMiddleware, getOrderStatus);
 orderRoute.get("/payment-url/:orderId", authMiddleware, getPaymentUrl);
 orderRoute.get("/list", authMiddleware, getUserOrders);
+orderRoute.get("/my-orders", authMiddleware, getUserOrders); // Alias cho /list
 orderRoute.post("/retry-payment/:orderId", authMiddleware, retryPayment); // Retry payment

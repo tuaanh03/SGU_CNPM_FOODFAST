@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { MapPin, Phone, Store, ShoppingBag, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { orderService } from "@/services/order.service";
+import { paymentService } from "@/services/payment.service";
 
 const CheckoutPage = () => {
   const navigate = useNavigate();
@@ -73,7 +74,7 @@ const CheckoutPage = () => {
 
     setLoading(true);
     try {
-      // Gọi API tạo order từ cart qua API Gateway
+      // Bước 1: Tạo order từ cart qua API Gateway
       const response = await orderService.createOrderFromCart({
         storeId: state.restaurant.id,
         deliveryAddress: formData.deliveryAddress,
@@ -82,13 +83,33 @@ const CheckoutPage = () => {
       });
 
       if (response.success) {
-        toast.success("Đặt hàng thành công! Đang chuyển đến trang thanh toán...");
+        const orderId = response.data.orderId;
+        toast.success("Đặt hàng thành công! Đang lấy thông tin thanh toán...");
 
-        // Backend sẽ tự động xử lý qua Kafka và tạo payment URL
-        // Sau 2 giây, chuyển đến trang my-orders
-        setTimeout(() => {
-          navigate("/my-orders");
-        }, 2000);
+        // Bước 2: Poll để lấy payment URL từ Payment Service
+        try {
+          const paymentUrlResponse = await paymentService.getPaymentUrl(orderId, 15, 1000);
+
+          if (paymentUrlResponse.success && paymentUrlResponse.paymentUrl) {
+            toast.success("Đang chuyển đến trang thanh toán VNPay...");
+
+            // Redirect đến VNPay payment URL
+            window.location.href = paymentUrlResponse.paymentUrl;
+          } else if (paymentUrlResponse.status === "SUCCEEDED") {
+            toast.success("Đơn hàng đã được thanh toán thành công!");
+            navigate("/my-orders");
+          } else {
+            throw new Error(paymentUrlResponse.message || "Không thể lấy thông tin thanh toán");
+          }
+        } catch (paymentError: any) {
+          console.error("Error getting payment URL:", paymentError);
+          toast.error(paymentError.message || "Không thể lấy thông tin thanh toán. Vui lòng xem đơn hàng trong mục 'Đơn hàng của tôi'");
+
+          // Vẫn chuyển đến my-orders để user có thể retry payment
+          setTimeout(() => {
+            navigate("/my-orders");
+          }, 2000);
+        }
       }
     } catch (error: any) {
       console.error("Error placing order:", error);

@@ -378,33 +378,35 @@ export const getUserOrders = async (
             })
         ]);
 
+        const ordersData = orders.map((order: any) => ({
+            id: order.id,
+            orderId: order.id,
+            status: order.status,
+            totalPrice: order.totalPrice,
+            deliveryAddress: order.deliveryAddress,
+            contactPhone: order.contactPhone,
+            note: order.note,
+            expirationTime: order.expirationTime,
+            itemsCount: order.items.length,
+            items: order.items.map((item: any) => ({
+                productId: item.productId,
+                productName: item.productName,
+                productPrice: item.productPrice,
+                quantity: item.quantity,
+                subtotal: item.productPrice * item.quantity
+            })),
+            createdAt: order.createdAt,
+            updatedAt: order.updatedAt
+        }));
+
         res.status(200).json({
             success: true,
-            data: {
-                orders: orders.map((order: any) => ({
-                    orderId: order.id,
-                    status: order.status,
-                    totalPrice: order.totalPrice,
-                    deliveryAddress: order.deliveryAddress,
-                    contactPhone: order.contactPhone,
-                    note: order.note,
-                    itemsCount: order.items.length,
-                    items: order.items.map((item: any) => ({
-                        productId: item.productId,
-                        productName: item.productName,
-                        productPrice: item.productPrice,
-                        quantity: item.quantity,
-                        subtotal: item.productPrice * item.quantity
-                    })),
-                    createdAt: order.createdAt,
-                    updatedAt: order.updatedAt
-                })),
-                pagination: {
-                    page: Number(page),
-                    limit: Number(limit),
-                    total,
-                    totalPages: Math.ceil(total / Number(limit))
-                }
+            data: ordersData,
+            pagination: {
+                page: Number(page),
+                limit: Number(limit),
+                total,
+                totalPages: Math.ceil(total / Number(limit))
             },
             message: "Lấy danh sách đơn hàng thành công"
         });

@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { vnpayReturn, vnpayIPN } from "../controllers/payment";
+import { vnpayReturn, vnpayIPN, getPaymentUrl } from "../controllers/payment";
 
 export const paymentRoute: Router = Router();
 
@@ -13,4 +13,7 @@ paymentRoute.get("/vnpay_return", asyncHandler(vnpayReturn));
 
 // VNPAY IPN handler - Server-to-server notification từ VNPay
 paymentRoute.get("/vnpay_ipn", asyncHandler(vnpayIPN));
+
+// API để lấy payment URL của order - Frontend sẽ poll endpoint này
+paymentRoute.get("/payment-url/:orderId", asyncHandler(getPaymentUrl));
 
