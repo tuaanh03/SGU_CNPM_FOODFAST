@@ -12,7 +12,7 @@ interface AuthenticatedRequest extends Request {
     params: any;
 }
 
-
+//okorder
 
 // Helper function để tính tổng tiền từ Product Service
 async function calculateOrderAmount(items: any[]): Promise<{ totalPrice: number; validItems: any[] }> {
