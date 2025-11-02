@@ -80,7 +80,7 @@ jobs:
         service:
           - api-gateway
           - user-service
-          - order-service
+#          - order-service
           - product-service
           - payment-service
           - notification-service
