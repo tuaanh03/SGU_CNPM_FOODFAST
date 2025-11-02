@@ -36,6 +36,10 @@ jobs:
         working-directory: ./backend/services/${{ matrix.service }}
         run: pnpm install --frozen-lockfile
 
+      - name: Generate Prisma Client
+        working-directory: ./backend/services/${{ matrix.service }}
+        run: pnpm prisma generate
+
       - name: Run tests
         working-directory: ./backend/services/${{ matrix.service }}
         run: pnpm test
