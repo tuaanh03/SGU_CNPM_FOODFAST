@@ -8,8 +8,7 @@ import CartDrawer from "@/components/CartDrawer";
 import { useParams } from "react-router";
 import axios from "axios";
 import { toast } from "sonner";
-
-const API_BASE = "http://localhost:3000"; // API Gateway
+import API_BASE_URL from "@/config/api";
 
 // Types matching backend responses
 interface StoreDetail {
@@ -64,8 +63,8 @@ const RestaurantDetailPage = () => {
       try {
         setLoading(true);
         const [storeRes, productsRes] = await Promise.all([
-          axios.get<StoreDetailResponse>(`${API_BASE}/api/stores/${id}`),
-          axios.get<ProductsResponse>(`${API_BASE}/api/products`, { params: { storeId: id } }),
+          axios.get<StoreDetailResponse>(`${API_BASE_URL}/stores/${id}`),
+          axios.get<ProductsResponse>(`${API_BASE_URL}/products`, { params: { storeId: id } }),
         ]);
 
         if (storeRes.data.success && storeRes.data.data) {

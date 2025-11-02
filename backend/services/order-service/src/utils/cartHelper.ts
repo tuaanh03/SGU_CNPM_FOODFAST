@@ -12,8 +12,15 @@ interface CartResponse {
     items: Array<{
       productId: string;
       quantity: number;
+      name?: string;
+      price?: number;
+      image?: string;
+      subtotal?: number;
     }>;
     restaurantId: string;
+    totalItems?: number;
+    totalAmount?: number;
+    metadata?: any;
   };
   message?: string;
 }

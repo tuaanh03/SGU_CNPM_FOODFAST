@@ -121,7 +121,6 @@ const CartDrawer = ({ isOpen, onClose }: CartDrawerProps) => {
 
               {/* Delivery Info */}
               <div className="text-sm text-muted-foreground">
-                <p>• Phí giao hàng: 15.000đ</p>
                 <p>• Thời gian giao: 20-30 phút</p>
               </div>
 
@@ -132,7 +131,7 @@ const CartDrawer = ({ isOpen, onClose }: CartDrawerProps) => {
                 size="lg"
               >
                 <ShoppingBag className="w-5 h-5 mr-2" />
-                Thanh toán • {formatPrice(state.total + 15000)}
+                Thanh toán • {formatPrice(state.total)}
               </Button>
             </div>
           </div>

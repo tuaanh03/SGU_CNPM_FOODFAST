@@ -1,5 +1,6 @@
 import prisma from "../lib/prisma";
 
+
 interface CartItem {
   productId: string;
   quantity: number;

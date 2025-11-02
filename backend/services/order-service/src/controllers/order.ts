@@ -2,14 +2,17 @@ import prisma from "../lib/prisma";
 import { Request, Response } from "express";
 import { publishEvent } from "../utils/kafka";
 import { OrderSchema } from "../validations/order.validation";
-import { validateCartItems, checkPriceChanges } from "../utils/menuValidator";
+import { validateCartItems } from "../utils/menuValidator";
 import { fetchUserCart, clearUserCart } from "../utils/cartHelper";
+import { createOrderSession } from "../utils/redisSessionManager";
 
 interface AuthenticatedRequest extends Request {
     user?: { id: string };
     body: any;
     params: any;
 }
+
+
 
 // Helper function để tính tổng tiền từ Product Service
 async function calculateOrderAmount(items: any[]): Promise<{ totalPrice: number; validItems: any[] }> {
@@ -91,7 +94,11 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
             // Tính toán tổng tiền và validate sản phẩm
             const { totalPrice, validItems } = await calculateOrderAmount(items);
 
-            // Tạo order với structure mới theo Prisma schema
+            // Tạo session trong Redis và lấy expirationTime
+            const sessionDurationMinutes = parseInt(process.env.ORDER_SESSION_DURATION_MINUTES || '15');
+            const expirationTime = new Date(Date.now() + sessionDurationMinutes * 60 * 1000);
+
+            // Tạo order với status PENDING theo workflow mới
             const savedOrder = await prisma.order.create({
                 data: {
                     userId,
@@ -99,7 +106,8 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
                     deliveryAddress,
                     contactPhone,
                     note,
-                    status: "pending",
+                    status: "pending", // Order ở trạng thái PENDING
+                    expirationTime, // Thời điểm hết hạn thanh toán
                     items: {
                         create: validItems.map(item => ({
                             productId: item.productId,
@@ -114,20 +122,30 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
                 }
             });
 
-            // Payload gửi đến Product Service để reserve inventory
+            // Tạo session trong Redis với TTL
+            const session = await createOrderSession(
+                savedOrder.id,
+                savedOrder.userId || '',
+                savedOrder.totalPrice,
+                sessionDurationMinutes
+            );
+
+            // Payload gửi đến Payment Service qua Kafka (bất đồng bộ)
             const orderPayload = {
                 orderId: savedOrder.id,
                 userId: savedOrder.userId,
-                items: items, // Format đơn giản cho Product Service: [{productId, quantity}]
+                items: validItems, // Gửi thông tin items cho payment
                 totalPrice: savedOrder.totalPrice,
+                expiresAt: session.expirationTime.toISOString(),
                 timestamp: new Date().toISOString()
             };
 
+            // Publish event order.create để Payment Service consumer
             await publishEvent(JSON.stringify(orderPayload));
 
             res.status(201).json({
                 success: true,
-                message: "Đơn hàng đã được tạo và đang chờ kiểm tra tồn kho",
+                message: "Đơn hàng đã được tạo ở trạng thái PENDING, đang xử lý thanh toán",
                 data: {
                     orderId: savedOrder.id,
                     items: savedOrder.items.map((item: any) => ({
@@ -142,7 +160,12 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
                     deliveryAddress: savedOrder.deliveryAddress,
                     contactPhone: savedOrder.contactPhone,
                     note: savedOrder.note,
-                    createdAt: savedOrder.createdAt
+                    session: {
+                        expiresAt: session.expirationTime.toISOString(),
+                        durationMinutes: session.durationMinutes
+                    },
+                    createdAt: savedOrder.createdAt,
+                    expirationTime: savedOrder.expirationTime
                 }
             });
 
@@ -277,7 +300,7 @@ export const getPaymentUrl = async (
             return;
         }
 
-        // Nếu order đã success hoặc failed, không cần payment URL nữa
+        // Nếu order đã success, không cần payment URL nữa
         if (order.status === "success") {
             res.status(200).json({
                 success: true,
@@ -287,11 +310,12 @@ export const getPaymentUrl = async (
             return;
         }
 
-        if (order.status === "failed") {
+        // Nếu order đã cancelled (hết hạn hoặc thất bại), không thể lấy payment URL
+        if (order.status === "cancelled") {
             res.status(200).json({
                 success: false,
-                message: "Thanh toán thất bại. Vui lòng tạo đơn hàng mới",
-                paymentStatus: "failed",
+                message: "Đơn hàng đã hết hạn thanh toán. Vui lòng tạo đơn hàng mới",
+                paymentStatus: "cancelled",
             });
             return;
         }
@@ -354,33 +378,35 @@ export const getUserOrders = async (
             })
         ]);
 
+        const ordersData = orders.map((order: any) => ({
+            id: order.id,
+            orderId: order.id,
+            status: order.status,
+            totalPrice: order.totalPrice,
+            deliveryAddress: order.deliveryAddress,
+            contactPhone: order.contactPhone,
+            note: order.note,
+            expirationTime: order.expirationTime,
+            itemsCount: order.items.length,
+            items: order.items.map((item: any) => ({
+                productId: item.productId,
+                productName: item.productName,
+                productPrice: item.productPrice,
+                quantity: item.quantity,
+                subtotal: item.productPrice * item.quantity
+            })),
+            createdAt: order.createdAt,
+            updatedAt: order.updatedAt
+        }));
+
         res.status(200).json({
             success: true,
-            data: {
-                orders: orders.map((order: any) => ({
-                    orderId: order.id,
-                    status: order.status,
-                    totalPrice: order.totalPrice,
-                    deliveryAddress: order.deliveryAddress,
-                    contactPhone: order.contactPhone,
-                    note: order.note,
-                    itemsCount: order.items.length,
-                    items: order.items.map((item: any) => ({
-                        productId: item.productId,
-                        productName: item.productName,
-                        productPrice: item.productPrice,
-                        quantity: item.quantity,
-                        subtotal: item.productPrice * item.quantity
-                    })),
-                    createdAt: order.createdAt,
-                    updatedAt: order.updatedAt
-                })),
-                pagination: {
-                    page: Number(page),
-                    limit: Number(limit),
-                    total,
-                    totalPages: Math.ceil(total / Number(limit))
-                }
+            data: ordersData,
+            pagination: {
+                page: Number(page),
+                limit: Number(limit),
+                total,
+                totalPages: Math.ceil(total / Number(limit))
             },
             message: "Lấy danh sách đơn hàng thành công"
         });
@@ -396,11 +422,13 @@ export const getUserOrders = async (
 };
 
 /**
- * Tạo order từ giỏ hàng (Workflow mới)
+ * Tạo order từ giỏ hàng (Workflow chính - Order to Payment)
  * 1. Lấy cart từ Redis (Cart Service)
  * 2. Validate qua MenuItemRead (Read Model)
- * 3. Notify nếu giá thay đổi
- * 4. Tạo Order với snapshot giá từ MenuItemRead
+ * 3. Tạo Order với status PENDING
+ * 4. Publish event order.create cho Payment Service (bất đồng bộ)
+ * 5. Payment Service sẽ tạo PaymentIntent + PaymentAttempt + VNPay URL
+ * 6. Clear cart sau khi order được tạo
  */
 export const createOrderFromCart = async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -480,7 +508,10 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
         //     });
         // }
 
-        // Bước 4: Tạo Order với snapshot giá từ MenuItemRead
+        // Bước 4: Tạo Order với status PENDING theo workflow mới
+        const sessionDurationMinutes = parseInt(process.env.ORDER_SESSION_DURATION_MINUTES || '15');
+        const expirationTime = new Date(Date.now() + sessionDurationMinutes * 60 * 1000);
+
         const savedOrder = await prisma.order.create({
             data: {
                 userId,
@@ -488,7 +519,8 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
                 deliveryAddress,
                 contactPhone,
                 note,
-                status: "pending",
+                status: "pending", // Order ở trạng thái PENDING
+                expirationTime, // Thời điểm hết hạn thanh toán
                 items: {
                     create: validationResult.validItems.map(item => ({
                         productId: item.productId,
@@ -503,26 +535,32 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
             }
         });
 
-        // Bước 5: Publish event để Product Service reserve inventory
+        // Tạo session trong Redis với TTL
+        const session = await createOrderSession(
+            savedOrder.id,
+            savedOrder.userId || '',
+            savedOrder.totalPrice,
+            sessionDurationMinutes
+        );
+
+        // Bước 5: Publish event order.create cho Payment Service (bất đồng bộ)
         const orderPayload = {
             orderId: savedOrder.id,
             userId: savedOrder.userId,
-            items: cartItems.map(item => ({
-                productId: item.productId,
-                quantity: item.quantity
-            })),
+            items: validationResult.validItems, // Gửi full items info với price snapshot
             totalPrice: savedOrder.totalPrice,
+            expiresAt: session.expirationTime.toISOString(),
             timestamp: new Date().toISOString()
         };
 
         await publishEvent(JSON.stringify(orderPayload));
 
-        // Bước 6: Clear cart sau khi tạo order thành công - truyền token
+        // Bước 6: Clear cart sau khi tạo order thành công
         await clearUserCart(token, storeId);
 
         res.status(201).json({
             success: true,
-            message: "Đơn hàng đã được tạo thành công từ giỏ hàng",
+            message: "Đơn hàng đã được tạo ở trạng thái PENDING, đang xử lý thanh toán",
             data: {
                 orderId: savedOrder.id,
                 items: savedOrder.items.map((item: any) => ({
@@ -537,7 +575,12 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
                 deliveryAddress: savedOrder.deliveryAddress,
                 contactPhone: savedOrder.contactPhone,
                 note: savedOrder.note,
-                createdAt: savedOrder.createdAt
+                session: {
+                    expiresAt: session.expirationTime.toISOString(),
+                    durationMinutes: session.durationMinutes
+                },
+                createdAt: savedOrder.createdAt,
+                expirationTime: savedOrder.expirationTime
             }
         });
 
@@ -549,3 +592,148 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
         });
     }
 };
+
+/**
+ * Retry payment trong thời gian session còn active
+ * Tạo payment attempt mới và URL thanh toán VNPay mới cho payment intent cũ
+ */
+export const retryPayment = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+        const userId = req.user?.id;
+        const { orderId } = req.params;
+
+        if (!userId) {
+            res.status(401).json({
+                success: false,
+                message: "Unauthorized"
+            });
+            return;
+        }
+
+        if (!orderId) {
+            res.status(400).json({
+                success: false,
+                message: "Order ID là bắt buộc"
+            });
+            return;
+        }
+
+        // Lấy order và kiểm tra quyền sở hữu
+        const order = await prisma.order.findUnique({
+            where: {
+                id: orderId,
+                userId
+            },
+            include: {
+                items: true
+            }
+        });
+
+        if (!order) {
+            res.status(404).json({
+                success: false,
+                message: "Không tìm thấy đơn hàng"
+            });
+            return;
+        }
+
+        // Kiểm tra trạng thái order
+        if (order.status === "success") {
+            res.status(400).json({
+                success: false,
+                message: "Đơn hàng đã được thanh toán thành công"
+            });
+            return;
+        }
+
+        // Kiểm tra nếu order không phải pending (có thể là failed hoặc bất kỳ status nào khác)
+        if (order.status !== "pending") {
+            res.status(400).json({
+                success: false,
+                message: "Đơn hàng không ở trạng thái chờ thanh toán. Vui lòng tạo đơn hàng mới",
+                error: "ORDER_NOT_PENDING"
+            });
+            return;
+        }
+
+        // Kiểm tra session còn tồn tại trong Redis không
+        const { checkOrderSession, getOrderSession, getSessionTTL } = require('../utils/redisSessionManager');
+        const sessionExists = await checkOrderSession(orderId);
+
+        if (!sessionExists) {
+            // Session đã hết hạn
+            // Cập nhật trạng thái order nếu chưa được cập nhật
+            if (order.status === 'pending') {
+                await prisma.order.update({
+                    where: { id: orderId },
+                    data: { status: 'cancelled' }
+                });
+            }
+
+            res.status(400).json({
+                success: false,
+                message: "Phiên thanh toán đã hết hạn. Vui lòng tạo đơn hàng mới",
+                error: "SESSION_EXPIRED"
+            });
+            return;
+        }
+
+        // Lấy thông tin session để kiểm tra thời gian còn lại
+        const sessionData = await getOrderSession(orderId);
+        const ttlSeconds = await getSessionTTL(orderId);
+
+        if (ttlSeconds <= 0) {
+            res.status(400).json({
+                success: false,
+                message: "Phiên thanh toán đã hết hạn. Vui lòng tạo đơn hàng mới",
+                error: "SESSION_EXPIRED"
+            });
+            return;
+        }
+
+        // Publish event riêng cho retry payment
+        // Topic: order.retry.payment (chỉ Payment Service lắng nghe, tránh trigger Inventory Service)
+        // Payment Service sẽ tìm PaymentIntent cũ dựa trên orderId
+        // và tạo PaymentAttempt mới với URL VNPay mới
+        const { publishRetryPaymentEvent } = require('../utils/kafka');
+        const retryPayload = {
+            orderId: order.id,
+            userId: order.userId,
+            totalPrice: order.totalPrice,
+            items: order.items.map(item => ({
+                productId: item.productId,
+                productName: item.productName,
+                productPrice: item.productPrice,
+                quantity: item.quantity
+            })),
+            isRetry: true, // Flag để Payment Service biết đây là retry
+            expiresAt: sessionData.expirationTime,
+            timestamp: new Date().toISOString()
+        };
+
+        await publishRetryPaymentEvent(retryPayload);
+
+        const remainingMinutes = Math.ceil(ttlSeconds / 60);
+
+        res.status(200).json({
+            success: true,
+            message: "Đang xử lý thanh toán lại. Vui lòng chờ URL thanh toán mới",
+            data: {
+                orderId: order.id,
+                status: order.status,
+                totalPrice: order.totalPrice,
+                sessionRemainingMinutes: remainingMinutes,
+                retryInitiated: true
+            }
+        });
+
+    } catch (error: any) {
+        console.error("Retry payment error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Lỗi hệ thống khi thử lại thanh toán",
+            error: error.message || "Lỗi không xác định"
+        });
+    }
+};
+

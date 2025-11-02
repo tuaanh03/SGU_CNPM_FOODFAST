@@ -6,6 +6,7 @@ import {
   updateProduct,
   deleteProduct,
   updateProductAvailability,
+  syncAllProducts,
 } from "../controllers/product";
 import { authenticateToken, requireStoreAdmin } from "../middleware/auth";
 
@@ -20,5 +21,8 @@ router.post("/", authenticateToken, requireStoreAdmin, createProduct);
 router.put("/:id", authenticateToken, requireStoreAdmin, updateProduct);
 router.delete("/:id", authenticateToken, requireStoreAdmin, deleteProduct);
 router.patch("/:id/availability", authenticateToken, requireStoreAdmin, updateProductAvailability);
+
+// Đồng bộ thủ công tất cả products sang Order Service
+router.post("/sync-all", authenticateToken, requireStoreAdmin, syncAllProducts);
 
 export default router;

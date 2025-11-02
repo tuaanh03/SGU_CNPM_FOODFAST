@@ -7,6 +7,7 @@ import Footer from "@/components/Footer";
 import {useState, useEffect} from "react";
 import {toast} from "sonner";
 import axios from "axios";
+import API_BASE_URL from "@/config/api";
 
 // Interface theo schema Product từ backend
 interface Product {
@@ -66,7 +67,6 @@ interface StoresApiResponse {
   }
 }
 
-const API_BASE = "http://localhost:3000"; // via API Gateway
 
 const HomePage = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -85,7 +85,7 @@ const HomePage = () => {
   const fetchProducts = async () => {
     try {
       setProductsLoading(true);
-      const response = await axios.get<ProductsApiResponse>(`${API_BASE}/api/products`);
+      const response = await axios.get<ProductsApiResponse>(`${API_BASE_URL}/products`);
 
       // Kiểm tra response theo format của controller
       if (response.data.success && Array.isArray(response.data.data)) {
@@ -106,7 +106,7 @@ const HomePage = () => {
   const fetchStores = async () => {
     try {
       setRestaurantsLoading(true);
-      const response = await axios.get<StoresApiResponse>(`${API_BASE}/api/stores`);
+      const response = await axios.get<StoresApiResponse>(`${API_BASE_URL}/stores`);
 
       if (response.data.success && Array.isArray(response.data.data?.stores)) {
         const mapped: RestaurantItem[] = response.data.data.stores.map((store) => ({

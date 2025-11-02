@@ -346,3 +346,80 @@ export const updateProductAvailability = async (req: Request, res: Response) => 
     });
   }
 };
+
+// Đồng bộ thủ công tất cả sản phẩm sang Order Service
+export const syncAllProducts = async (req: Request, res: Response) => {
+  try {
+    const { storeId } = req.query;
+
+    const where: any = {};
+    if (storeId) where.storeId = storeId as string;
+
+    // Lấy tất cả products
+    const products = await prisma.product.findMany({
+      where,
+      include: {
+        category: true
+      }
+    });
+
+    if (products.length === 0) {
+      return res.json({
+        success: true,
+        message: "Không có sản phẩm nào để đồng bộ",
+        data: {
+          total: 0,
+          synced: 0,
+          failed: 0
+        }
+      });
+    }
+
+    // Đồng bộ từng product
+    let synced = 0;
+    let failed = 0;
+    const errors: any[] = [];
+
+    for (const product of products) {
+      try {
+        await publishProductSyncEvent('CREATED', {
+          id: product.id,
+          storeId: product.storeId,
+          name: product.name,
+          description: product.description,
+          price: product.price.toString(),
+          imageUrl: product.imageUrl,
+          categoryId: product.categoryId,
+          isAvailable: product.isAvailable,
+          soldOutUntil: product.soldOutUntil,
+        });
+        synced++;
+      } catch (error) {
+        failed++;
+        errors.push({
+          productId: product.id,
+          productName: product.name,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Đồng bộ hoàn tất: ${synced} thành công, ${failed} thất bại`,
+      data: {
+        total: products.length,
+        synced,
+        failed,
+        errors: errors.length > 0 ? errors : undefined
+      }
+    });
+  } catch (error) {
+    console.error("Error syncing products:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi đồng bộ sản phẩm"
+    });
+  }
+};
+

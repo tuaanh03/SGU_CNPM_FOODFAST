@@ -1,5 +1,6 @@
 import { Kafka, Partitioners } from "kafkajs";
 import prisma from "../lib/prisma";
+import { deleteOrderSession } from "./redisSessionManager";
 
 const kafka = new Kafka({
   clientId: "order-service",
@@ -28,6 +29,34 @@ export async function publishEvent(messages: string) {
   });
 }
 
+export async function publishOrderExpirationEvent(payload: any) {
+  if (!isProducerConnected) {
+    await producer.connect();
+    isProducerConnected = true;
+  }
+  await producer.send({
+    topic: "order.expired",
+    messages: [{
+      key: `order-expired-${payload.orderId}`,
+      value: JSON.stringify(payload)
+    }],
+  });
+}
+
+export async function publishRetryPaymentEvent(payload: any) {
+  if (!isProducerConnected) {
+    await producer.connect();
+    isProducerConnected = true;
+  }
+  await producer.send({
+    topic: "order.retry.payment",
+    messages: [{
+      key: `order-retry-${payload.orderId}`,
+      value: JSON.stringify(payload)
+    }],
+  });
+}
+
 const consumer = kafka.consumer({
   groupId: "order-service-group",
 });
@@ -43,7 +72,7 @@ export async function runConsumer() {
 
     // Process messages
     await consumer.run({
-      eachMessage: async ({ topic, partition, message }) => {
+      eachMessage: async ({ topic, message }) => {
         const event = message.value?.toString() as string;
         const data = JSON.parse(event);
 
@@ -67,26 +96,39 @@ export async function runConsumer() {
   }
 }
 
-async function handlePaymentEvent(data: any) {
+export async function handlePaymentEvent(data: any) {
   if (
     data.paymentStatus === "success" ||
     data.paymentStatus === "failed" ||
-    data.paymentStatus === "pending"
+    data.paymentStatus === "pending" ||
+    data.paymentStatus === "cancelled"
   ) {
     try {
       // Map payment status to OrderStatus enum (lowercase)
-      let orderStatus: "pending" | "success" | "failed";
+      // Flow:
+      // - PaymentAttempt failed → PaymentIntent REQUIRES_PAYMENT → Order pending (không xóa session để retry)
+      // - PaymentAttempt cancelled → PaymentIntent FAILED → Order cancelled (xóa session)
+      // - PaymentAttempt success → PaymentIntent SUCCESS → Order success (xóa session)
+      let orderStatus: "pending" | "success" | "cancelled";
+
       if (data.paymentStatus === "success") {
         orderStatus = "success";
+      } else if (data.paymentStatus === "cancelled") {
+        // cancelled: Khách hàng hủy giao dịch (response code 24 từ VNPay)
+        orderStatus = "cancelled";
+        console.log(`⚠️ Order ${data.orderId} cancelled - payment cancelled by user`);
       } else if (data.paymentStatus === "failed") {
-        orderStatus = "failed";
+        // failed: Giao dịch thất bại (các lỗi khác)
+        orderStatus = "cancelled";
+        console.log(`❌ Order ${data.orderId} cancelled - payment failed`);
       } else {
+        // pending: đang chờ thanh toán hoặc PaymentAttempt failed nhưng PaymentIntent vẫn REQUIRES_PAYMENT
         orderStatus = "pending";
       }
 
-      const updateResult = await prisma.order.update({
+      await prisma.order.update({
         where: {
-          id: data.orderId, // Sử dụng id thay vì orderId
+          id: data.orderId,
         },
         data: {
           status: orderStatus,
@@ -96,6 +138,13 @@ async function handlePaymentEvent(data: any) {
       console.log(
         `Order ${data.orderId} status updated to: ${orderStatus}`
       );
+
+      // Chỉ xóa session khi order status = success hoặc cancelled
+      // Không xóa khi pending (để user có thể retry payment)
+      if (orderStatus === "success" || orderStatus === "cancelled") {
+        await deleteOrderSession(data.orderId);
+        console.log(`✅ Deleted Redis session for order ${data.orderId} after status: ${orderStatus}`);
+      }
 
       // Nếu có paymentUrl, log để frontend có thể sử dụng
       if (data.paymentUrl && data.paymentStatus === "pending") {
@@ -125,14 +174,18 @@ async function handleInventoryReserveResult(data: any) {
       console.log(`Order ${orderId} inventory reserved successfully, ready for payment`);
 
     } else if (status === "REJECTED") {
-      // Cập nhật order status thành "failed" - không đủ hàng
+      // Cập nhật order status thành "cancelled" - không đủ hàng
       await prisma.order.update({
         where: { id: orderId }, // Sử dụng id thay vì orderId
         data: {
-          status: "failed"
+          status: "cancelled"
         },
       });
-      console.log(`Order ${orderId} failed due to inventory shortage: ${message}`);
+
+      // Xóa session trong Redis khi order bị hủy
+      await deleteOrderSession(orderId);
+
+      console.log(`Order ${orderId} cancelled due to inventory shortage: ${message}`);
     }
   } catch (error) {
     console.error("Error handling inventory reserve result:", error);
@@ -140,7 +193,7 @@ async function handleInventoryReserveResult(data: any) {
 }
 
 async function handleProductSync(event: any) {
-  const { eventType, data, timestamp } = event;
+  const { eventType, data } = event;
 
   try {
     console.log(`Processing product sync event: ${eventType}`, data);

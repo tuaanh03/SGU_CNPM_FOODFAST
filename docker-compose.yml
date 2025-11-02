@@ -209,10 +209,35 @@ services:
       - ./backend/services/payment-service/.env
     ports:
       - "4000:4000"
+      - "5559:5555"
     networks:
       - network
     depends_on:
+      - payment-db
       - kafka
+    volumes:
+      - ./backend/services/payment-service/prisma:/app/payment-service/prisma:rw
+    command: >
+      sh -c "
+        npx prisma generate &&
+        npx prisma migrate deploy &&
+        node dist/server.js
+      "
+
+  payment-db:
+    image: postgres:15-alpine
+    container_name: payment-db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: foodfast_payment
+    ports:
+      - "5436:5432"
+    volumes:
+      - paymentdb:/var/lib/postgresql/data
+    networks:
+      - network
 
   # Notification service
   notification-service:
@@ -229,7 +254,7 @@ services:
     depends_on:
       - kafka
 
-  # Redis for Cart Service
+  # Redis for Cart Service and Order Session Management
   redis:
     image: redis:7-alpine
     container_name: redis
@@ -239,7 +264,7 @@ services:
       - redis_data:/data
     networks:
       - network
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --notify-keyspace-events Ex
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -262,10 +287,25 @@ services:
       - redis
     restart: on-failure
 
+  # Frontend - CNPM Food Delivery
+  frontend:
+    build:
+      context: ./frontend/cnpm-fooddelivery
+      dockerfile: Dockerfile
+    container_name: frontend
+    ports:
+      - "80:80"
+    networks:
+      - network
+    depends_on:
+      - api-gateway
+    restart: unless-stopped
+
 volumes:
   userdb:
   orderdb:
   productdb:
+  paymentdb:
   kafka_data:
   zookeeper_data:
   zookeeper_log:

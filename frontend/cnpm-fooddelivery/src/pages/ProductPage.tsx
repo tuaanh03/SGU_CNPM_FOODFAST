@@ -8,6 +8,7 @@ import axios from "axios";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, SlidersHorizontal } from "lucide-react";
+import API_BASE_URL from "@/config/api";
 
 // Interface theo schema Product từ backend
 interface Product {
@@ -67,7 +68,7 @@ const ProductPage = () => {
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      const response = await axios.get<ProductsApiResponse>("http://localhost:3000/api/products");
+      const response = await axios.get<ProductsApiResponse>(`${API_BASE_URL}/products`);
 
       console.log("API Response:", response.data);
 
