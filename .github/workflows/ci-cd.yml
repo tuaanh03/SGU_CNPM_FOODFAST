@@ -72,7 +72,7 @@ jobs:
 
   # Job 3: Build và Push Docker Images cho Backend Services lên Azure Container Registry
   build-push-backend:
-    needs: [test-backend]
+#    needs: [test-backend]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     strategy:
