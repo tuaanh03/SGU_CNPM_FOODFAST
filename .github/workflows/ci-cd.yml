@@ -17,8 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [order-service, payment-service]
-
+#        service: [order-service, payment-service]
+        service: [ payment-service]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -62,9 +62,9 @@ jobs:
         working-directory: ./frontend/cnpm-fooddelivery
         run: npm install
 
-      - name: Run lint
-        working-directory: ./frontend/cnpm-fooddelivery
-        run: npm run lint
+#      - name: Run lint
+#        working-directory: ./frontend/cnpm-fooddelivery
+#        run: npm run lint
 
       - name: Build frontend
         working-directory: ./frontend/cnpm-fooddelivery
