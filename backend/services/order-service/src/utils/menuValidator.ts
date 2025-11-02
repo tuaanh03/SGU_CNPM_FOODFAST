@@ -1,5 +1,6 @@
 import prisma from "../lib/prisma";
-import axios from "axios";
+
+
 interface CartItem {
   productId: string;
   quantity: number;

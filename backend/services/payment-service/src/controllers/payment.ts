@@ -29,11 +29,6 @@ export const vnpayIPN = async (req: Request, res: Response) => {
 
         console.log("✓ VNPay IPN signature verified successfully");
 
-        if (!verify.isSuccess) {
-            console.error("VNPay IPN - Payment not successful");
-            return res.json(IpnUnknownError);
-        }
-
         // Bước 3: Lấy thông tin giao dịch từ verify object
         const orderId = verify.vnp_TxnRef;
         const amount = Number(verify.vnp_Amount) / 100; // VNPay trả về amount * 100
@@ -49,24 +44,73 @@ export const vnpayIPN = async (req: Request, res: Response) => {
             const orderIdMatch = orderInfo?.match(/Order\s+([a-f0-9-]+)/);
             const extractedOrderId = orderIdMatch ? orderIdMatch[1] : orderId;
 
-            // TODO: Kiểm tra order tồn tại trong database
-            // const order = await findOrderById(extractedOrderId);
-            // if (!order) {
-            //     return res.json(IpnOrderNotFound);
-            // }
+            // Xác định trạng thái payment dựa vào response code
+            let paymentStatus: "success" | "cancelled" | "failed";
 
-            // TODO: Kiểm tra số tiền khớp
-            // if (order.amount !== amount) {
-            //     return res.json(IpnInvalidAmount);
-            // }
+            if (verify.isSuccess) {
+                // Response code 00: Giao dịch thành công
+                paymentStatus = "success";
+            } else if (rspCode === "24") {
+                // Response code 24: Khách hàng hủy giao dịch
+                paymentStatus = "cancelled";
+                console.log(`⚠️ Payment cancelled by user for order ${extractedOrderId}`);
+            } else {
+                // Các response code khác: Giao dịch thất bại
+                paymentStatus = "failed";
+                console.log(`❌ Payment failed for order ${extractedOrderId} with code ${rspCode}`);
+            }
 
-            // TODO: Kiểm tra order đã được confirm chưa
-            // if (order.status === 'confirmed') {
-            //     return res.json(InpOrderAlreadyConfirmed);
-            // }
+            // Cập nhật PaymentIntent trong database
+            const paymentIntent = await prisma.paymentIntent.findUnique({
+                where: { orderId: extractedOrderId },
+                include: {
+                    attempts: {
+                        where: { vnpTxnRef: orderId },
+                        orderBy: { createdAt: 'desc' },
+                        take: 1
+                    }
+                }
+            });
+
+            if (paymentIntent) {
+                // Cập nhật PaymentIntent status
+                const intentStatus = paymentStatus === "success" ? "SUCCEEDED" : "FAILED";
+                await prisma.paymentIntent.update({
+                    where: { id: paymentIntent.id },
+                    data: {
+                        status: intentStatus,
+                        metadata: {
+                            ...(paymentIntent.metadata as any || {}),
+                            vnpResponseCode: rspCode,
+                            vnpTransactionNo: transactionNo,
+                            lastUpdated: new Date().toISOString()
+                        }
+                    }
+                });
+
+                // Cập nhật PaymentAttempt status
+                if (paymentIntent.attempts && paymentIntent.attempts.length > 0) {
+                    const attemptStatus = paymentStatus === "success" ? "SUCCEEDED" :
+                                        paymentStatus === "cancelled" ? "CANCELED" : "FAILED";
+
+                    await prisma.paymentAttempt.update({
+                        where: { id: paymentIntent.attempts[0].id },
+                        data: {
+                            status: attemptStatus,
+                            vnpRawResponsePayload: {
+                                responseCode: rspCode,
+                                transactionNo: transactionNo,
+                                amount: amount,
+                                timestamp: new Date().toISOString()
+                            }
+                        }
+                    });
+
+                    console.log(`✓ Updated PaymentIntent ${paymentIntent.id} and PaymentAttempt to ${paymentStatus}`);
+                }
+            }
 
             // Publish event để cập nhật order status
-            const paymentStatus = "success";
             await publishEvent(
                 extractedOrderId,
                 "", // userId không cần thiết cho IPN
@@ -77,9 +121,9 @@ export const vnpayIPN = async (req: Request, res: Response) => {
                 orderId // paymentIntentId
             );
 
-            console.log(`✓ Published payment success event for order ${extractedOrderId}`);
+            console.log(`✓ Published payment ${paymentStatus} event for order ${extractedOrderId}`);
 
-            // Trả về success cho VNPay
+            // Trả về success cho VNPay (đã nhận và xử lý thông báo)
             return res.json(IpnSuccess);
 
         } catch (error) {
@@ -123,8 +167,9 @@ export const vnpayReturn = async (req: Request, res: Response) => {
 
         // Xác định trạng thái thanh toán
         const paymentStatus = verify.isSuccess ? "success" : "failed";
+        const responseCode = verify.vnp_ResponseCode;
 
-        console.log(`VNPay Return - OrderId: ${orderId}, TxnRef: ${vnp_TxnRef}, Status: ${paymentStatus}`);
+        console.log(`VNPay Return - OrderId: ${orderId}, TxnRef: ${vnp_TxnRef}, Status: ${paymentStatus}, Code: ${responseCode}`);
 
         // Redirect user đến trang kết quả thanh toán của frontend
         const redirectUrl = `${frontendUrl}/payment-result?status=${paymentStatus}&orderId=${orderId}&ref=${vnp_TxnRef}&amount=${vnp_Amount}`;

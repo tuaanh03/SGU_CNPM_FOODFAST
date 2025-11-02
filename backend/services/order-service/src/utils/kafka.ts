@@ -100,7 +100,8 @@ export async function handlePaymentEvent(data: any) {
   if (
     data.paymentStatus === "success" ||
     data.paymentStatus === "failed" ||
-    data.paymentStatus === "pending"
+    data.paymentStatus === "pending" ||
+    data.paymentStatus === "cancelled"
   ) {
     try {
       // Map payment status to OrderStatus enum (lowercase)
@@ -112,9 +113,14 @@ export async function handlePaymentEvent(data: any) {
 
       if (data.paymentStatus === "success") {
         orderStatus = "success";
-      } else if (data.paymentStatus === "failed") {
-        // failed ở đây nghĩa là PaymentIntent FAILED (do PaymentAttempt cancelled)
+      } else if (data.paymentStatus === "cancelled") {
+        // cancelled: Khách hàng hủy giao dịch (response code 24 từ VNPay)
         orderStatus = "cancelled";
+        console.log(`⚠️ Order ${data.orderId} cancelled - payment cancelled by user`);
+      } else if (data.paymentStatus === "failed") {
+        // failed: Giao dịch thất bại (các lỗi khác)
+        orderStatus = "cancelled";
+        console.log(`❌ Order ${data.orderId} cancelled - payment failed`);
       } else {
         // pending: đang chờ thanh toán hoặc PaymentAttempt failed nhưng PaymentIntent vẫn REQUIRES_PAYMENT
         orderStatus = "pending";
