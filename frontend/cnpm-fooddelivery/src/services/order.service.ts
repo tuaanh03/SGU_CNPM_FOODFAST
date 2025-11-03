@@ -1,4 +1,5 @@
 import API_BASE_URL from "@/config/api";
+import { getAuthToken } from "./auth.service";
 
 export interface CreateOrderFromCartRequest {
   storeId: string;
@@ -31,7 +32,7 @@ export interface OrderResponse {
 
 class OrderService {
   private getAuthHeader() {
-    const token = localStorage.getItem("token");
+    const token = getAuthToken();
     if (!token) {
       throw new Error("Vui lòng đăng nhập để đặt hàng");
     }

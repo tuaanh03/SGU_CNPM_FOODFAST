@@ -1,7 +1,9 @@
 import { Router } from "express";
 import {
-    register,
-    login,
+    registerCustomer,
+    registerAdmin,
+    loginCustomer,
+    loginAdmin,
     getProfile,
     updateProfile,
     logout,
@@ -11,10 +13,16 @@ import { authenticateToken } from "../middleware/auth";
 
 const router = Router();
 
-// Public routes
-router.post("/register", register);
-router.post("/login", login);
-router.post("/verify-token", verifyToken); // Endpoint cho API Gateway
+// Public routes - Customer
+router.post("/customer/register", registerCustomer);
+router.post("/customer/login", loginCustomer);
+
+// Public routes - Admin
+router.post("/admin/register", registerAdmin);
+router.post("/admin/login", loginAdmin);
+
+// Endpoint cho API Gateway
+router.post("/verify-token", verifyToken);
 
 // Protected routes
 router.get("/profile", authenticateToken, getProfile);

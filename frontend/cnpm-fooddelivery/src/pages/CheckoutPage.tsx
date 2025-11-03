@@ -65,10 +65,10 @@ const CheckoutPage = () => {
     }
 
     // Kiểm tra đăng nhập
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("customer_token");
     if (!token) {
       toast.error("Vui lòng đăng nhập để đặt hàng");
-      navigate("/test-auth");
+      navigate("/login");
       return;
     }
 

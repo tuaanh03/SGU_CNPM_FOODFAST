@@ -5,10 +5,11 @@ import { Loader2 } from "lucide-react";
 
 interface ProtectedRouteProps {
   children: ReactNode;
+  requiredRole?: "CUSTOMER" | "STORE_ADMIN";
 }
 
-const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
-  const { isAuthenticated, isLoading } = useAuth();
+const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) => {
+  const { isAuthenticated, isLoading, user } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -23,8 +24,16 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   }
 
   if (!isAuthenticated) {
-    // Lưu lại trang người dùng muốn truy cập để redirect sau khi đăng nhập
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    // Chuyển hướng dựa trên role yêu cầu
+    const loginPath = requiredRole === "STORE_ADMIN" ? "/admin/login" : "/login";
+    return <Navigate to={loginPath} state={{ from: location }} replace />;
+  }
+
+  // Kiểm tra role nếu được chỉ định
+  if (requiredRole && user?.role !== requiredRole) {
+    // Nếu role không khớp, chuyển về trang phù hợp
+    const redirectPath = user?.role === "STORE_ADMIN" ? "/admin" : "/";
+    return <Navigate to={redirectPath} replace />;
   }
 
   return <>{children}</>;

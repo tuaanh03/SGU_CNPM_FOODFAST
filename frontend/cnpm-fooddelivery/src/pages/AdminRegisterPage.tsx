@@ -7,8 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Link, useNavigate } from "react-router";
 import { Loader2 } from "lucide-react";
 
-const RegisterPage = () => {
-  const { registerCustomer } = useAuth();
+const AdminRegisterPage = () => {
+  const { registerAdmin } = useAuth();
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     email: "",
@@ -73,13 +73,13 @@ const RegisterPage = () => {
 
     setLoading(true);
     try {
-      await registerCustomer({
+      await registerAdmin({
         email: formData.email,
         password: formData.password,
         name: formData.name,
         phone: formData.phone,
       });
-      navigate("/");
+      navigate("/admin");
     } catch (error) {
       console.error(error);
     } finally {
@@ -88,23 +88,23 @@ const RegisterPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4">
-      <Card className="w-full max-w-md shadow-lg">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-500/10 via-background to-red-500/10 p-4">
+      <Card className="w-full max-w-md shadow-lg border-orange-200">
         <CardHeader className="space-y-1">
           <div className="flex justify-center mb-4">
-            <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-3xl">🍕</span>
+            <div className="w-16 h-16 bg-orange-600 rounded-2xl flex items-center justify-center">
+              <span className="text-white font-bold text-3xl">🔐</span>
             </div>
           </div>
-          <CardTitle className="text-2xl text-center">Đăng ký</CardTitle>
+          <CardTitle className="text-2xl text-center">Đăng ký Admin</CardTitle>
           <CardDescription className="text-center">
-            Tạo tài khoản mới để bắt đầu đặt món
+            Tạo tài khoản quản trị mới
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleRegister} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Họ và tên</Label>
+              <Label htmlFor="name">Tên</Label>
               <Input
                 id="name"
                 type="text"
@@ -114,25 +114,7 @@ const RegisterPage = () => {
                 required
                 disabled={loading}
               />
-              {errors.name && (
-                <p className="text-sm text-destructive">{errors.name}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="phone">Số điện thoại</Label>
-              <Input
-                id="phone"
-                type="tel"
-                value={formData.phone}
-                onChange={(e) => handleChange("phone", e.target.value)}
-                placeholder="0901234567"
-                required
-                disabled={loading}
-              />
-              {errors.phone && (
-                <p className="text-sm text-destructive">{errors.phone}</p>
-              )}
+              {errors.name && <p className="text-sm text-red-500">{errors.name}</p>}
             </div>
 
             <div className="space-y-2">
@@ -142,13 +124,25 @@ const RegisterPage = () => {
                 type="email"
                 value={formData.email}
                 onChange={(e) => handleChange("email", e.target.value)}
-                placeholder="email@example.com"
+                placeholder="admin@example.com"
                 required
                 disabled={loading}
               />
-              {errors.email && (
-                <p className="text-sm text-destructive">{errors.email}</p>
-              )}
+              {errors.email && <p className="text-sm text-red-500">{errors.email}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="phone">Số điện thoại</Label>
+              <Input
+                id="phone"
+                type="tel"
+                value={formData.phone}
+                onChange={(e) => handleChange("phone", e.target.value)}
+                placeholder="0123456789"
+                required
+                disabled={loading}
+              />
+              {errors.phone && <p className="text-sm text-red-500">{errors.phone}</p>}
             </div>
 
             <div className="space-y-2">
@@ -162,9 +156,7 @@ const RegisterPage = () => {
                 required
                 disabled={loading}
               />
-              {errors.password && (
-                <p className="text-sm text-destructive">{errors.password}</p>
-              )}
+              {errors.password && <p className="text-sm text-red-500">{errors.password}</p>}
             </div>
 
             <div className="space-y-2">
@@ -179,25 +171,25 @@ const RegisterPage = () => {
                 disabled={loading}
               />
               {errors.confirmPassword && (
-                <p className="text-sm text-destructive">{errors.confirmPassword}</p>
+                <p className="text-sm text-red-500">{errors.confirmPassword}</p>
               )}
             </div>
 
-            <Button type="submit" disabled={loading} className="w-full">
+            <Button type="submit" disabled={loading} className="w-full bg-orange-600 hover:bg-orange-700">
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {loading ? "Đang đăng ký..." : "Đăng ký"}
             </Button>
 
             <div className="text-center text-sm text-muted-foreground">
               Đã có tài khoản?{" "}
-              <Link to="/login" className="text-primary hover:underline font-medium">
-                Đăng nhập ngay
+              <Link to="/admin/login" className="text-orange-600 hover:underline font-medium">
+                Đăng nhập
               </Link>
             </div>
 
             <div className="text-center text-sm">
-              <Link to="/admin/register" className="text-orange-600 hover:underline">
-                Đăng ký với tài khoản Admin
+              <Link to="/register" className="text-blue-600 hover:underline">
+                Đăng ký với tài khoản khách hàng
               </Link>
             </div>
           </form>
@@ -207,5 +199,5 @@ const RegisterPage = () => {
   );
 };
 
-export default RegisterPage;
+export default AdminRegisterPage;
 

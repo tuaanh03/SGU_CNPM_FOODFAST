@@ -16,6 +16,9 @@ import CheckoutPage from "./pages/CheckoutPage";
 import TestAuthPage from "./pages/TestAuthPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
+import AdminLoginPage from "./pages/AdminLoginPage";
+import AdminRegisterPage from "./pages/AdminRegisterPage";
+import AdminDashboardPage from "./pages/AdminDashboardPage";
 
 function App() {
     return (
@@ -29,15 +32,32 @@ function App() {
                             <Route path="/" element={<HomePage />} />
                             <Route path="/products" element={<ProductPage />} />
                             <Route path="/restaurant/:id" element={<RestaurantDetailPage />} />
+
+                            {/* Customer Auth Routes */}
                             <Route path="/login" element={<LoginPage />} />
                             <Route path="/register" element={<RegisterPage />} />
+
+                            {/* Admin Auth Routes */}
+                            <Route path="/admin/login" element={<AdminLoginPage />} />
+                            <Route path="/admin/register" element={<AdminRegisterPage />} />
+
+                            {/* Admin Protected Routes */}
+                            <Route
+                                path="/admin"
+                                element={
+                                    <ProtectedRoute requiredRole="STORE_ADMIN">
+                                        <AdminDashboardPage />
+                                    </ProtectedRoute>
+                                }
+                            />
+
                             <Route path="/test-auth" element={<TestAuthPage />} />
 
-                            {/* Protected Routes */}
+                            {/* Protected Routes - Customer Only */}
                             <Route
                                 path="/orders"
                                 element={
-                                    <ProtectedRoute>
+                                    <ProtectedRoute requiredRole="CUSTOMER">
                                         <OrderPage />
                                     </ProtectedRoute>
                                 }
@@ -45,7 +65,7 @@ function App() {
                             <Route
                                 path="/payment"
                                 element={
-                                    <ProtectedRoute>
+                                    <ProtectedRoute requiredRole="CUSTOMER">
                                         <PaymentPage />
                                     </ProtectedRoute>
                                 }
@@ -53,7 +73,7 @@ function App() {
                             <Route
                                 path="/checkout"
                                 element={
-                                    <ProtectedRoute>
+                                    <ProtectedRoute requiredRole="CUSTOMER">
                                         <CheckoutPage />
                                     </ProtectedRoute>
                                 }
@@ -61,7 +81,7 @@ function App() {
                             <Route
                                 path="/profile"
                                 element={
-                                    <ProtectedRoute>
+                                    <ProtectedRoute requiredRole="CUSTOMER">
                                         <ProfilePage />
                                     </ProtectedRoute>
                                 }
@@ -69,7 +89,7 @@ function App() {
                             <Route
                                 path="/my-orders"
                                 element={
-                                    <ProtectedRoute>
+                                    <ProtectedRoute requiredRole="CUSTOMER">
                                         <MyOrderPage />
                                     </ProtectedRoute>
                                 }

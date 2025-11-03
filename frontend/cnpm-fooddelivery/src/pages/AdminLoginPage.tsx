@@ -7,8 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Link, useNavigate } from "react-router";
 import { Loader2 } from "lucide-react";
 
-const LoginPage = () => {
-  const { loginCustomer } = useAuth();
+const AdminLoginPage = () => {
+  const { loginAdmin } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,8 +18,8 @@ const LoginPage = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      await loginCustomer({ email, password });
-      navigate("/");
+      await loginAdmin({ email, password });
+      navigate("/admin");
     } catch (error) {
       console.error(error);
     } finally {
@@ -28,17 +28,17 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4">
-      <Card className="w-full max-w-md shadow-lg">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-500/10 via-background to-red-500/10 p-4">
+      <Card className="w-full max-w-md shadow-lg border-orange-200">
         <CardHeader className="space-y-1">
           <div className="flex justify-center mb-4">
-            <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-3xl">🍕</span>
+            <div className="w-16 h-16 bg-orange-600 rounded-2xl flex items-center justify-center">
+              <span className="text-white font-bold text-3xl">🔐</span>
             </div>
           </div>
-          <CardTitle className="text-2xl text-center">Đăng nhập</CardTitle>
+          <CardTitle className="text-2xl text-center">Đăng nhập Admin</CardTitle>
           <CardDescription className="text-center">
-            Đăng nhập vào tài khoản của bạn để tiếp tục
+            Đăng nhập vào hệ thống quản trị
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -50,7 +50,7 @@ const LoginPage = () => {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="email@example.com"
+                placeholder="admin@example.com"
                 required
                 disabled={loading}
               />
@@ -69,21 +69,21 @@ const LoginPage = () => {
               />
             </div>
 
-            <Button type="submit" disabled={loading} className="w-full">
+            <Button type="submit" disabled={loading} className="w-full bg-orange-600 hover:bg-orange-700">
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {loading ? "Đang đăng nhập..." : "Đăng nhập"}
             </Button>
 
             <div className="text-center text-sm text-muted-foreground">
-              Chưa có tài khoản?{" "}
-              <Link to="/register" className="text-primary hover:underline font-medium">
+              Chưa có tài khoản admin?{" "}
+              <Link to="/admin/register" className="text-orange-600 hover:underline font-medium">
                 Đăng ký ngay
               </Link>
             </div>
 
             <div className="text-center text-sm">
-              <Link to="/admin/login" className="text-orange-600 hover:underline">
-                Đăng nhập với tài khoản Admin
+              <Link to="/login" className="text-blue-600 hover:underline">
+                Đăng nhập với tài khoản khách hàng
               </Link>
             </div>
           </form>
@@ -93,5 +93,5 @@ const LoginPage = () => {
   );
 };
 
-export default LoginPage;
+export default AdminLoginPage;
 

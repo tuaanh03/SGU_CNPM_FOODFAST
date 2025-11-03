@@ -1,4 +1,5 @@
 import API_BASE_URL from "@/config/api";
+import { getAuthToken } from "./auth.service";
 
 export interface AddToCartRequest {
   restaurantId: string;
@@ -29,7 +30,7 @@ export interface CartResponse {
 
 class CartService {
   private getAuthHeader() {
-    const token = localStorage.getItem("token");
+    const token = getAuthToken();
     if (!token) {
       throw new Error("Vui lòng đăng nhập để sử dụng giỏ hàng");
     }
