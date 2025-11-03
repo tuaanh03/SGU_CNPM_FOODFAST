@@ -153,6 +153,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     const currentRole = user?.role as "CUSTOMER" | "STORE_ADMIN" | undefined;
     authService.logout(currentRole);
+
+    // Xóa cart localStorage nếu là customer logout
+    if (currentRole === "CUSTOMER") {
+      localStorage.removeItem('cart_restaurantId');
+      localStorage.removeItem('cart_restaurant');
+    }
+
     setUser(null);
     toast.success("Đã đăng xuất");
   };

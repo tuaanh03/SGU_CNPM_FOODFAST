@@ -1,6 +1,6 @@
 import express from 'express';
 import { verifyToken } from '../middleware/auth';
-import { checkSession, optionalCheckSession } from '../middleware/checkSession';
+import { optionalCheckSession } from '../middleware/checkSession';
 import {
   addToCart,
   getCart,
@@ -13,7 +13,8 @@ import {
 
 const router = express.Router();
 
-router.post('/add', verifyToken, checkSession, addToCart);
+// Bỏ checkSession để cho phép user có nhiều giỏ hàng từ các restaurant khác nhau
+router.post('/add', verifyToken, addToCart);
 
 router.get('/:restaurantId', verifyToken, optionalCheckSession, getCart);
 

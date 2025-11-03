@@ -9,6 +9,7 @@ import { useParams } from "react-router";
 import axios from "axios";
 import { toast } from "sonner";
 import API_BASE_URL from "@/config/api";
+import { useCart } from "@/contexts/cart-context";
 
 // Types matching backend responses
 interface StoreDetail {
@@ -50,6 +51,7 @@ interface ProductsResponse {
 
 const RestaurantDetailPage = () => {
   const { id } = useParams();
+  const { loadCartForRestaurant } = useCart();
   const [isCartOpen, setIsCartOpen] = useState(false);
 
   const [store, setStore] = useState<StoreDetail | null>(null);
@@ -88,6 +90,19 @@ const RestaurantDetailPage = () => {
 
     run();
   }, [id]);
+
+  // Load cart cho restaurant hiện tại khi vào trang
+  useEffect(() => {
+    if (!id || !store) return;
+
+    const restaurant = {
+      id: store.id,
+      name: store.name,
+      imageUrl: store.avatar || store.cover || "/burger-restaurant-interior-modern.jpg",
+    };
+
+    loadCartForRestaurant(id, restaurant);
+  }, [id, store, loadCartForRestaurant]);
 
   const restaurantHeaderData = useMemo(() => {
     if (!store) return null;

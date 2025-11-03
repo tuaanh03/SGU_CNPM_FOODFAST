@@ -116,6 +116,21 @@ class CartService {
 
     return response.json();
   }
+
+  // Xóa tất cả giỏ hàng của user
+  async clearAllCarts(): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(`${API_BASE_URL}/cart/all/clear`, {
+      method: "DELETE",
+      headers: this.getAuthHeader(),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: "Lỗi khi xóa giỏ hàng" }));
+      throw new Error(error.message || "Lỗi khi xóa giỏ hàng");
+    }
+
+    return response.json();
+  }
 }
 
 export const cartService = new CartService();
