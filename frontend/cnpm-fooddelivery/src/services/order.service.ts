@@ -87,6 +87,21 @@ class OrderService {
 
     return response.json();
   }
+
+  // Retry payment cho đơn hàng pending
+  async retryPayment(orderId: string): Promise<{ success: boolean; message: string; data?: any }> {
+    const response = await fetch(`${API_BASE_URL}/order/retry-payment/${orderId}`, {
+      method: "POST",
+      headers: this.getAuthHeader(),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: "Lỗi khi thử lại thanh toán" }));
+      throw new Error(error.message || "Lỗi khi thử lại thanh toán");
+    }
+
+    return response.json();
+  }
 }
 
 export const orderService = new OrderService();

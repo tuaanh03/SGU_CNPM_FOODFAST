@@ -83,19 +83,29 @@ const OngoingOrders = () => {
   const handlePayNow = async (orderId: string) => {
     try {
       setPaymentLoading(orderId);
-      toast.info("Đang lấy thông tin thanh toán...");
+      toast.info("Đang khởi tạo thanh toán...");
 
-      const paymentUrlResponse = await paymentService.getPaymentUrl(orderId, 15, 1000);
+      // Gọi API retry-payment từ order-service
+      const retryResponse = await orderService.retryPayment(orderId);
 
-      if (paymentUrlResponse.success && paymentUrlResponse.paymentUrl) {
-        toast.success("Đang chuyển đến trang thanh toán...");
-        window.location.href = paymentUrlResponse.paymentUrl;
+      if (retryResponse.success) {
+        toast.info("Đang lấy thông tin thanh toán...");
+
+        // Sau khi retry payment thành công, poll để lấy payment URL
+        const paymentUrlResponse = await paymentService.getPaymentUrl(orderId, 15, 1000);
+
+        if (paymentUrlResponse.success && paymentUrlResponse.paymentUrl) {
+          toast.success("Đang chuyển đến trang thanh toán...");
+          window.location.href = paymentUrlResponse.paymentUrl;
+        } else {
+          toast.error("Không thể lấy thông tin thanh toán");
+        }
       } else {
-        toast.error("Không thể lấy thông tin thanh toán");
+        toast.error(retryResponse.message || "Không thể khởi tạo thanh toán");
       }
     } catch (error: any) {
-      console.error("Error getting payment URL:", error);
-      toast.error(error.message || "Có lỗi xảy ra khi lấy thông tin thanh toán");
+      console.error("Error retrying payment:", error);
+      toast.error(error.message || "Có lỗi xảy ra khi khởi tạo thanh toán");
     } finally {
       setPaymentLoading(null);
     }
