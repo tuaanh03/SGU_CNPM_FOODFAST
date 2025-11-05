@@ -15,7 +15,6 @@ const router = express.Router();
 
 // Bỏ checkSession để cho phép user có nhiều giỏ hàng từ các restaurant khác nhau
 router.post('/add', verifyToken, addToCart);
-
 router.get('/:restaurantId', verifyToken, optionalCheckSession, getCart);
 
 router.put('/:restaurantId/:productId', verifyToken, optionalCheckSession, updateCartItem);

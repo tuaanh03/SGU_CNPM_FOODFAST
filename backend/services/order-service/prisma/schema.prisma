@@ -23,6 +23,8 @@ model Order {
   totalPrice Int
   note       String?
 
+  //Restaurant Order
+
   // Giao hàng tối giản
   deliveryAddress String?
   contactPhone    String?

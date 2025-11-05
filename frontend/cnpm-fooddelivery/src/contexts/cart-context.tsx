@@ -272,60 +272,53 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const addItem = async (item: Omit<CartItem, 'quantity'>, restaurant: Restaurant) => {
     const token = getAuthToken();
 
+    // Bắt buộc đăng nhập để thêm vào giỏ hàng
+    if (!token) {
+      toast.error('Vui lòng đăng nhập để thêm vào giỏ hàng');
+      return;
+    }
+
     // Logic mới: Cho phép nhiều giỏ hàng từ các restaurant khác nhau
     // Mỗi restaurant có giỏ hàng riêng trong Redis
 
-    if (token) {
-      try {
-        // Thêm vào giỏ hàng của restaurant
-        await cartService.addToCart({
-          restaurantId: restaurant.id,
-          productId: item.id,
-          quantity: 1,
-          productName: item.name,
-          productPrice: item.price,
-          productImage: item.imageUrl,
-        });
-
-        // Load lại giỏ hàng của restaurant này từ backend
-        const response = await cartService.getCart(restaurant.id);
-
-        if (response.success && response.data.items.length > 0) {
-          const items: CartItem[] = response.data.items.map((backendItem: any) => ({
-            id: backendItem.productId,
-            name: backendItem.name || backendItem.productName,
-            price: backendItem.price || backendItem.productPrice,
-            quantity: backendItem.quantity,
-            imageUrl: backendItem.image || backendItem.productImage,
-          }));
-
-          dispatch({
-            type: 'LOAD_CART',
-            payload: { items, restaurant }
-          });
-        }
-
-        // Lưu restaurant hiện tại vào localStorage
-        localStorage.setItem('cart_restaurantId', restaurant.id);
-        localStorage.setItem('cart_restaurant', JSON.stringify(restaurant));
-
-        toast.success('Đã thêm vào giỏ hàng');
-      } catch (error: any) {
-        console.error('Error syncing cart to backend:', error);
-        toast.error(error.message || 'Lỗi khi thêm vào giỏ hàng');
-        return;
-      }
-    } else {
-      // Không có token, update local state
-      dispatch({
-        type: 'ADD_ITEM',
-        payload: { item, restaurant }
+    try {
+      // Thêm vào giỏ hàng của restaurant
+      await cartService.addToCart({
+        restaurantId: restaurant.id,
+        productId: item.id,
+        quantity: 1,
+        productName: item.name,
+        productPrice: item.price,
+        productImage: item.imageUrl,
       });
 
+      // Load lại giỏ hàng của restaurant này từ backend
+      const response = await cartService.getCart(restaurant.id);
+
+      if (response.success && response.data.items.length > 0) {
+        const items: CartItem[] = response.data.items.map((backendItem: any) => ({
+          id: backendItem.productId,
+          name: backendItem.name || backendItem.productName,
+          price: backendItem.price || backendItem.productPrice,
+          quantity: backendItem.quantity,
+          imageUrl: backendItem.image || backendItem.productImage,
+        }));
+
+        dispatch({
+          type: 'LOAD_CART',
+          payload: { items, restaurant }
+        });
+      }
+
+      // Lưu restaurant hiện tại vào localStorage
       localStorage.setItem('cart_restaurantId', restaurant.id);
       localStorage.setItem('cart_restaurant', JSON.stringify(restaurant));
 
       toast.success('Đã thêm vào giỏ hàng');
+    } catch (error: any) {
+      console.error('Error syncing cart to backend:', error);
+      toast.error(error.message || 'Lỗi khi thêm vào giỏ hàng');
+      return;
     }
   };
 
@@ -334,45 +327,44 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
     const token = getAuthToken();
 
-    // Nếu có token, đồng bộ với backend
-    if (token) {
-      try {
-        await cartService.removeFromCart(state.restaurant.id, id);
+    // Bắt buộc đăng nhập
+    if (!token) {
+      toast.error('Vui lòng đăng nhập để thao tác giỏ hàng');
+      return;
+    }
 
-        // Load lại giỏ hàng từ backend
-        const response = await cartService.getCart(state.restaurant.id);
+    try {
+      await cartService.removeFromCart(state.restaurant.id, id);
 
-        if (response.success) {
-          if (response.data.items.length > 0) {
-            const items: CartItem[] = response.data.items.map((item: any) => ({
-              id: item.productId,
-              name: item.name || item.productName,
-              price: item.price || item.productPrice,
-              quantity: item.quantity,
-              imageUrl: item.image || item.productImage,
-            }));
+      // Load lại giỏ hàng từ backend
+      const response = await cartService.getCart(state.restaurant.id);
 
-            dispatch({
-              type: 'LOAD_CART',
-              payload: { items, restaurant: state.restaurant }
-            });
-          } else {
-            // Giỏ hàng trống, clear state
-            dispatch({ type: 'CLEAR_CART' });
-            localStorage.removeItem('cart_restaurantId');
-            localStorage.removeItem('cart_restaurant');
-          }
+      if (response.success) {
+        if (response.data.items.length > 0) {
+          const items: CartItem[] = response.data.items.map((item: any) => ({
+            id: item.productId,
+            name: item.name || item.productName,
+            price: item.price || item.productPrice,
+            quantity: item.quantity,
+            imageUrl: item.image || item.productImage,
+          }));
+
+          dispatch({
+            type: 'LOAD_CART',
+            payload: { items, restaurant: state.restaurant }
+          });
+        } else {
+          // Giỏ hàng trống, clear state
+          dispatch({ type: 'CLEAR_CART' });
+          localStorage.removeItem('cart_restaurantId');
+          localStorage.removeItem('cart_restaurant');
         }
-
-        toast.success('Đã xóa khỏi giỏ hàng');
-      } catch (error: any) {
-        console.error('Error syncing remove to backend:', error);
-        toast.error('Lỗi khi xóa khỏi giỏ hàng');
       }
-    } else {
-      // Không có token, chỉ update local state
-      dispatch({ type: 'REMOVE_ITEM', payload: { id } });
+
       toast.success('Đã xóa khỏi giỏ hàng');
+    } catch (error: any) {
+      console.error('Error syncing remove to backend:', error);
+      toast.error('Lỗi khi xóa khỏi giỏ hàng');
     }
   };
 
@@ -381,24 +373,28 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
     const token = getAuthToken();
 
-    // Nếu có token, đồng bộ với backend
-    if (token) {
-      try {
-        if (quantity <= 0) {
-          await cartService.removeFromCart(state.restaurant.id, id);
-        } else {
-          await cartService.updateQuantity(state.restaurant.id, id, quantity);
-        }
+    // Bắt buộc đăng nhập
+    if (!token) {
+      toast.error('Vui lòng đăng nhập để thao tác giỏ hàng');
+      return;
+    }
 
-        // Load lại giỏ hàng từ backend
-        const response = await cartService.getCart(state.restaurant.id);
+    try {
+      if (quantity <= 0) {
+        await cartService.removeFromCart(state.restaurant.id, id);
+      } else {
+        await cartService.updateQuantity(state.restaurant.id, id, quantity);
+      }
 
-        if (response.success) {
-          if (response.data.items.length > 0) {
-            const items: CartItem[] = response.data.items.map((item: any) => ({
-              id: item.productId,
-              name: item.name || item.productName,
-              price: item.price || item.productPrice,
+      // Load lại giỏ hàng từ backend
+      const response = await cartService.getCart(state.restaurant.id);
+
+      if (response.success) {
+        if (response.data.items.length > 0) {
+          const items: CartItem[] = response.data.items.map((item: any) => ({
+            id: item.productId,
+            name: item.name || item.productName,
+            price: item.price || item.productPrice,
               quantity: item.quantity,
               imageUrl: item.image || item.productImage,
             }));
@@ -418,10 +414,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
         console.error('Error syncing quantity to backend:', error);
         toast.error('Lỗi khi cập nhật giỏ hàng');
       }
-    } else {
-      // Không có token, chỉ update local state
-      dispatch({ type: 'UPDATE_QUANTITY', payload: { id, quantity } });
-    }
   };
 
   const clearCart = async () => {
@@ -496,4 +488,5 @@ export function useCart() {
   }
   return context;
 }
+
 
