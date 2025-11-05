@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Clock, MapPin, Phone, Loader2, CreditCard } from "lucide-react";
+import { Clock, MapPin, Phone, Loader2, CreditCard, Eye } from "lucide-react";
 import { orderService } from "@/services/order.service";
 import { paymentService } from "@/services/payment.service";
 import { toast } from "sonner";
+import OrderDetailDialog from "./OrderDetailDialog";
 
 interface OngoingOrder {
   id: string;
@@ -34,6 +35,8 @@ const OngoingOrders = () => {
   const [orders, setOrders] = useState<OngoingOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [paymentLoading, setPaymentLoading] = useState<string | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<OngoingOrder | null>(null);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
 
   useEffect(() => {
     loadOngoingOrders();
@@ -163,6 +166,11 @@ const OngoingOrders = () => {
     return minutes > 0 ? `${minutes} phút` : "Sắp hết hạn";
   };
 
+  const handleViewDetail = (order: OngoingOrder) => {
+    setSelectedOrder(order);
+    setDetailDialogOpen(true);
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center py-12">
@@ -245,6 +253,16 @@ const OngoingOrders = () => {
 
               {/* Action Buttons */}
               <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => handleViewDetail(order)}
+                >
+                  <Eye className="w-4 h-4 mr-2" />
+                  Xem chi tiết
+                </Button>
+
                 {order.status === "pending" ? (
                   <Button
                     size="sm"
@@ -282,6 +300,15 @@ const OngoingOrders = () => {
           </Card>
         );
       })}
+
+      {/* Order Detail Dialog */}
+      {selectedOrder && (
+        <OrderDetailDialog
+          open={detailDialogOpen}
+          onOpenChange={setDetailDialogOpen}
+          order={selectedOrder}
+        />
+      )}
     </div>
   );
 };

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Star, RotateCcw, Eye, Calendar, Loader2 } from "lucide-react";
 import { orderService } from "@/services/order.service";
 import { toast } from "sonner";
+import OrderDetailDialog from "./OrderDetailDialog";
 
 interface HistoryOrder {
   id: string;
@@ -21,12 +22,17 @@ interface HistoryOrder {
   total: number;
   rating?: number;
   reviewed?: boolean;
+  deliveryAddress?: string;
+  contactPhone?: string;
+  note?: string;
 }
 
 const OrderHistory = () => {
   const [orders, setOrders] = useState<HistoryOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "success" | "cancelled">("all");
+  const [selectedOrder, setSelectedOrder] = useState<HistoryOrder | null>(null);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
 
   useEffect(() => {
     loadOrderHistory();
@@ -53,7 +59,10 @@ const OrderHistory = () => {
           status: order.status,
           orderDate: order.createdAt,
           total: Number(order.totalPrice),
-          reviewed: false
+          reviewed: false,
+          deliveryAddress: order.deliveryAddress || "Không có thông tin",
+          contactPhone: order.contactPhone || "Không có thông tin",
+          note: order.note
         })));
       }
     } catch (error: any) {
@@ -87,6 +96,11 @@ const OrderHistory = () => {
     if (filter === "cancelled") return order.status === "cancelled" || order.status === "failed";
     return true;
   });
+
+  const handleViewDetail = (order: HistoryOrder) => {
+    setSelectedOrder(order);
+    setDetailDialogOpen(true);
+  };
 
   const renderStars = (rating?: number) => {
     if (!rating) return null;
@@ -223,7 +237,12 @@ const OrderHistory = () => {
 
                   {/* Action Buttons */}
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" className="flex-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => handleViewDetail(order)}
+                    >
                       <Eye className="w-4 h-4 mr-2" />
                       Xem chi tiết
                     </Button>
@@ -249,6 +268,21 @@ const OrderHistory = () => {
             );
           })}
         </div>
+      )}
+
+      {/* Order Detail Dialog */}
+      {selectedOrder && (
+        <OrderDetailDialog
+          open={detailDialogOpen}
+          onOpenChange={setDetailDialogOpen}
+          order={{
+            ...selectedOrder,
+            orderTime: formatDate(selectedOrder.orderDate),
+            createdAt: selectedOrder.orderDate,
+            deliveryAddress: selectedOrder.deliveryAddress || "Không có thông tin",
+            contactPhone: selectedOrder.contactPhone || "Không có thông tin"
+          }}
+        />
       )}
     </div>
   );
