@@ -38,53 +38,78 @@ Bạn có file `.env` cho `user-service` (ví dụ) chứa DATABASE_URL pointing
 
 ---
 
-## 4. Bước-by-bước (Portal-only)
-(Thực hiện theo thứ tự)
+## 4. Ưu tiên & Quy trình triển khai (portal-only) — phiên bản đã sắp xếp theo priority
+Dưới đây là quy trình được sắp xếp theo mức ưu tiên (dành cho môi trường Student / demo). Làm theo thứ tự để giảm rủi ro và debug dễ hơn.
 
-### Bước A — Tạo/kiểm tra infra cơ bản
-1. Redis:
-   - Portal -> Create -> Azure Cache for Redis -> Chọn SKU nhỏ nhất (C0 nếu có)
-   - Lưu host name và primary key
-   - Note: Azure Redis mặc định dùng TLS (port 6380). Ghi lại cổng và key.
-2. Kafka:
-   - Cách nhanh: Tạo Confluent Cloud (external): tạo cluster free, lấy bootstrap servers và API key/secret.
-   - Hoặc: Portal -> Event Hubs Namespace -> sử dụng Kafka endpoint (cũng được). Lấy namespace FQDN và connection string.
-   - Ghi lại bootstrap servers / connection info.
-3. PostgreSQL: bạn đã có — đảm bảo Database user và DB name đã sẵn sàng và cho phép kết nối từ App Services (với public access hoặc private endpoint).
+Checklist ngắn (thực hiện theo thứ tự):
+- [ ] A. Chuẩn bị infra cốt lõi: PostgreSQL (bạn đã có), Azure Cache for Redis, Confluent Cloud (Kafka)
+- [ ] B. Chuẩn bị hình ảnh container: build image, chạy migration nếu muốn (push lên ACR)
+- [ ] C. Deploy core services (tạo Web App): api-gateway, order-service, payment-service
+- [ ] D. Deploy supporting services: user-service, product-service, restaurant-service, cart-service, notification-service
+- [ ] E. Deploy frontend (Web App từ ACR) và cấu hình API endpoint
+- [ ] F. Kích hoạt CI/CD (ACR -> Web App) và monitoring (Log stream, Application Insights)
+- [ ] G. Smoke test end-to-end: payment + VNPay callback, Redis session, Kafka events
 
-### Bước B — App Service: tạo Web App for Containers (mỗi microservice)
-Lặp cho từng service: `api-gateway`, `order-service`, `payment-service`, `cart-service`, `notification-service`, `product-service`, `restaurant-service`, `user-service`, `frontend` (hoặc dùng Static Web App cho frontend)
+Chi tiết từng bước (mỗi bước là thao tác trên Azure Portal):
 
-1. Portal -> Create -> Web App
-   - Publish: Docker Container
-   - OS: Linux
-   - App Service Plan: chọn plan bạn đã có
-2. Deployment -> Docker -> Image source: Azure Container Registry -> chọn repository và tag
-3. Configuration -> Application settings: thêm env vars cần cho service (ví dụ `DATABASE_URL`, `REDIS_HOST`, `REDIS_PORT`, `KAFKA_BROKERS`, `VNPAY_RETURN_URL`, `JWT_SECRET_KEY`, v.v.)
-   - Nếu container định lắng nghe port khác 80, set `WEBSITES_PORT` hoặc `PORT` = container port (ví dụ 3000)
-4. Monitoring -> Enable container logs để xem output trong Portal
-5. Deployment Center -> Bật Continuous Deployment từ ACR (nếu muốn tự động deploy khi push image)
-6. Networking -> Nếu muốn kết nối private tới Postgres/Redis, cấu hình VNet integration và private endpoints (nâng cao)
+A) Chuẩn bị infra cốt lõi (ưu tiên cao - làm ngay)
+1. PostgreSQL: (bạn đã có) – kiểm tra connection string và quyền truy cập từ App Services.
+2. Azure Cache for Redis (tạo mới nếu chưa có):
+   - Portal -> Create -> Azure Cache for Redis -> chọn SKU nhỏ (C0/C1) nếu available.
+   - Trong `Networking` chọn Public access (temporary) hoặc Private Endpoint + VNet (nếu bạn cấu hình VNet integration cho App Service).
+   - Lưu `Host name` và `Primary key`.
+   - Ghi: Azure Redis dùng TLS trên port 6380. Bạn sẽ set App Settings:
+     - REDIS_HOST = <host-name>
+     - REDIS_PORT = 6380
+     - REDIS_PASSWORD = <primary-key>
+     - REDIS_TLS = true
+   - Nếu bạn cần non-TLS (chỉ cho dev), bật "Allow non-TLS" trong Redis (nếu có trên SKU) và dùng port 6379.
+3. Kafka (Confluent Cloud) — khuyến nghị dùng Confluent (nhẹ, free tier):
+   - Đăng ký Confluent Cloud (free tier) → tạo một Kafka cluster (Basic hoặc Developer).
+   - Trong Confluent UI, tạo một API key (Client ID) và API secret cho cluster.
+   - Lấy `Bootstrap servers` (ví dụ: pkc-xxxx.us-east1.gcp.confluent.cloud:9092)
+   - Note Confluent yêu cầu SSL/SASL PLAIN. App Settings cần:
+     - KAFKA_BROKERS = <bootstrap_servers> (comma-separated nếu nhiều)
+     - KAFKA_SASL_USERNAME = <API_KEY>
+     - KAFKA_SASL_PASSWORD = <API_SECRET>
+     - KAFKA_SSL = true
+   - Trong Confluent, tạo các topic cần dùng: order.create, payment.event, order.expired, order.retry.payment, inventory.reserve.result, product.sync
 
-### Bước C — Cấu hình API Gateway và Frontend
-1. Khi mỗi service có URL `https://{app}.azurewebsites.net`, copy các URL và set những biến trong `api-gateway` App Settings:
-   - USER_SERVICE_URL, ORDER_SERVICE_URL, PAYMENT_SERVICE_URL, PRODUCT_SERVICE_URL, RESTAURANT_SERVICE_URL, CART_SERVICE_URL
-2. Frontend: nếu build thời gian runtime (container) dùng image từ ACR; nếu dùng Static Web App, cấu hình build & môi trường để gọi API Gateway public URL.
+B) Chuẩn bị image & migrations (ưu tiên cao — làm trước khi deploy services)
+1. Nếu cần sửa code nhỏ (KAFKA_BROKERS, REDIS_TLS) — áp vào branch demo, build image.
+2. Trong Dockerfile/entrypoint, thêm bước chạy Prisma migration (npx prisma migrate deploy) hoặc đảm bảo DB schema đã có trên Postgres.
+3. Build image cho mỗi service và push lên ACR. Đảm bảo tag rõ ràng (ví dụ order-service:latest hoặc order-service:v1).
 
-### Bước D — VNPay (payment callback)
-1. Trong `payment-service` App Settings: set `VNPAY_RETURN_URL` = `https://{payment-app}.azurewebsites.net/api/payment/<return-endpoint>`
-2. Đăng ký URL này trong VNPay merchant portal (sandbox)
+C) Deploy core services trên App Service (ưu tiên: core để test flow)
+1. Tạo Web App container cho `api-gateway` (image từ ACR). Set App Settings theo phần 7.1.
+2. Tạo Web App container cho `order-service`.
+3. Tạo Web App container cho `payment-service` (đặt `VNPAY_RETURN_URL` trỏ tới public URL của service).
+4. Theo dõi Log stream: kiểm tra kết nối DB/Redis/Kafka.
 
-### Bước E — Prisma migrations
-- Nếu DB chưa có schema, bạn cần chạy prisma migrate. Options:
-  1. Build image chứa step `npx prisma migrate deploy` trong entrypoint/ Dockerfile (recommended) — sau đó redeploy image.
-  2. Tạm thời tạo một Web App Container chỉ chạy migration once (use same image with command override to run migration) then stop.
+D) Deploy supporting services
+1. Tạo Web App containers cho `user-service`, `product-service`, `restaurant-service`, `cart-service`, `notification-service`.
+2. Thiết lập App Settings tương ứng (DB, Redis, Kafka) — xem phần 7.1.
+3. Cấu hình API Gateway App Settings để trỏ tới các public URLs của các service.
 
-### Bước F — Test & Debug
-- Portal -> App Service -> Log stream: xem logs khi container start
-- Test endpoints (API gateway, services)
-- Test flow: frontend -> create order -> payment flow -> VNPay return
-- Check Redis connect logs and Kafka connect logs.
+E) Deploy frontend (ACR -> Web App)
+1. Tạo Web App container cho frontend, chọn image từ ACR (Dockerfile ở `frontend/cnpm-fooddelivery` đã expose port 80).
+2. App Settings:
+   - WEBSITES_PORT = 80
+   - VITE_API_BASE / REACT_APP_API_URL = https://{api-gateway-app}.azurewebsites.net
+3. Test UI: tạo order -> theo dõi request flow.
+
+F) CI/CD & Monitoring
+1. Trong mỗi Web App -> Deployment Center -> bật Continuous Deployment từ ACR (nếu bạn push image thường xuyên).
+2. Bật Diagnostic logs / App Service Log Stream.
+3. (Optional) Tích hợp Application Insights cho monitoring chi tiết.
+
+G) Smoke tests & Post-deploy checks (cuối cùng)
+- Tạo order trên frontend, kiểm tra:
+  - order.create được publish (Kafka topic)
+  - payment.service tạo paymentUrl (VNPay) và publish payment.event
+  - order.service xử lý payment.event và cập nhật DB
+  - Redis sessions được xóa/ quản lý theo logic
+- Kiểm tra logs để debug và fix lỗi cấu hình (DB, Redis TLS, Kafka SASL).
 
 ---
 
@@ -350,3 +375,223 @@ const client = createClient(redisConfig);
 - Nếu không sửa code: bạn cần deploy Kafka/Redis theo đúng hostnames và ports giống local (khó và không recommended trên App Service).
 
 ---
+
+## 11. Hướng dẫn cấu hình Azure Database for PostgreSQL (bước-by-bước, chi tiết)
+Nếu bạn nghĩ mình đã cấu hình PostgreSQL sai, làm theo hướng dẫn này để kiểm tra và (nếu cần) tạo hoặc sửa lại server PostgreSQL trên Azure sao cho đúng với yêu cầu của project (Prisma, App Service).
+
+Mục tiêu:
+- Tạo (hoặc sửa) Azure Database for PostgreSQL phù hợp cho demo/student
+- Đảm bảo App Services có thể kết nối (firewall / networking)
+- Cấu hình connection string đúng cho `DATABASE_URL` (dùng với Prisma)
+- Cung cấp các lựa chọn an toàn/tạm thời khi debug (TLS, firewall)
+
+Lưu ý: Azure hiện có 2 flavour chính: "Flexible Server" (khuyến nghị mới) và "Single Server" (legacy). Hướng dẫn dưới áp dụng cho Flexible Server; Single Server tương tự ở nhiều bước.
+
+A) Tạo server PostgreSQL (Portal)
+1. Portal -> Create a resource -> Databases -> Azure Database for PostgreSQL -> Flexible Server
+2. Basic cấu hình cho student/demo:
+   - Subscription, Resource group
+   - Server name: ví dụ `foodpay-db` (tên phải là unique)
+   - Region: chọn gần bạn (ví dụ East US / Southeast Asia)
+   - Workload type / Compute + Storage: chọn General Purpose nhỏ nhất hoặc Burstable nếu có (B1ms / 1 vCore) để tiết kiệm chi phí
+   - Authentication: admin username (ví dụ `pgadmin`) và mật khẩu mạnh
+   - Public access: allow public access (tạm thời) hoặc chọn VNet/private endpoint nếu bạn cấu hình VNet cho App Service (nâng cao)
+3. Networking / Connectivity:
+   - Nếu bạn chọn Public access, bật `Allow public access from any Azure service` (tùy chọn) hoặc kiểm soát bằng firewall rules.
+   - Lưu ý: tốt nhất là thêm firewall rule chỉ cho IP(s) của App Service (xem phần B).
+4. Data encryption / backups: giữ mặc định cho demo.
+5. Create server và chờ provisioning hoàn tất.
+
+B) Cấu hình firewall & kết nối từ App Service
+App Service cần được phép truy cập tới server PostgreSQL. Có 2 cách chính:
+- Cách nhanh (dùng cho demo): bật `Allow access to Azure services` trong PostgreSQL server -> App Service sẽ có thể kết nối.
+- Cách an toàn hơn: add firewall rules cho các Outbound IP của App Service.
+
+1. Lấy danh sách Outbound IPs của App Service:
+   - Trong Portal -> App Service của bạn -> Properties -> Copy `Outbound IP addresses` list.
+   - Lưu ý: App Service có nhiều outbound IPs (comma separated) — bạn cần add tất cả vào firewall của PostgreSQL.
+2. Thêm firewall rules vào PostgreSQL server:
+   - Portal -> your PostgreSQL server -> Networking -> Add client IP (hoặc Add rule) -> nhập từng IP hoặc dải IP.
+   - Lưu lại.
+3. Kiểm tra kết nối bằng Query Editor (Portal) hoặc công cụ như pgAdmin (nếu bạn muốn test từ máy local, nhớ add IP của laptop vào firewall).
+
+C) Connection string / `DATABASE_URL` cho Prisma (ví dụ & lưu ý)
+- Format chuẩn (khuyến nghị cho Prisma):
+
+  postgresql://<USERNAME>:<PASSWORD>@<HOST>:<PORT>/<DATABASE>?schema=public&sslmode=require
+
+- Lưu ý quan trọng với Azure:
+  - Tên user có thể cần định dạng `username@servername` tùy server SKU — nếu kết nối lỗi, thử dùng `username@servername` như username hoặc URL-encode ký tự `@` (thành `%40`) trong connection string.
+  - Ví dụ (thông dụng):
+
+    DATABASE_URL="postgresql://pgadmin:MyP@ssw0rd@foodpay-db.postgres.database.azure.com:5432/foodpaydb?schema=public&sslmode=require"
+
+  - Nếu username là `pgadmin@foodpay-db`, URL-encode:
+
+    DATABASE_URL="postgresql://pgadmin%40foodpay-db:MyP%40ssw0rd@foodpay-db.postgres.database.azure.com:5432/foodpaydb?schema=public&sslmode=require"
+
+- Cách set vào App Service: Portal -> Web App -> Configuration -> Application settings -> Add `DATABASE_URL` = <giá trị ở trên>
+
+D) SSL / CA Certificate
+- Azure PostgreSQL bắt buộc SSL (Flexible Server) — set `sslmode=require` sẽ bắt buộc kết nối TLS.
+- Đối với Prisma/Node, `sslmode=require` trong connection string thường là đủ. Nếu client báo lỗi `self signed certificate` bạn có 2 lựa chọn:
+  - Bật `rejectUnauthorized=false` trong client (không khuyến nghị cho production) — bằng cách cấu hình prisma client trong code (ví dụ qua `ssl` option).
+  - Hoặc dùng CA certificate chính thức (tải từ Azure docs) và cấu hình client trust (phức tạp hơn).
+- Với Prisma, start bằng `sslmode=require` trong `DATABASE_URL` là phù hợp cho demo.
+
+E) Migration (tạo schema) — các lựa chọn
+1. Chạy migration local (nếu bạn có terminal + prisma CLI):
+   - Từ máy dev (có kết nối tới Azure DB), set env `DATABASE_URL` rồi chạy:
+
+```bash
+npx prisma migrate deploy
+```
+
+   - Hoặc để chạy migration đặc thù: `npx prisma migrate dev` (local dev only).
+2. Chạy migration tự động khi container khởi động (được khuyến nghị cho CI/CD/demo):
+   - Trong Dockerfile hoặc entrypoint script, thêm lệnh trước khi khởi chạy app:
+
+```dockerfile
+# Dockerfile (entrypoint snippet)
+# ...existing code...
+CMD npx prisma migrate deploy && node dist/server.js
+```
+
+   - Sau đó build image, push ACR, và deploy Web App. Khi container start nó sẽ chạy migration và exit to app.
+3. Dùng Query Editor trong Azure Portal (nếu bạn có SQL script):
+   - Portal -> PostgreSQL server -> Query editor (preview) -> đăng nhập bằng admin -> chạy các lệnh SQL để tạo bảng.
+
+F) Thao tác kiểm tra & Debug (nếu không kết nối)
+- Kiểm tra logs ở App Service (Log stream): sẽ thấy lỗi liên quan đến authentication hoặc SSL.
+- Lỗi phổ biến và cách fix:
+  - `password authentication failed` → kiểm tra username/password, nếu username cần `@servername` thì sửa accordingly.
+  - `timeout` hoặc `connect ECONNREFUSED` → kiểm tra firewall, add outbound IPs hoặc bật `Allow Azure services` tạm thời.
+  - `self signed certificate` → thử thêm `?sslmode=require` hoặc cấu hình client để chấp nhận CA.
+- Để debug nhanh: thử kết nối từ máy local bằng `psql` hoặc pgAdmin (nhớ add IP của máy local vào firewall).
+
+G) Tối ưu cho Student/demo
+- Chọn SKU nhỏ, bật auto pause nếu có để tiết kiệm chi phí.
+- Nếu lo ngại số lượng kết nối (Prisma tạo nhiều connection), cân nhắc chạy bản build có `pgbouncer` hoặc setting connection pool trong Prisma v4 (datasource `pgbouncer` support) — nhưng cho demo có thể để mặc định.
+
+H) Ví dụ concrete để copy/paste vào App Settings
+- DATABASE_URL = postgresql://pgadmin:MyP@ssw0rd@foodpay-db.postgres.database.azure.com:5432/foodpaydb?schema=public&sslmode=require
+- (nếu username = pgadmin@foodpay-db):
+  - DATABASE_URL = postgresql://pgadmin%40foodpay-db:MyP%40ssw0rd@foodpay-db.postgres.database.azure.com:5432/foodpaydb?schema=public&sslmode=require
+
+
+---
+
+Kết luận & bước tiếp theo tôi có thể làm cho bạn
+- Tôi đã thêm nội dung này vào `AZURE_STUDENT_DEPLOY.md` trong repo.
+- Nếu muốn, tôi có thể tiếp tục và làm 1 trong các việc sau (chọn 1):
+  1) Tạo file CSV/Checklist env vars chi tiết để bạn copy/paste vào Portal (rất tiện)
+  2) Tạo patch (gợi ý) thay code để chạy `KAFKA_BROKERS` + `REDIS_TLS` và tự động chạy migration; tôi sẽ tạo edits trong repo trên branch `demo/azure-env` (bạn review)
+  3) Soạn danh sách Web App names + ví dụ image tags từ ACR để bạn copy/paste khi tạo Web Apps trên Portal
+
+Bạn chọn 1, 2, hay 3 (hoặc yêu cầu khác)?
+
+## 12. Kafka & Redis — cấu hình chi tiết: Test (local) vs Deploy (Azure)
+Phần này hướng dẫn rõ ràng cách đặt biến môi trường cho Kafka và Redis ở hai môi trường: khi test/local và khi deploy lên Azure App Service.
+
+### 12.1 Kafka
+- Mục tiêu: Producer/Consumer (order-service, payment-service, notification-service, product-service) kết nối ổn định.
+- Lưu ý code: repo gốc hard-code `brokers: ["kafka:9092"]` trong nhiều service. Bạn nên áp gợi ý sửa code ở mục 6 để đọc env `KAFKA_*`. Nếu không sửa, App Service sẽ không thể resolve hostname `kafka`.
+
+A) Test / Local (Docker hoặc máy dev)
+- Env khuyến nghị:
+  - KAFKA_BROKERS = localhost:9092 (nếu Kafka chạy local) hoặc kafka:9092 (nếu chạy bằng docker-compose và service tên `kafka`)
+  - KAFKA_SSL = false
+  - (không cần) KAFKA_SASL_USERNAME, KAFKA_SASL_PASSWORD
+  - KAFKA_GROUP_ID = <ten-service>-group (ví dụ payment-service-group)
+- Topics cần có (tạo sẵn trong local broker):
+  - order.create, payment.event, order.expired, order.retry.payment, inventory.reserve.result, product.sync
+- Dấu hiệu lỗi thường gặp local:
+  - `ECONNREFUSED localhost:9092` → broker chưa chạy
+  - `ENOTFOUND kafka` → sai hostname khi không dùng docker-compose
+
+B) Deploy / Azure (Confluent Cloud — khuyến nghị)
+- Tạo cluster Confluent Cloud (free tier) → tạo API Key/Secret → lấy Bootstrap servers.
+- App Settings cho từng service Kafka client:
+  - KAFKA_BROKERS = pkc-xxxxx.region.confluent.cloud:9092
+  - KAFKA_SASL_USERNAME = <Confluent API Key>
+  - KAFKA_SASL_PASSWORD = <Confluent API Secret>
+  - KAFKA_SSL = true
+  - KAFKA_GROUP_ID = <ten-service>-group (ví dụ order-service-group)
+  - (khuyến nghị) SERVICE_NAME = order-service (để set clientId đẹp; xem mục clientId giải thích ở dưới)
+- Tạo topics trên Confluent: order.create, payment.event, order.expired, order.retry.payment, inventory.reserve.result, product.sync
+- Dấu hiệu lỗi thường gặp deploy:
+  - `SASL authentication failed` → sai API key/secret
+  - `getaddrinfo ENOTFOUND pkc-xxxxx...` → sai hostname/bootstrap servers
+  - `self signed certificate` thường không xuất hiện với Confluent; luôn để `KAFKA_SSL=true`
+- clientId khuyến nghị: `clientId = ${SERVICE_NAME}-${WEBSITE_INSTANCE_ID || process.pid}` để phân biệt instance trong logs.
+
+
+### 12.2 Redis
+- Mục tiêu: cart-service và order-service kết nối Redis ổn định; quản lý session đúng TTL.
+
+A) Test / Local
+- Nếu chạy docker-compose có service `redis`:
+  - REDIS_HOST = redis
+  - REDIS_PORT = 6379
+  - REDIS_PASSWORD = (để trống nếu bạn không cấu hình password)
+  - REDIS_DB = 0 (tùy chọn)
+  - REDIS_TLS = false
+- Nếu chạy Redis trên máy local:
+  - REDIS_HOST = localhost
+  - REDIS_PORT = 6379
+  - REDIS_TLS = false
+
+B) Deploy / Azure (Azure Cache for Redis — TLS)
+- Lấy thông tin từ Azure Cache for Redis (Portal):
+  - Host name: ví dụ myredis.redis.cache.windows.net
+  - TLS port: 6380
+  - Access keys: Primary key
+- App Settings cho các service dùng Redis (cart, order,…):
+  - REDIS_HOST = myredis.redis.cache.windows.net
+  - REDIS_PORT = 6380
+  - REDIS_PASSWORD = <Primary key>
+  - REDIS_DB = 0 (tùy chọn)
+  - REDIS_TLS = true
+- Lưu ý Networking:
+  - Public access: đảm bảo App Service có thể outbound. Nếu bật firewall, add Outbound IPs của App Service.
+  - Private endpoint + VNet: nâng cao, chỉ dùng khi bạn đã cấu hình VNet integration cho App Service.
+- Dấu hiệu lỗi thường gặp deploy:
+  - `NOAUTH Authentication required` → thiếu REDIS_PASSWORD
+  - `ERR Client sent AUTH, but no password is set` → bạn set password nhưng Redis đang không yêu cầu (ít gặp với Azure)
+  - `read ECONNRESET` hoặc handshake lỗi → thiếu REDIS_TLS=true hoặc sai port (phải 6380)
+
+
+### 12.3 Ví dụ cấu hình nhanh (copy App Settings theo môi trường)
+A) Local/Test (ví dụ cho payment-service)
+- KAFKA_BROKERS = localhost:9092
+- KAFKA_SSL = false
+- KAFKA_GROUP_ID = payment-service-group
+- REDIS_HOST = localhost
+- REDIS_PORT = 6379
+- REDIS_TLS = false
+
+B) Deploy/Azure (ví dụ cho payment-service)
+- KAFKA_BROKERS = pkc-xxxxx.region.confluent.cloud:9092
+- KAFKA_SASL_USERNAME = <API_KEY>
+- KAFKA_SASL_PASSWORD = <API_SECRET>
+- KAFKA_SSL = true
+- KAFKA_GROUP_ID = payment-service-group
+- REDIS_HOST = myredis.redis.cache.windows.net
+- REDIS_PORT = 6380
+- REDIS_PASSWORD = <Primary key>
+- REDIS_TLS = true
+
+> Nhắc lại: để dùng được các env này, các file Kafka client phải đọc từ env (mục 6). Nếu còn hard-code `kafka:9092`, App Service sẽ không kết nối được.
+
+
+## 13. Lưu ý thêm (quan trọng – review nhanh)
+- API Gateway CORS: cập nhật origin cho frontend domain (mặc định code để localhost). Trên deploy, đổi origin thành `https://{frontend-app}.azurewebsites.net`.
+- VNPay return URL: đảm bảo `VNPAY_RETURN_URL` khớp đúng endpoint public trên payment-service và đã đăng ký trong VNPay portal.
+- Always On: bật trong App Service (General settings) để tránh cold-start lâu với consumer Kafka.
+- NODE_ENV: set `NODE_ENV=production` trong App Settings để tối ưu hiệu năng và logs.
+- App Service Plan quotas: với Student, chọn SKU nhỏ nhưng đảm bảo đủ bộ nhớ cho Node + Kafka client.
+- Deployment Center: đồng bộ image tag giữa ACR và Web App (tránh trỏ nhầm tag cũ).
+- Consumer group IDs: mỗi service nên có groupId riêng, tránh share group gây rebalancing khó đoán nếu không chủ đích.
+- Prisma migrations: đừng quên chạy trước khi test end-to-end trên Azure.
+- Health checks: thêm route “/” đã có; bạn có thể bật Health check trong App Service để auto-restart khi lỗi (optional).
+
