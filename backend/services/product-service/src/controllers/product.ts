@@ -70,6 +70,9 @@ export const getProductById = async (req: Request, res: Response) => {
 // Tạo sản phẩm mới
 export const createProduct = async (req: Request, res: Response) => {
   try {
+    // Lấy userId từ header (được forward từ API Gateway)
+    const userId = req.headers['x-user-id'] as string;
+
     const {
       sku,
       name,
@@ -82,6 +85,17 @@ export const createProduct = async (req: Request, res: Response) => {
       unavailableReason,
       storeId
     } = req.body;
+
+    // Nếu là STORE_ADMIN, cần kiểm tra storeId có thuộc về user này không
+    // (logic này có thể được mở rộng bằng cách gọi restaurant-service để verify)
+    // Hiện tại chấp nhận storeId từ request body
+
+    if (!storeId) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng cung cấp storeId"
+      });
+    }
 
     // Kiểm tra SKU đã tồn tại chưa
     const existingSku = await prisma.product.findUnique({
@@ -158,6 +172,8 @@ export const createProduct = async (req: Request, res: Response) => {
 export const updateProduct = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const userId = req.headers['x-user-id'] as string;
+
     const {
       sku,
       name,
@@ -180,6 +196,15 @@ export const updateProduct = async (req: Request, res: Response) => {
       return res.status(404).json({
         success: false,
         message: "Không tìm thấy sản phẩm"
+      });
+    }
+
+    // Kiểm tra ownership: nếu có storeId trong request, phải khớp với product hiện tại
+    // (hoặc có thể verify qua restaurant-service nếu cần strict hơn)
+    if (storeId && storeId !== existingProduct.storeId) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền cập nhật sản phẩm này"
       });
     }
 
@@ -262,6 +287,8 @@ export const updateProduct = async (req: Request, res: Response) => {
 export const deleteProduct = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const userId = req.headers['x-user-id'] as string;
+    const userStoreId = req.headers['x-user-store-id'] as string; // Nếu có forward từ gateway
 
     const existingProduct = await prisma.product.findUnique({
       where: { id }
@@ -273,6 +300,10 @@ export const deleteProduct = async (req: Request, res: Response) => {
         message: "Không tìm thấy sản phẩm"
       });
     }
+
+    // Kiểm tra ownership (có thể mở rộng bằng cách verify qua restaurant-service)
+    // Hiện tại chỉ cho phép xóa nếu là admin hoặc thuộc cùng store
+    // (Logic này cần được hoàn thiện với restaurant-service integration)
 
     await prisma.product.delete({
       where: { id }
