@@ -25,6 +25,10 @@ model Store {
   district String
   province String
 
+  // Tọa độ địa lý
+  latitude  Float?
+  longitude Float?
+
   phone String?
   email String?
 
@@ -39,4 +43,6 @@ model Store {
 
   @@index([ownerId])
   @@index([isActive])
+  @@index([latitude, longitude])
+  @@index([district, isActive])
 }

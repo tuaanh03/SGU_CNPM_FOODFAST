@@ -17,7 +17,9 @@ export const createStore = async (req: Request, res: Response) => {
       phone,
       email,
       openTime,
-      closeTime
+      closeTime,
+      latitude,
+      longitude
     } = req.body;
 
     // Kiểm tra user đã có cửa hàng chưa
@@ -43,6 +45,8 @@ export const createStore = async (req: Request, res: Response) => {
         ward,
         district,
         province,
+        latitude,
+        longitude,
         phone,
         email,
         openTime,
@@ -106,6 +110,8 @@ export const updateStore = async (req: Request, res: Response) => {
       ward,
       district,
       province,
+      latitude,
+      longitude,
       phone,
       email,
       openTime,
@@ -135,6 +141,8 @@ export const updateStore = async (req: Request, res: Response) => {
         ...(ward && { ward }),
         ...(district && { district }),
         ...(province && { province }),
+        ...(latitude !== undefined && { latitude }),
+        ...(longitude !== undefined && { longitude }),
         ...(phone && { phone }),
         ...(email && { email }),
         ...(openTime && { openTime }),

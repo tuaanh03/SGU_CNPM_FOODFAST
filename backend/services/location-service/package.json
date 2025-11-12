@@ -1,0 +1,29 @@
+{
+  "name": "location-service",
+  "version": "1.0.0",
+  "description": "Location service for geocoding and address management",
+  "main": "server.js",
+  "scripts": {
+    "start": "node ./dist/server.js",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "morgan": "^1.10.0",
+    "node-cache": "^5.1.2"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.8",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/morgan": "^1.9.9",
+    "@types/node": "^22.10.5",
+    "@types/node-cache": "^4.2.5",
+    "typescript": "^5.7.2"
+  }
+}
+

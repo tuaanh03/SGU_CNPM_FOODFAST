@@ -86,6 +86,8 @@ const ProfileForm = () => {
           <Label htmlFor="name">Họ và tên</Label>
           <Input
             id="name"
+            name="name"
+            autoComplete="name"
             value={profile.name}
             onChange={(e) => handleInputChange("name", e.target.value)}
             placeholder="Nhập họ và tên"
@@ -96,7 +98,9 @@ const ProfileForm = () => {
           <Label htmlFor="email">Email</Label>
           <Input
             id="email"
+            name="email"
             type="email"
+            autoComplete="email"
             value={profile.email}
             onChange={(e) => handleInputChange("email", e.target.value)}
             placeholder="Nhập email"
@@ -107,6 +111,9 @@ const ProfileForm = () => {
           <Label htmlFor="phone">Số điện thoại</Label>
           <Input
             id="phone"
+            name="tel"
+            autoComplete="tel"
+            inputMode="tel"
             value={profile.phone}
             onChange={(e) => handleInputChange("phone", e.target.value)}
             placeholder="Nhập số điện thoại"
@@ -117,6 +124,8 @@ const ProfileForm = () => {
           <Label htmlFor="bio">Giới thiệu</Label>
           <Textarea
             id="bio"
+            name="about"
+            autoComplete="section-description"
             value={profile.bio}
             onChange={(e) => handleInputChange("bio", e.target.value)}
             placeholder="Viết vài dòng về bản thân..."

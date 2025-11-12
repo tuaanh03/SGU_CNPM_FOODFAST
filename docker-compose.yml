@@ -287,6 +287,20 @@ services:
       - redis
     restart: on-failure
 
+  # Location service
+  location-service:
+    build:
+      context: ./backend/services/location-service
+      dockerfile: Dockerfile
+    container_name: location-service
+    env_file:
+      - ./backend/services/location-service/.env
+    ports:
+      - "3007:3007"
+    networks:
+      - network
+    restart: on-failure
+
   # Frontend - CNPM Food Delivery (Customer Portal)
   frontend:
     build:

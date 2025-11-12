@@ -62,6 +62,10 @@ model Address {
   province  String // Tỉnh/Thành phố
   isDefault Boolean @default(false)
 
+  // Tọa độ địa lý
+  latitude  Float?
+  longitude Float?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
