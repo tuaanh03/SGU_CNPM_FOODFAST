@@ -36,10 +36,12 @@ export async function publishOrderExpirationEvent(payload: any) {
   }
   await producer.send({
     topic: "order.expired",
-    messages: [{
-      key: `order-expired-${payload.orderId}`,
-      value: JSON.stringify(payload)
-    }],
+    messages: [
+      {
+        key: `order-expired-${payload.orderId}`,
+        value: JSON.stringify(payload),
+      },
+    ],
   });
 }
 
@@ -50,10 +52,28 @@ export async function publishRetryPaymentEvent(payload: any) {
   }
   await producer.send({
     topic: "order.retry.payment",
-    messages: [{
-      key: `order-retry-${payload.orderId}`,
-      value: JSON.stringify(payload)
-    }],
+    messages: [
+      {
+        key: `order-retry-${payload.orderId}`,
+        value: JSON.stringify(payload),
+      },
+    ],
+  });
+}
+
+export async function publishOrderConfirmedEvent(payload: any) {
+  if (!isProducerConnected) {
+    await producer.connect();
+    isProducerConnected = true;
+  }
+  await producer.send({
+    topic: "order.confirmed",
+    messages: [
+      {
+        key: `order-confirmed-${payload.orderId}`,
+        value: JSON.stringify(payload),
+      },
+    ],
   });
 }
 
@@ -104,54 +124,72 @@ export async function handlePaymentEvent(data: any) {
     data.paymentStatus === "cancelled"
   ) {
     try {
-      // Map payment status to OrderStatus enum (lowercase)
-      // Flow:
-      // - PaymentAttempt failed → PaymentIntent REQUIRES_PAYMENT → Order pending (không xóa session để retry)
-      // - PaymentAttempt cancelled → PaymentIntent FAILED → Order cancelled (xóa session)
-      // - PaymentAttempt success → PaymentIntent SUCCESS → Order success (xóa session)
       let orderStatus: "pending" | "success" | "cancelled";
 
       if (data.paymentStatus === "success") {
         orderStatus = "success";
       } else if (data.paymentStatus === "cancelled") {
-        // cancelled: Khách hàng hủy giao dịch (response code 24 từ VNPay)
         orderStatus = "cancelled";
         console.log(`⚠️ Order ${data.orderId} cancelled - payment cancelled by user`);
       } else if (data.paymentStatus === "failed") {
-        // failed: Giao dịch thất bại (các lỗi khác)
         orderStatus = "cancelled";
         console.log(`❌ Order ${data.orderId} cancelled - payment failed`);
       } else {
-        // pending: đang chờ thanh toán hoặc PaymentAttempt failed nhưng PaymentIntent vẫn REQUIRES_PAYMENT
         orderStatus = "pending";
       }
 
       await prisma.order.update({
-        where: {
-          id: data.orderId,
-        },
-        data: {
-          status: orderStatus,
-        },
+        where: { id: data.orderId },
+        data: { status: orderStatus },
       });
 
-      console.log(
-        `Order ${data.orderId} status updated to: ${orderStatus}`
-      );
+      console.log(`Order ${data.orderId} status updated to: ${orderStatus}`);
 
-      // Chỉ xóa session khi order status = success hoặc cancelled
-      // Không xóa khi pending (để user có thể retry payment)
       if (orderStatus === "success" || orderStatus === "cancelled") {
         await deleteOrderSession(data.orderId);
         console.log(`✅ Deleted Redis session for order ${data.orderId} after status: ${orderStatus}`);
       }
 
-      // Nếu có paymentUrl, log để frontend có thể sử dụng
+      if (data.paymentStatus === "success") {
+        try {
+          const order = await prisma.order.findUnique({ where: { id: data.orderId }, include: { items: true } });
+          if (order) {
+            const items = order.items.map((it: any) => ({
+              productId: it.productId,
+              productName: it.productName,
+              quantity: it.quantity,
+              price: it.productPrice,
+            }));
+
+            const totalQuantity = order.items.reduce((s: number, it: any) => s + (it.quantity || 0), 0);
+            const estimatedPrepTime = Math.max(10, Math.min(60, totalQuantity * 5));
+
+            const confirmedPayload = {
+              eventType: "ORDER_CONFIRMED",
+              orderId: order.id,
+              storeId: order.storeId || null,
+              userId: order.userId,
+              items,
+              totalPrice: order.totalPrice,
+              deliveryAddress: order.deliveryAddress,
+              contactPhone: order.contactPhone,
+              note: order.note,
+              confirmedAt: new Date().toISOString(),
+              estimatedPrepTime,
+            };
+
+            await publishOrderConfirmedEvent(confirmedPayload);
+            console.log(`📤 Published ORDER_CONFIRMED for order ${order.id}`);
+          } else {
+            console.warn(`Order not found when trying to publish ORDER_CONFIRMED: ${data.orderId}`);
+          }
+        } catch (err) {
+          console.error("Error publishing ORDER_CONFIRMED:", err);
+        }
+      }
+
       if (data.paymentUrl && data.paymentStatus === "pending") {
-        console.log(
-          `Payment URL for order ${data.orderId}: ${data.paymentUrl}`
-        );
-        // TODO: Có thể gửi paymentUrl về frontend qua WebSocket hoặc cách khác
+        console.log(`Payment URL for order ${data.orderId}: ${data.paymentUrl}`);
       }
     } catch (error) {
       console.error("Error updating order status:", error);
@@ -164,27 +202,11 @@ async function handleInventoryReserveResult(data: any) {
 
   try {
     if (status === "RESERVED") {
-      // Cập nhật order status thành "pending" - đợi thanh toán
-      await prisma.order.update({
-        where: { id: orderId }, // Sử dụng id thay vì orderId
-        data: {
-          status: "pending"
-        },
-      });
+      await prisma.order.update({ where: { id: orderId }, data: { status: "pending" } });
       console.log(`Order ${orderId} inventory reserved successfully, ready for payment`);
-
     } else if (status === "REJECTED") {
-      // Cập nhật order status thành "cancelled" - không đủ hàng
-      await prisma.order.update({
-        where: { id: orderId }, // Sử dụng id thay vì orderId
-        data: {
-          status: "cancelled"
-        },
-      });
-
-      // Xóa session trong Redis khi order bị hủy
+      await prisma.order.update({ where: { id: orderId }, data: { status: "cancelled" } });
       await deleteOrderSession(orderId);
-
       console.log(`Order ${orderId} cancelled due to inventory shortage: ${message}`);
     }
   } catch (error) {
@@ -199,109 +221,30 @@ async function handleProductSync(event: any) {
     console.log(`Processing product sync event: ${eventType}`, data);
 
     if (eventType === 'CREATED' || eventType === 'UPDATED') {
-      // Đồng bộ product vào bảng MenuItemRead
-      const {
-        id,
-        storeId,
-        name,
-        description,
-        price,
-        imageUrl,
-        categoryId,
-        isAvailable,
-        soldOutUntil,
-      } = data;
-
-      // Vì Product không có menuId, ta sẽ dùng storeId làm menuId tạm
+      const { id, storeId, name, description, price, imageUrl, categoryId, isAvailable, soldOutUntil } = data;
       const menuId = storeId || 'default-menu';
 
       await prisma.menuItemRead.upsert({
-        where: {
-          menuId_productId: {
-            menuId,
-            productId: id
-          }
-        },
-        update: {
-          name,
-          description,
-          price: parseFloat(price),
-          imageUrl,
-          categoryId,
-          isAvailable,
-          soldOutUntil: soldOutUntil ? new Date(soldOutUntil) : null,
-          lastSyncedAt: new Date()
-        },
-        create: {
-          id: `menu-item-${id}`,
-          storeId: storeId || 'unknown',
-          menuId,
-          productId: id,
-          name,
-          description,
-          price: parseFloat(price),
-          imageUrl,
-          categoryId,
-          isAvailable,
-          soldOutUntil: soldOutUntil ? new Date(soldOutUntil) : null,
-          displayOrder: 0,
-          version: 1,
-          lastSyncedAt: new Date()
-        }
+        where: { menuId_productId: { menuId, productId: id } },
+        update: { name, description, price: parseFloat(price), imageUrl, categoryId, isAvailable, soldOutUntil: soldOutUntil ? new Date(soldOutUntil) : null, lastSyncedAt: new Date() },
+        create: { id: `menu-item-${id}`, storeId: storeId || 'unknown', menuId, productId: id, name, description, price: parseFloat(price), imageUrl, categoryId, isAvailable, soldOutUntil: soldOutUntil ? new Date(soldOutUntil) : null, displayOrder: 0, version: 1, lastSyncedAt: new Date() }
       });
 
       console.log(`Product ${id} synchronized to MenuItemRead successfully (${eventType})`);
 
-      // Cập nhật RestaurantSyncStatus
       if (storeId) {
-        const menuItemsCount = await prisma.menuItemRead.count({
-          where: { storeId }
-        });
-
-        await prisma.restaurantSyncStatus.upsert({
-          where: { storeId },
-          update: {
-            menuId,
-            lastSyncedAt: new Date(),
-            totalMenuItems: menuItemsCount,
-            isHealthy: true
-          },
-          create: {
-            storeId,
-            menuId,
-            lastSyncedAt: new Date(),
-            lastSyncVersion: 1,
-            totalMenuItems: menuItemsCount,
-            isHealthy: true
-          }
-        });
+        const menuItemsCount = await prisma.menuItemRead.count({ where: { storeId } });
+        await prisma.restaurantSyncStatus.upsert({ where: { storeId }, update: { menuId, lastSyncedAt: new Date(), totalMenuItems: menuItemsCount, isHealthy: true }, create: { storeId, menuId, lastSyncedAt: new Date(), lastSyncVersion: 1, totalMenuItems: menuItemsCount, isHealthy: true } });
       }
 
     } else if (eventType === 'DELETED') {
-      // Xóa product khỏi bảng MenuItemRead
       const { id, storeId } = data;
-
-      await prisma.menuItemRead.deleteMany({
-        where: {
-          productId: id
-        }
-      });
-
+      await prisma.menuItemRead.deleteMany({ where: { productId: id } });
       console.log(`Product ${id} deleted from MenuItemRead`);
 
-      // Cập nhật count trong RestaurantSyncStatus
       if (storeId) {
-        const remainingItems = await prisma.menuItemRead.count({
-          where: { storeId }
-        });
-
-        await prisma.restaurantSyncStatus.update({
-          where: { storeId },
-          data: {
-            totalMenuItems: remainingItems,
-            lastSyncedAt: new Date()
-          }
-        });
+        const remainingItems = await prisma.menuItemRead.count({ where: { storeId } });
+        await prisma.restaurantSyncStatus.update({ where: { storeId }, data: { totalMenuItems: remainingItems, lastSyncedAt: new Date() } });
       }
     }
 

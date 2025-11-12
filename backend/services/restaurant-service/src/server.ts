@@ -6,6 +6,7 @@ import express, { NextFunction, Request, Response } from "express";
 
 // Import routes
 import storeRoutes from "./routes/store.routes";
+import { runConsumer } from "./utils/kafka";
 
 env.config();
 
@@ -53,8 +54,14 @@ server.use((req: Request, res: Response) => {
 
 const PORT = process.env.PORT || 3005;
 
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
   console.log(`Restaurant service is running on port ${PORT}`);
+
+  // Start Kafka consumer for order events (ORDER_CONFIRMED)
+  try {
+    await runConsumer();
+    console.log('✅ Kafka consumer started for restaurant-service');
+  } catch (err) {
+    console.error('❌ Failed to start Kafka consumer:', err);
+  }
 });
-
-

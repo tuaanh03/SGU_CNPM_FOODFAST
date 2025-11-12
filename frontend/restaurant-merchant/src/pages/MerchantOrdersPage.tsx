@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import MerchantLayout from "@/components/MerchantLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Clock, CheckCircle, History, ChefHat, MapPin, Phone } from "lucide-react";
+import { restaurantOrderService } from "@/services/restaurantOrder.service";
 
 // Mock dữ liệu đơn hàng
 interface Order {
@@ -21,26 +22,7 @@ interface Order {
   completedAt?: string;
 }
 
-const mockOrders: Record<'new' | 'confirmed' | 'history', Order[]> = {
-  new: [
-    {
-      id: 1001,
-      customerName: "Nguyễn Văn A",
-      phone: "0901234567",
-      address: "123 Đường Nguyễn Huệ, Q.1, TP.HCM",
-      items: [
-        { name: "Phở Bò Tái", quantity: 2, price: 45000 },
-        { name: "Cơm Tấm Sườn", quantity: 1, price: 55000 },
-      ],
-      total: 145000,
-      status: "pending",
-      createdAt: "2024-01-15 10:30",
-      restaurantName: "Nhà hàng Chưởng Tài",
-    },
-  ],
-  confirmed: [],
-  history: [],
-};
+const initialOrders: Record<'new' | 'confirmed' | 'history', Order[]> = { new: [], confirmed: [], history: [] };
 
 function OrderCard({ order, status }: any) {
   return (
@@ -116,10 +98,61 @@ function OrderCard({ order, status }: any) {
 
 const MerchantOrderPage = () => {
   const [activeTab, setActiveTab] = useState("new");
+  const [orders, setOrders] = useState(initialOrders);
+  const [loadingOrders, setLoadingOrders] = useState(false);
 
-  const newOrdersCount = mockOrders.new.length;
-  const confirmedOrdersCount = mockOrders.confirmed.length;
-  const historyOrdersCount = mockOrders.history.length;
+  const newOrdersCount = orders.new.length;
+  const confirmedOrdersCount = orders.confirmed.length;
+  const historyOrdersCount = orders.history.length;
+
+  useEffect(() => {
+    const fetchOrders = async () => {
+      setLoadingOrders(true);
+      try {
+        const resp = await restaurantOrderService.getMyOrders({ page: 1, limit: 50 });
+        if (resp.success) {
+          const serverOrders = resp.data as any[];
+          const newList: Order[] = [];
+          const confirmedList: Order[] = [];
+          const historyList: Order[] = [];
+
+          for (const ro of serverOrders) {
+            // map server restaurant order to UI Order
+            const uiOrder: Order = {
+              id: Number(ro.orderId.slice(-6)) || Math.floor(Math.random() * 100000),
+              customerName: ro.customerInfo?.userId || 'Khách hàng',
+              phone: ro.customerInfo?.phone || 'N/A',
+              address: ro.customerInfo?.address || ro.deliveryAddress || 'N/A',
+              items: (ro.items || []).map((it: any) => ({ name: it.productName || it.name || 'Item', quantity: it.quantity || 1, price: it.price || it.productPrice || 0 })),
+              total: ro.totalPrice || 0,
+              status: ro.restaurantStatus?.toLowerCase() || 'confirmed',
+              createdAt: ro.receivedAt || new Date().toISOString(),
+              restaurantName: ''
+            };
+
+            // categorize by restaurantStatus
+            if (ro.restaurantStatus === 'CONFIRMED' || ro.restaurantStatus === 'PREPARING') {
+              confirmedList.push(uiOrder);
+            } else if (ro.restaurantStatus === 'READY' || ro.restaurantStatus === 'COMPLETED' || ro.restaurantStatus === 'DONE') {
+              historyList.push(uiOrder);
+            } else {
+              newList.push(uiOrder);
+            }
+          }
+
+          setOrders({ new: newList, confirmed: confirmedList, history: historyList });
+        } else {
+          console.warn('Failed to load restaurant orders:', resp.message);
+        }
+      } catch (err) {
+        console.error('Error loading restaurant orders:', err);
+      } finally {
+        setLoadingOrders(false);
+      }
+    };
+
+    fetchOrders();
+  }, []);
 
   return (
     <MerchantLayout>
@@ -205,9 +238,11 @@ const MerchantOrderPage = () => {
 
                 <div className="mt-6">
                   <TabsContent value="new" className="space-y-4">
-                    {mockOrders.new.length > 0 ? (
+                    {loadingOrders ? (
+                      <div className="text-center py-12">Đang tải...</div>
+                    ) : orders.new.length > 0 ? (
                       <div className="grid gap-4">
-                        {mockOrders.new.map((order) => (
+                        {orders.new.map((order) => (
                           <OrderCard key={order.id} order={order} status="new" />
                         ))}
                       </div>
@@ -220,9 +255,11 @@ const MerchantOrderPage = () => {
                   </TabsContent>
 
                   <TabsContent value="confirmed" className="space-y-4">
-                    {mockOrders.confirmed.length > 0 ? (
+                    {loadingOrders ? (
+                      <div className="text-center py-12">Đang tải...</div>
+                    ) : orders.confirmed.length > 0 ? (
                       <div className="grid gap-4">
-                        {mockOrders.confirmed.map((order) => (
+                        {orders.confirmed.map((order) => (
                           <OrderCard key={order.id} order={order} status="confirmed" />
                         ))}
                       </div>
@@ -235,9 +272,11 @@ const MerchantOrderPage = () => {
                   </TabsContent>
 
                   <TabsContent value="history" className="space-y-4">
-                    {mockOrders.history.length > 0 ? (
+                    {loadingOrders ? (
+                      <div className="text-center py-12">Đang tải...</div>
+                    ) : orders.history.length > 0 ? (
                       <div className="grid gap-4">
-                        {mockOrders.history.map((order) => (
+                        {orders.history.map((order) => (
                           <OrderCard key={order.id} order={order} status="history" />
                         ))}
                       </div>
