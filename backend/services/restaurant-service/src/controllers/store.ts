@@ -292,7 +292,7 @@ export const getMyOrders = async (req: Request, res: Response) => {
     ]);
 
     // Map to response shape
-    const data = orders.map(o => ({
+    const data = orders.map((o: any) => ({
       id: o.id,
       orderId: o.orderId,
       storeId: o.storeId,
@@ -311,3 +311,17 @@ export const getMyOrders = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, message: 'Lỗi khi lấy đơn hàng của cửa hàng' });
   }
 };
+
+// New: transitionToPreparing helper used by kafka consumer to auto-start preparing
+export async function transitionToPreparing(restaurantOrderId: string) {
+    console.log(` transitioning order to PREPARING:`)
+    const updated = await prisma.restaurantOrder.update({
+    where: { id: restaurantOrderId },
+    data: {
+      restaurantStatus: "PREPARING",
+      preparingStartedAt: new Date()
+    }
+  });
+
+  console.log(`📦 Order ${updated.orderId} is now PREPARING`);
+}

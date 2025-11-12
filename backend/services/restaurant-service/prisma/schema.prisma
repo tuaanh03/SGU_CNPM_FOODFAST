@@ -61,9 +61,10 @@ model RestaurantOrder {
   // Restaurant-specific status
   restaurantStatus String @default("CONFIRMED") // e.g. CONFIRMED, PREPARING, READY, etc.
 
-  receivedAt  DateTime  @default(now())
-  confirmedAt DateTime?
-  readyAt     DateTime?
+  receivedAt         DateTime  @default(now())
+  confirmedAt        DateTime?
+  readyAt            DateTime?
+  preparingStartedAt DateTime?
 
   @@index([storeId, receivedAt])
   @@index([restaurantStatus])

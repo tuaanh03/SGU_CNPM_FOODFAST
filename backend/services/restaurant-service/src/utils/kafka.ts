@@ -1,5 +1,6 @@
 import { Kafka } from 'kafkajs';
 import prisma from '../lib/prisma';
+import { transitionToPreparing } from '../controllers/store';
 
 const kafka = new Kafka({
   clientId: 'restaurant-service',
@@ -77,7 +78,7 @@ async function handleOrderConfirmed(payload: any) {
 
   try {
     // Use upsert to ensure idempotency
-    await prisma.restaurantOrder.upsert({
+    const restaurantOrder = await prisma.restaurantOrder.upsert({
       where: { orderId },
       update: {
         storeId,
@@ -101,6 +102,16 @@ async function handleOrderConfirmed(payload: any) {
     });
 
     console.log(`RestaurantOrder upserted for store ${storeId}, order ${orderId}`);
+
+    // Schedule automatic transition to PREPARING after 30s
+    setTimeout(async () => {
+      try {
+        await transitionToPreparing(restaurantOrder.id);
+        console.log(` transitioning order ${orderId} to PREPARING:`);
+      } catch (err) {
+        console.error(`Error transitioning order ${orderId} to PREPARING:`, err);
+      }
+    }, 30000);
   } catch (err) {
     console.error(`Failed to upsert RestaurantOrder for order ${orderId}:`, err);
   }

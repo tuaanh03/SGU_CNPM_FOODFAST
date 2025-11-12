@@ -35,6 +35,7 @@ function OrderCard({ order, status }: any) {
                 <h3 className="font-bold text-lg">Đơn #{order.id}</h3>
                 {status === "new" && <Badge className="bg-red-500">Mới</Badge>}
                 {status === "confirmed" && <Badge className="bg-blue-500">Đã xác nhận</Badge>}
+                {status === "preparing" && <Badge className="bg-yellow-500">Đang chuẩn bị đơn hàng</Badge>}
                 {status === "history" && <Badge variant="outline">Hoàn thành</Badge>}
               </div>
               <p className="text-sm text-muted-foreground">{order.restaurantName}</p>
@@ -90,6 +91,12 @@ function OrderCard({ order, status }: any) {
               <Button className="w-full bg-green-500 hover:bg-green-600">✓ Hoàn thành</Button>
             </div>
           )}
+          {/* keep the same action for preparing as for confirmed */}
+          {status === "preparing" && (
+            <div className="pt-4 border-t">
+              <Button className="w-full bg-green-500 hover:bg-green-600">✓ Hoàn thành</Button>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -117,23 +124,29 @@ const MerchantOrderPage = () => {
           const historyList: Order[] = [];
 
           for (const ro of serverOrders) {
+            // normalize server status for safe comparisons
+            const serverStatus = (ro.restaurantStatus || '').toUpperCase();
+
             // map server restaurant order to UI Order
+            // If server reports PREPARING or CONFIRMED, treat the UI status as 'confirmed'
             const uiOrder: Order = {
-              id: Number(ro.orderId.slice(-6)) || Math.floor(Math.random() * 100000),
+              id: Number(ro.orderId?.slice?.(-6)) || Math.floor(Math.random() * 100000),
               customerName: ro.customerInfo?.userId || 'Khách hàng',
               phone: ro.customerInfo?.phone || 'N/A',
               address: ro.customerInfo?.address || ro.deliveryAddress || 'N/A',
               items: (ro.items || []).map((it: any) => ({ name: it.productName || it.name || 'Item', quantity: it.quantity || 1, price: it.price || it.productPrice || 0 })),
               total: ro.totalPrice || 0,
-              status: ro.restaurantStatus?.toLowerCase() || 'confirmed',
+              // map PREPARING -> 'preparing' (special badge), CONFIRMED -> 'confirmed'
+              status: serverStatus === 'PREPARING' ? 'preparing' : (serverStatus === 'CONFIRMED' ? 'confirmed' : (ro.restaurantStatus?.toLowerCase() || 'new')),
               createdAt: ro.receivedAt || new Date().toISOString(),
               restaurantName: ''
             };
 
-            // categorize by restaurantStatus
-            if (ro.restaurantStatus === 'CONFIRMED' || ro.restaurantStatus === 'PREPARING') {
+            // categorize by normalized serverStatus (case-insensitive)
+            if (serverStatus === 'CONFIRMED' || serverStatus === 'PREPARING') {
+              // both statuses still belong to the "Đã xác nhận" tab
               confirmedList.push(uiOrder);
-            } else if (ro.restaurantStatus === 'READY' || ro.restaurantStatus === 'COMPLETED' || ro.restaurantStatus === 'DONE') {
+            } else if (serverStatus === 'READY' || serverStatus === 'COMPLETED' || serverStatus === 'DONE') {
               historyList.push(uiOrder);
             } else {
               newList.push(uiOrder);
@@ -243,7 +256,7 @@ const MerchantOrderPage = () => {
                     ) : orders.new.length > 0 ? (
                       <div className="grid gap-4">
                         {orders.new.map((order) => (
-                          <OrderCard key={order.id} order={order} status="new" />
+                          <OrderCard key={order.id} order={order} status={order.status} />
                         ))}
                       </div>
                     ) : (
@@ -260,7 +273,7 @@ const MerchantOrderPage = () => {
                     ) : orders.confirmed.length > 0 ? (
                       <div className="grid gap-4">
                         {orders.confirmed.map((order) => (
-                          <OrderCard key={order.id} order={order} status="confirmed" />
+                          <OrderCard key={order.id} order={order} status={order.status} />
                         ))}
                       </div>
                     ) : (
@@ -277,7 +290,7 @@ const MerchantOrderPage = () => {
                     ) : orders.history.length > 0 ? (
                       <div className="grid gap-4">
                         {orders.history.map((order) => (
-                          <OrderCard key={order.id} order={order} status="history" />
+                          <OrderCard key={order.id} order={order} status={order.status} />
                         ))}
                       </div>
                     ) : (
