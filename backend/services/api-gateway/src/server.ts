@@ -106,9 +106,10 @@ const productServiceProxy = proxy(config.productServiceUrl, {
     ...addCorsOnProxyResp
 });
 
-// proxy middleware for Restaurant Service
+// proxy middleware for Restaurant Service (với user info forwarding cho protected routes)
 const restaurantServiceProxy = proxy(config.restaurantServiceUrl, {
     proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api/, ""),
+    ...forwardUserInfo,
     ...dropConditionalHeaders,
     ...addCorsOnProxyResp
 });

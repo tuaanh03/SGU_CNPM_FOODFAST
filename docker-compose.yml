@@ -287,7 +287,7 @@ services:
       - redis
     restart: on-failure
 
-  # Frontend - CNPM Food Delivery
+  # Frontend - CNPM Food Delivery (Customer Portal)
   frontend:
     build:
       context: ./frontend/cnpm-fooddelivery
@@ -300,6 +300,22 @@ services:
     depends_on:
       - api-gateway
     restart: unless-stopped
+
+  # Frontend - Restaurant Merchant Portal
+  restaurant-merchant:
+    build:
+      context: ./frontend/restaurant-merchant
+      dockerfile: Dockerfile
+    container_name: restaurant-merchant
+    ports:
+      - "8080:8080"
+    networks:
+      - network
+    depends_on:
+      - api-gateway
+    restart: unless-stopped
+
+
 
 volumes:
   userdb:
