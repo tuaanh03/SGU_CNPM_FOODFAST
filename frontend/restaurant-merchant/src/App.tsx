@@ -11,6 +11,7 @@ import StoreSetupPage from "./pages/StoreSetupPage";
 import ProductManagementPage from "./pages/ProductManagementPage";
 import ProductFormPage from "./pages/ProductFormPage";
 import CategoryManagementPage from "./pages/CategoryManagementPage";
+import MerchantOrderPage from "./pages/MerchantOrdersPage";
 
 function App() {
     return (
@@ -74,6 +75,14 @@ function App() {
                             element={
                                 <ProtectedRoute requiredRole="STORE_ADMIN">
                                     <CategoryManagementPage />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/merchant/orders"
+                            element={
+                                <ProtectedRoute requiredRole="STORE_ADMIN">
+                                    <MerchantOrderPage />
                                 </ProtectedRoute>
                             }
                         />

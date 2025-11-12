@@ -132,6 +132,7 @@ export async function handleExpiredOrderSession(expiredKey: string): Promise<voi
                 await publishOrderExpirationEvent({
                     orderId: order.id,
                     userId: order.userId,
+                    storeId: order.storeId || null,
                     reason: 'SESSION_EXPIRED',
                     timestamp: new Date().toISOString()
                 });
@@ -179,4 +180,3 @@ export function initializeRedisExpirationListener(): void {
 
     console.log('🎧 Redis expiration listener initialized');
 }
-

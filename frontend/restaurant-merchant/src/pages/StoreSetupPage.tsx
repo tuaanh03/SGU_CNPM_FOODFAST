@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "@/contexts/auth-context";
 import { storeService, type CreateStoreRequest } from "@/services/store.service";
@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Loader2, Store } from "lucide-react";
+import API_BASE_URL from "@/config/api";
 import { toast } from "sonner";
 
 const StoreSetupPage = () => {
@@ -27,6 +28,14 @@ const StoreSetupPage = () => {
         openTime: "08:00",
         closeTime: "22:00",
     });
+
+    // Address search states (like AddressManager)
+    const [searchQuery, setSearchQuery] = useState("");
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [showResults, setShowResults] = useState(false);
+    const searchTimeoutRef = useRef<number | null>(null);
+    const searchContainerRef = useRef<HTMLDivElement | null>(null);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -62,6 +71,68 @@ const StoreSetupPage = () => {
         logout();
         navigate("/merchant/login");
     };
+
+    // Search address using API gateway -> location service
+    const searchAddress = async (q: string) => {
+        if (!q || q.length < 3) {
+            setSearchResults([]);
+            return;
+        }
+        setIsSearching(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/locations/search?query=${encodeURIComponent(q)}`);
+            if (!res.ok) throw new Error('Failed to search address');
+            const data = await res.json();
+            if (data.success && data.data) {
+                setSearchResults(data.data);
+                setShowResults(true);
+            } else {
+                setSearchResults([]);
+            }
+        } catch (err) {
+            console.error('Error searching address:', err);
+            setSearchResults([]);
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
+    // Debounce searchQuery
+    useEffect(() => {
+        if (searchTimeoutRef.current) {
+            clearTimeout(searchTimeoutRef.current);
+        }
+        // @ts-ignore - Node timeout typing
+        searchTimeoutRef.current = setTimeout(() => {
+            searchAddress(searchQuery);
+        }, 500) as unknown as number;
+
+        return () => {
+            if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+        };
+    }, [searchQuery]);
+
+    // Click outside to close results
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+                setShowResults(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const handleSelectAddress = (result: any) => {
+        setFormData((prev) => ({
+            ...prev,
+            address: result.place_name,
+            // if location result has center [lng, lat]
+            ...(result.center ? { longitude: result.center[0], latitude: result.center[1] } as any : {}),
+        }));
+        setSearchQuery(result.place_name);
+        setShowResults(false);
+    }
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-500/10 via-background to-indigo-500/10">
@@ -135,15 +206,36 @@ const StoreSetupPage = () => {
                                     <Label htmlFor="address">
                                         Số nhà, đường <span className="text-red-500">*</span>
                                     </Label>
-                                    <Input
-                                        id="address"
-                                        name="address"
-                                        value={formData.address}
-                                        onChange={handleChange}
-                                        placeholder="123 Nguyễn Huệ"
-                                        required
-                                        disabled={loading}
-                                    />
+                                    <div className="relative" ref={searchContainerRef}>
+                                        <Input
+                                            id="search-address"
+                                            name="street-address"
+                                            autoComplete="street-address"
+                                            value={searchQuery}
+                                            onChange={(e) => { setSearchQuery(e.target.value); setShowResults(true); }}
+                                            onFocus={() => searchResults.length > 0 && setShowResults(true)}
+                                            placeholder="Nhập tên đường, quận, thành phố..."
+                                            required
+                                            disabled={loading}
+                                        />
+                                        {isSearching && (
+                                            <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
+                                                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                                            </div>
+                                        )}
+
+                                        {/* Search Results Dropdown */}
+                                        {showResults && searchResults.length > 0 && (
+                                            <div className="absolute z-50 w-full mt-1 bg-background border border-border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                                                {searchResults.map((r, idx) => (
+                                                    <div key={idx} className="px-4 py-2 hover:bg-accent cursor-pointer" onClick={() => handleSelectAddress(r)}>
+                                                        <div className="text-sm font-medium truncate">{r.text}</div>
+                                                        <div className="text-xs text-muted-foreground truncate">{r.place_name}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -154,6 +246,7 @@ const StoreSetupPage = () => {
                                         <Input
                                             id="ward"
                                             name="ward"
+                                            autoComplete="address-level3"
                                             value={formData.ward}
                                             onChange={handleChange}
                                             placeholder="Bến Nghé"
@@ -169,6 +262,7 @@ const StoreSetupPage = () => {
                                         <Input
                                             id="district"
                                             name="district"
+                                            autoComplete="address-level2"
                                             value={formData.district}
                                             onChange={handleChange}
                                             placeholder="Quận 1"
@@ -184,6 +278,7 @@ const StoreSetupPage = () => {
                                         <Input
                                             id="province"
                                             name="province"
+                                            autoComplete="address-level1"
                                             value={formData.province}
                                             onChange={handleChange}
                                             placeholder="TP. Hồ Chí Minh"
