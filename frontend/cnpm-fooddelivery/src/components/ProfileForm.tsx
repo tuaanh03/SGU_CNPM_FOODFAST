@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Camera, Save, User } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/auth-context";
 
 interface UserProfile {
   name: string;
@@ -17,14 +18,28 @@ interface UserProfile {
 }
 
 const ProfileForm = () => {
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [profile, setProfile] = useState<UserProfile>({
-    name: "Nguyễn Văn An",
-    email: "nguyenvanan@email.com",
-    phone: "0901234567",
-    bio: "Yêu thích ẩm thực và khám phá các món ăn mới",
+    name: "",
+    email: "",
+    phone: "",
+    bio: "",
     avatar: "",
   });
+
+  // Load user data when component mounts
+  useEffect(() => {
+    if (user) {
+      setProfile({
+        name: user.name || "",
+        email: user.email || "",
+        phone: user.phone || "",
+        bio: "",
+        avatar: "",
+      });
+    }
+  }, [user]);
 
   const handleInputChange = (field: keyof UserProfile, value: string) => {
     setProfile((prev) => ({ ...prev, [field]: value }));
@@ -33,7 +48,8 @@ const ProfileForm = () => {
   const handleSave = async () => {
     setIsLoading(true);
 
-    // Simulate API call
+    // TODO: Call API to update profile
+    // For now, just simulate API call
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
     toast.success("Cập nhật thành công!", {

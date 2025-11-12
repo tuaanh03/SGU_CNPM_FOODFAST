@@ -1,9 +1,21 @@
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Link } from "react-router";
-import { MapPin, User, ClipboardList } from "lucide-react";
+import { MapPin, User, ClipboardList, LogOut, LogIn } from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const Navigation = () => {
+  const { user, isAuthenticated, logout } = useAuth();
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
@@ -24,19 +36,64 @@ const Navigation = () => {
         </div>
 
         <div className="flex items-center space-x-2">
-          <Link to="/my-orders">
-            <Button variant="ghost" size="sm" className="relative">
-              <ClipboardList className="w-5 h-5" />
-              <Badge className="absolute -top-2 -right-2 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs">
-                3
-              </Badge>
-            </Button>
-          </Link>
-          <Link to="/profile">
-            <Button variant="ghost" size="sm">
-              <User className="w-5 h-5" />
-            </Button>
-          </Link>
+          {isAuthenticated ? (
+            <>
+              <Link to="/my-orders">
+                <Button variant="ghost" size="sm" className="relative">
+                  <ClipboardList className="w-5 h-5" />
+                  <Badge className="absolute -top-2 -right-2 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs">
+                    3
+                  </Badge>
+                </Button>
+              </Link>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="flex items-center gap-2">
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+                        {user?.name?.charAt(0).toUpperCase() || "U"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="hidden md:inline text-sm">{user?.name}</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none">{user?.name}</p>
+                      <p className="text-xs leading-none text-muted-foreground">{user?.email}</p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link to="/profile" className="cursor-pointer">
+                      <User className="mr-2 h-4 w-4" />
+                      <span>Hồ sơ</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/my-orders" className="cursor-pointer">
+                      <ClipboardList className="mr-2 h-4 w-4" />
+                      <span>Đơn hàng của tôi</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={logout} className="cursor-pointer text-destructive">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>Đăng xuất</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          ) : (
+            <Link to="/login">
+              <Button size="sm">
+                <LogIn className="w-4 h-4 mr-2" />
+                Đăng nhập
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
     </header>

@@ -1,4 +1,5 @@
 import API_BASE_URL from "@/config/api";
+import { getAuthToken } from "./auth.service";
 
 export interface CreateOrderFromCartRequest {
   storeId: string;
@@ -31,7 +32,7 @@ export interface OrderResponse {
 
 class OrderService {
   private getAuthHeader() {
-    const token = localStorage.getItem("token");
+    const token = getAuthToken();
     if (!token) {
       throw new Error("Vui lòng đăng nhập để đặt hàng");
     }
@@ -82,6 +83,21 @@ class OrderService {
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: "Lỗi khi lấy chi tiết đơn hàng" }));
       throw new Error(error.message || "Lỗi khi lấy chi tiết đơn hàng");
+    }
+
+    return response.json();
+  }
+
+  // Retry payment cho đơn hàng pending
+  async retryPayment(orderId: string): Promise<{ success: boolean; message: string; data?: any }> {
+    const response = await fetch(`${API_BASE_URL}/order/retry-payment/${orderId}`, {
+      method: "POST",
+      headers: this.getAuthHeader(),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: "Lỗi khi thử lại thanh toán" }));
+      throw new Error(error.message || "Lỗi khi thử lại thanh toán");
     }
 
     return response.json();

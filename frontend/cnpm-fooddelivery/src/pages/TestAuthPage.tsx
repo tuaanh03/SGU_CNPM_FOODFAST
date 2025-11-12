@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const TestAuthPage = () => {
-  const { user, login, register, logout, isAuthenticated } = useAuth();
+  const { user, loginCustomer, registerCustomer, logout, isAuthenticated } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -17,7 +17,7 @@ const TestAuthPage = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      await login({ email, password });
+      await loginCustomer({ email, password });
     } catch (error) {
       console.error(error);
     } finally {
@@ -29,7 +29,7 @@ const TestAuthPage = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      await register({ email, password, name, phone });
+      await registerCustomer({ email, password, name, phone });
     } catch (error) {
       console.error(error);
     } finally {

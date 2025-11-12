@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Clock, MapPin, Phone, Loader2, CreditCard } from "lucide-react";
+import { Clock, MapPin, Phone, Loader2, CreditCard, Eye } from "lucide-react";
 import { orderService } from "@/services/order.service";
 import { paymentService } from "@/services/payment.service";
 import { toast } from "sonner";
+import OrderDetailDialog from "./OrderDetailDialog";
 
 interface OngoingOrder {
   id: string;
@@ -34,6 +35,8 @@ const OngoingOrders = () => {
   const [orders, setOrders] = useState<OngoingOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [paymentLoading, setPaymentLoading] = useState<string | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<OngoingOrder | null>(null);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
 
   useEffect(() => {
     loadOngoingOrders();
@@ -83,19 +86,29 @@ const OngoingOrders = () => {
   const handlePayNow = async (orderId: string) => {
     try {
       setPaymentLoading(orderId);
-      toast.info("Đang lấy thông tin thanh toán...");
+      toast.info("Đang khởi tạo thanh toán...");
 
-      const paymentUrlResponse = await paymentService.getPaymentUrl(orderId, 15, 1000);
+      // Gọi API retry-payment từ order-service
+      const retryResponse = await orderService.retryPayment(orderId);
 
-      if (paymentUrlResponse.success && paymentUrlResponse.paymentUrl) {
-        toast.success("Đang chuyển đến trang thanh toán...");
-        window.location.href = paymentUrlResponse.paymentUrl;
+      if (retryResponse.success) {
+        toast.info("Đang lấy thông tin thanh toán...");
+
+        // Sau khi retry payment thành công, poll để lấy payment URL
+        const paymentUrlResponse = await paymentService.getPaymentUrl(orderId, 15, 1000);
+
+        if (paymentUrlResponse.success && paymentUrlResponse.paymentUrl) {
+          toast.success("Đang chuyển đến trang thanh toán...");
+          window.location.href = paymentUrlResponse.paymentUrl;
+        } else {
+          toast.error("Không thể lấy thông tin thanh toán");
+        }
       } else {
-        toast.error("Không thể lấy thông tin thanh toán");
+        toast.error(retryResponse.message || "Không thể khởi tạo thanh toán");
       }
     } catch (error: any) {
-      console.error("Error getting payment URL:", error);
-      toast.error(error.message || "Có lỗi xảy ra khi lấy thông tin thanh toán");
+      console.error("Error retrying payment:", error);
+      toast.error(error.message || "Có lỗi xảy ra khi khởi tạo thanh toán");
     } finally {
       setPaymentLoading(null);
     }
@@ -151,6 +164,11 @@ const OngoingOrders = () => {
     const timeLeft = Math.max(0, expTime - now);
     const minutes = Math.floor(timeLeft / 60000);
     return minutes > 0 ? `${minutes} phút` : "Sắp hết hạn";
+  };
+
+  const handleViewDetail = (order: OngoingOrder) => {
+    setSelectedOrder(order);
+    setDetailDialogOpen(true);
   };
 
   if (loading) {
@@ -235,6 +253,16 @@ const OngoingOrders = () => {
 
               {/* Action Buttons */}
               <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => handleViewDetail(order)}
+                >
+                  <Eye className="w-4 h-4 mr-2" />
+                  Xem chi tiết
+                </Button>
+
                 {order.status === "pending" ? (
                   <Button
                     size="sm"
@@ -272,6 +300,15 @@ const OngoingOrders = () => {
           </Card>
         );
       })}
+
+      {/* Order Detail Dialog */}
+      {selectedOrder && (
+        <OrderDetailDialog
+          open={detailDialogOpen}
+          onOpenChange={setDetailDialogOpen}
+          order={selectedOrder}
+        />
+      )}
     </div>
   );
 };
