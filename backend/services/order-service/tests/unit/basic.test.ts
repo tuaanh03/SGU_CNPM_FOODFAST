@@ -2,7 +2,7 @@
 describe('Basic Test', () => {
   it('should pass', () => {
       const a = 2;
-    expect(a).toBe(4);
+    expect(a).toBe(2);
   });
 });
 

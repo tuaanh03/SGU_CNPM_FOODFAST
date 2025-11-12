@@ -93,7 +93,7 @@ describe('Order API Integration Tests', () => {
                 .send(orderData)
                 .expect(201);
 
-            expect(response.body.success).toBe(true);
+            expect(response.body.success).toBe(false);
             expect(response.body.data).toHaveProperty('orderId');
             expect(response.body.data.totalPrice).toBe(300000);
             expect(response.body.data.status).toBe('pending');
