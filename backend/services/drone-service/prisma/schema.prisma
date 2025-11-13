@@ -1,0 +1,116 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DroneStatus {
+  AVAILABLE
+  IN_USE
+  CHARGING
+  MAINTENANCE
+  OFFLINE
+}
+
+enum DeliveryStatus {
+  PENDING
+  ASSIGNED
+  PICKING_UP
+  IN_TRANSIT
+  DELIVERED
+  FAILED
+  CANCELLED
+}
+
+model Drone {
+  id              String      @id @default(uuid())
+  name            String
+  model           String
+  serialNumber    String      @unique
+  battery         Int         @default(100)
+  maxPayload      Float       @default(5.0)
+  maxRange        Float       @default(20.0)
+  currentLat      Float?
+  currentLng      Float?
+  status          DroneStatus @default(AVAILABLE)
+  lastMaintenance DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  deliveries      Delivery[]
+  maintenanceLogs MaintenanceLog[]
+
+  @@index([status])
+  @@map("drones")
+}
+
+model Delivery {
+  id      String @id @default(uuid())
+  orderId String @unique
+  droneId String
+
+  restaurantName    String
+  restaurantLat     Float
+  restaurantLng     Float
+  restaurantAddress String
+
+  customerName    String
+  customerPhone   String
+  customerLat     Float
+  customerLng     Float
+  customerAddress String
+
+  distance      Float
+  estimatedTime Int
+  actualTime    Int?
+
+  status DeliveryStatus @default(PENDING)
+
+  assignedAt  DateTime?
+  pickedUpAt  DateTime?
+  deliveredAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  drone          Drone           @relation(fields: [droneId], references: [id])
+  trackingPoints TrackingPoint[]
+
+  @@index([orderId])
+  @@index([droneId])
+  @@index([status])
+  @@map("deliveries")
+}
+
+model TrackingPoint {
+  id         String   @id @default(uuid())
+  deliveryId String
+  lat        Float
+  lng        Float
+  altitude   Float?
+  speed      Float?
+  battery    Int
+  timestamp  DateTime @default(now())
+
+  delivery Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryId])
+  @@map("tracking_points")
+}
+
+model MaintenanceLog {
+  id          String   @id @default(uuid())
+  droneId     String
+  type        String
+  description String
+  cost        Float?
+  performedAt DateTime @default(now())
+
+  drone Drone @relation(fields: [droneId], references: [id])
+
+  @@index([droneId])
+  @@map("maintenance_logs")
+}

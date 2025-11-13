@@ -343,6 +343,45 @@ services:
       - api-gateway
     restart: unless-stopped
 
+  # Drone service
+  drone-service:
+    build:
+      context: ./backend/services/drone-service
+      dockerfile: Dockerfile
+    container_name: drone-service
+    env_file:
+      - ./backend/services/drone-service/.env
+    ports:
+      - "3008:3008"
+      - "5560:5555"
+    networks:
+      - network
+    depends_on:
+      - drone-db
+    volumes:
+      - ./backend/services/drone-service/prisma:/app/drone-service/prisma:rw
+    command: >
+      sh -c "
+        npx prisma generate &&
+        npx prisma migrate deploy &&
+        node dist/server.js
+      "
+
+  drone-db:
+    image: postgres:15-alpine
+    container_name: drone-db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: foodfast_drone
+    ports:
+      - "5437:5432"
+    volumes:
+      - dronedb:/var/lib/postgresql/data
+    networks:
+      - network
+
 
 
 volumes:
@@ -355,6 +394,7 @@ volumes:
   zookeeper_log:
   restaurantdb:
   redis_data:
+  dronedb:
 
 networks:
   network:
