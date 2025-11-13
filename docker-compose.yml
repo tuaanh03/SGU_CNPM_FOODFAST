@@ -322,7 +322,21 @@ services:
       dockerfile: Dockerfile
     container_name: restaurant-merchant
     ports:
-      - "8080:8080"
+      - "8080:80"
+    networks:
+      - network
+    depends_on:
+      - api-gateway
+    restart: unless-stopped
+
+  # Frontend - Admin Dashboard
+  admin-dashboard:
+    build:
+      context: ./frontend/admin-dashboard
+      dockerfile: Dockerfile
+    container_name: admin-dashboard
+    ports:
+      - "8081:80"
     networks:
       - network
     depends_on:
