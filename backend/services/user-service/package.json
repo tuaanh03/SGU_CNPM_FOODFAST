@@ -18,6 +18,7 @@
     "hpp": "^0.2.3",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
+    "prom-client": "^15.1.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
