@@ -23,8 +23,10 @@ const LoginPage = () => {
             await login(email, password);
             toast.success("Đăng nhập thành công!");
             navigate("/");
-        } catch (error) {
-            toast.error("Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin!");
+        } catch (error: any) {
+            console.error("Login error:", error);
+            const errorMessage = error?.message || "Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin!";
+            toast.error(errorMessage);
         } finally {
             setLoading(false);
         }

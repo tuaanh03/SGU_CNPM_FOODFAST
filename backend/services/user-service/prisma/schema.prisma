@@ -13,6 +13,7 @@ datasource db {
 enum UserRole {
   CUSTOMER // Khách hàng - chỉ có thể đặt hàng
   STORE_ADMIN // Admin cửa hàng - quản lý sản phẩm, đơn hàng
+  SYSTEM_ADMIN // Admin hệ thống - quản lý toàn bộ hệ thống (admin dashboard)
 }
 
 enum UserStatus {

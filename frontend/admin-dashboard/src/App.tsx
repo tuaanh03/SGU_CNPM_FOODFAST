@@ -20,11 +20,11 @@ function App() {
                         {/* Auth Routes */}
                         <Route path="/login" element={<LoginPage />} />
 
-                        {/* Protected Routes - Admin Only */}
+                        {/* Protected Routes - System Admin Only */}
                         <Route
                             path="/"
                             element={
-                                <ProtectedRoute requiredRole="ADMIN">
+                                <ProtectedRoute requiredRole="SYSTEM_ADMIN">
                                     <DashboardPage />
                                 </ProtectedRoute>
                             }
@@ -32,7 +32,7 @@ function App() {
                         <Route
                             path="/dispatch"
                             element={
-                                <ProtectedRoute requiredRole="ADMIN">
+                                <ProtectedRoute requiredRole="SYSTEM_ADMIN">
                                     <DispatchQueuePage />
                                 </ProtectedRoute>
                             }
@@ -40,7 +40,7 @@ function App() {
                         <Route
                             path="/order/:orderId"
                             element={
-                                <ProtectedRoute requiredRole="ADMIN">
+                                <ProtectedRoute requiredRole="SYSTEM_ADMIN">
                                     <OrderDetailPage />
                                 </ProtectedRoute>
                             }
@@ -48,7 +48,7 @@ function App() {
                         <Route
                             path="/order/:orderId/tracking"
                             element={
-                                <ProtectedRoute requiredRole="ADMIN">
+                                <ProtectedRoute requiredRole="SYSTEM_ADMIN">
                                     <RouteTrackingPage />
                                 </ProtectedRoute>
                             }

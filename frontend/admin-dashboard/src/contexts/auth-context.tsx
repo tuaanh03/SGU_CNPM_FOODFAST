@@ -1,11 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-
-interface User {
-    id: string;
-    email: string;
-    name: string;
-    role: string;
-}
+import { authService, type User, type LoginRequest } from "@/services/auth.service";
 
 interface AuthContextType {
     user: User | null;
@@ -22,32 +16,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     useEffect(() => {
         // Check if user is logged in from localStorage
-        const storedUser = localStorage.getItem("admin_user");
-        if (storedUser) {
-            setUser(JSON.parse(storedUser));
+        const savedUser = authService.getUser();
+        if (savedUser) {
+            setUser(savedUser);
+            // Validate token bằng cách gọi API
+            authService.getProfile()
+                .then(response => {
+                    setUser(response.data);
+                })
+                .catch(() => {
+                    // Token không hợp lệ, xóa đi
+                    authService.logout();
+                    setUser(null);
+                });
         }
         setLoading(false);
     }, []);
 
     const login = async (email: string, password: string) => {
-        // Mock login - replace with actual API call later
-        if (email === "admin@example.com" && password === "admin123") {
-            const mockUser: User = {
-                id: "1",
-                email: email,
-                name: "Admin User",
-                role: "ADMIN",
-            };
-            setUser(mockUser);
-            localStorage.setItem("admin_user", JSON.stringify(mockUser));
-        } else {
-            throw new Error("Invalid credentials");
-        }
+        const data: LoginRequest = { email, password };
+        const response = await authService.loginSystemAdmin(data);
+        setUser(response.data.user);
+        authService.saveAuthData(response.data.token, response.data.user);
     };
 
     const logout = () => {
+        authService.logout();
         setUser(null);
-        localStorage.removeItem("admin_user");
     };
 
     return (
