@@ -14,7 +14,7 @@ env.config();
 
 const server = express();
 
-// run kafka consumer 
+// run kafka consumer
 runConsumer();
 
 // Khởi tạo Redis expiration listener để tự động hủy orders hết hạn

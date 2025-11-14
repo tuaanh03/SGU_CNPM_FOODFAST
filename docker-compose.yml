@@ -400,9 +400,25 @@ services:
     container_name: grafana
     ports:
       - "3001:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=false
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3001
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - ./grafana-datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml
+      - ./grafana-dashboard-provider.yml:/etc/grafana/provisioning/dashboards/provider.yml
+      - ./grafana-microservices-dashboard.json:/etc/grafana/provisioning/dashboards/microservices-overview.json
+      - grafana_data:/var/lib/grafana
     networks:
       - network
     restart: unless-stopped
+    depends_on:
+      - prometheus
 
 
 
@@ -417,6 +433,7 @@ volumes:
   restaurantdb:
   redis_data:
   dronedb:
+  grafana_data:
 
 networks:
   network:
