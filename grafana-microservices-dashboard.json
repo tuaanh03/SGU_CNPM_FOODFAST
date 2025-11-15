@@ -65,7 +65,7 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 24,
         "x": 0,
         "y": 0
       },
@@ -88,273 +88,12 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "rate(user_service_http_requests_total[1m])",
+          "expr": "rate({__name__=~\".*_http_requests_total\", instance=\"$instance\"}[1m])",
           "refId": "A",
-          "legendFormat": "User Service - {{method}} {{route}}"
+          "legendFormat": "{{method}} {{route}} ({{status_code}})"
         }
       ],
-      "title": "User Service - HTTP Request Rate",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "tooltip": false,
-              "viz": false,
-              "legend": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "reqps"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 0
-      },
-      "id": 2,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "rate(order_service_http_requests_total[1m])",
-          "refId": "A",
-          "legendFormat": "Order Service - {{method}} {{route}}"
-        }
-      ],
-      "title": "Order Service - HTTP Request Rate",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "tooltip": false,
-              "viz": false,
-              "legend": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "reqps"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 8
-      },
-      "id": 3,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "rate(product_service_http_requests_total[1m])",
-          "refId": "A",
-          "legendFormat": "Product Service - {{method}} {{route}}"
-        }
-      ],
-      "title": "Product Service - HTTP Request Rate",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "tooltip": false,
-              "viz": false,
-              "legend": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "reqps"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 8
-      },
-      "id": 4,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "rate(cart_service_http_requests_total[1m])",
-          "refId": "A",
-          "legendFormat": "Cart Service - {{method}} {{route}}"
-        }
-      ],
-      "title": "Cart Service - HTTP Request Rate",
+      "title": "HTTP Request Rate - $instance",
       "type": "timeseries"
     },
     {
@@ -393,9 +132,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 16
+        "y": 8
       },
-      "id": 5,
+      "id": 2,
       "options": {
         "orientation": "auto",
         "reduceOptions": {
@@ -415,39 +154,12 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "user_service_process_resident_memory_bytes",
+          "expr": "{__name__=~\".*_process_resident_memory_bytes\", instance=\"$instance\"}",
           "refId": "A",
-          "legendFormat": "User Service"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "order_service_process_resident_memory_bytes",
-          "refId": "B",
-          "legendFormat": "Order Service"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "product_service_process_resident_memory_bytes",
-          "refId": "C",
-          "legendFormat": "Product Service"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "cart_service_process_resident_memory_bytes",
-          "refId": "D",
-          "legendFormat": "Cart Service"
+          "legendFormat": "Memory"
         }
       ],
-      "title": "Memory Usage - All Services",
+      "title": "Memory Usage - $instance",
       "type": "gauge"
     },
     {
@@ -508,9 +220,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 16
+        "y": 8
       },
-      "id": 6,
+      "id": 3,
       "options": {
         "legend": {
           "calcs": [
@@ -533,39 +245,12 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "rate(user_service_process_cpu_seconds_total[1m])",
+          "expr": "rate({__name__=~\".*_process_cpu_seconds_total\", instance=\"$instance\"}[1m])",
           "refId": "A",
-          "legendFormat": "User Service"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "rate(order_service_process_cpu_seconds_total[1m])",
-          "refId": "B",
-          "legendFormat": "Order Service"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "rate(product_service_process_cpu_seconds_total[1m])",
-          "refId": "C",
-          "legendFormat": "Product Service"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "rate(cart_service_process_cpu_seconds_total[1m])",
-          "refId": "D",
-          "legendFormat": "Cart Service"
+          "legendFormat": "CPU"
         }
       ],
-      "title": "CPU Usage - All Services",
+      "title": "CPU Usage - $instance",
       "type": "timeseries"
     },
     {
@@ -624,7 +309,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/.*4xx.*/"
+              "options": "/.*4.*/i"
             },
             "properties": [
               {
@@ -639,7 +324,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/.*5xx.*/"
+              "options": "/.*5.*/i"
             },
             "properties": [
               {
@@ -657,9 +342,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 24
+        "y": 16
       },
-      "id": 7,
+      "id": 4,
       "options": {
         "legend": {
           "calcs": ["sum"],
@@ -678,75 +363,21 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "sum(rate(user_service_http_requests_total{status_code=~\"4..\"}[1m])) by (status_code)",
+          "expr": "sum(rate({__name__=~\".*_http_requests_total\", status_code=~\"4..\", instance=\"$instance\"}[1m])) by (status_code)",
           "refId": "A",
-          "legendFormat": "User 4xx - {{status_code}}"
+          "legendFormat": "4xx - {{status_code}}"
         },
         {
           "datasource": {
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "sum(rate(user_service_http_requests_total{status_code=~\"5..\"}[1m])) by (status_code)",
+          "expr": "sum(rate({__name__=~\".*_http_requests_total\", status_code=~\"5..\", instance=\"$instance\"}[1m])) by (status_code)",
           "refId": "B",
-          "legendFormat": "User 5xx - {{status_code}}"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "sum(rate(order_service_http_requests_total{status_code=~\"4..\"}[1m])) by (status_code)",
-          "refId": "C",
-          "legendFormat": "Order 4xx - {{status_code}}"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "sum(rate(order_service_http_requests_total{status_code=~\"5..\"}[1m])) by (status_code)",
-          "refId": "D",
-          "legendFormat": "Order 5xx - {{status_code}}"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "sum(rate(product_service_http_requests_total{status_code=~\"4..\"}[1m])) by (status_code)",
-          "refId": "E",
-          "legendFormat": "Product 4xx - {{status_code}}"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "sum(rate(product_service_http_requests_total{status_code=~\"5..\"}[1m])) by (status_code)",
-          "refId": "F",
-          "legendFormat": "Product 5xx - {{status_code}}"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "sum(rate(cart_service_http_requests_total{status_code=~\"4..\"}[1m])) by (status_code)",
-          "refId": "G",
-          "legendFormat": "Cart 4xx - {{status_code}}"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "sum(rate(cart_service_http_requests_total{status_code=~\"5..\"}[1m])) by (status_code)",
-          "refId": "H",
-          "legendFormat": "Cart 5xx - {{status_code}}"
+          "legendFormat": "5xx - {{status_code}}"
         }
       ],
-      "title": "❌ HTTP Errors (4xx & 5xx)",
+      "title": "❌ HTTP Errors (4xx & 5xx) - $instance",
       "type": "timeseries"
     },
     {
@@ -792,9 +423,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 24
+        "y": 16
       },
-      "id": 8,
+      "id": 5,
       "options": {
         "orientation": "auto",
         "reduceOptions": {
@@ -815,39 +446,12 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "up{job=\"user-service\"}",
+          "expr": "up{instance=\"$instance\"}",
           "refId": "A",
-          "legendFormat": "User Service"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "up{job=\"order-service\"}",
-          "refId": "B",
-          "legendFormat": "Order Service"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "up{job=\"product-service\"}",
-          "refId": "C",
-          "legendFormat": "Product Service"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "up{job=\"cart-service\"}",
-          "refId": "D",
-          "legendFormat": "Cart Service"
+          "legendFormat": "Health"
         }
       ],
-      "title": "❤️ Service Health Status",
+      "title": "❤️ Service Health - $instance",
       "type": "gauge"
     },
     {
@@ -876,11 +480,11 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
+        "w": 24,
         "x": 0,
-        "y": 32
+        "y": 24
       },
-      "id": 9,
+      "id": 6,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
@@ -902,192 +506,12 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "time() - user_service_process_start_time_seconds",
+          "expr": "time() - {__name__=~\".*_process_start_time_seconds\", instance=\"$instance\"}",
           "refId": "A",
-          "legendFormat": "User Service"
+          "legendFormat": "Uptime"
         }
       ],
-      "title": "⏱️ User Service Uptime",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 6,
-        "y": 32
-      },
-      "id": 10,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "values": false,
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": ""
-        },
-        "textMode": "auto"
-      },
-      "pluginVersion": "9.0.0",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "time() - order_service_process_start_time_seconds",
-          "refId": "A",
-          "legendFormat": "Order Service"
-        }
-      ],
-      "title": "⏱️ Order Service Uptime",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 12,
-        "y": 32
-      },
-      "id": 11,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "values": false,
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": ""
-        },
-        "textMode": "auto"
-      },
-      "pluginVersion": "9.0.0",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "time() - product_service_process_start_time_seconds",
-          "refId": "A",
-          "legendFormat": "Product Service"
-        }
-      ],
-      "title": "⏱️ Product Service Uptime",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 18,
-        "y": 32
-      },
-      "id": 12,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "values": false,
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": ""
-        },
-        "textMode": "auto"
-      },
-      "pluginVersion": "9.0.0",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "time() - cart_service_process_start_time_seconds",
-          "refId": "A",
-          "legendFormat": "Cart Service"
-        }
-      ],
-      "title": "⏱️ Cart Service Uptime",
+      "title": "⏱️ Service Uptime - $instance",
       "type": "stat"
     },
     {
@@ -1156,9 +580,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 36
+        "y": 28
       },
-      "id": 13,
+      "id": 7,
       "options": {
         "legend": {
           "calcs": ["mean", "max"],
@@ -1177,39 +601,12 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "user_service_nodejs_heap_size_used_bytes",
+          "expr": "{__name__=~\".*_nodejs_heap_size_used_bytes\", instance=\"$instance\"}",
           "refId": "A",
-          "legendFormat": "User - Heap Used"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "order_service_nodejs_heap_size_used_bytes",
-          "refId": "B",
-          "legendFormat": "Order - Heap Used"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "product_service_nodejs_heap_size_used_bytes",
-          "refId": "C",
-          "legendFormat": "Product - Heap Used"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "cart_service_nodejs_heap_size_used_bytes",
-          "refId": "D",
-          "legendFormat": "Cart - Heap Used"
+          "legendFormat": "Heap Used"
         }
       ],
-      "title": "💾 Heap Memory Used",
+      "title": "💾 Heap Memory Used - $instance",
       "type": "timeseries"
     },
     {
@@ -1278,9 +675,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 36
+        "y": 28
       },
-      "id": 14,
+      "id": 8,
       "options": {
         "legend": {
           "calcs": ["mean", "max"],
@@ -1299,39 +696,12 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "user_service_nodejs_external_memory_bytes",
+          "expr": "{__name__=~\".*_nodejs_external_memory_bytes\", instance=\"$instance\"}",
           "refId": "A",
-          "legendFormat": "User - External Memory"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "order_service_nodejs_external_memory_bytes",
-          "refId": "B",
-          "legendFormat": "Order - External Memory"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "product_service_nodejs_external_memory_bytes",
-          "refId": "C",
-          "legendFormat": "Product - External Memory"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "cart_service_nodejs_external_memory_bytes",
-          "refId": "D",
-          "legendFormat": "Cart - External Memory"
+          "legendFormat": "External Memory"
         }
       ],
-      "title": "📊 Non-Heap (External Memory)",
+      "title": "📊 Non-Heap (External Memory) - $instance",
       "type": "timeseries"
     },
     {
@@ -1383,10 +753,6 @@
                 "value": null
               },
               {
-                "color": "yellow",
-                "value": 0.05
-              },
-              {
                 "color": "red",
                 "value": 0.1
               }
@@ -1400,9 +766,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 44
+        "y": 36
       },
-      "id": 15,
+      "id": 9,
       "options": {
         "legend": {
           "calcs": ["mean", "max", "last"],
@@ -1421,39 +787,12 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "user_service_nodejs_eventloop_lag_seconds",
+          "expr": "{__name__=~\".*_nodejs_eventloop_lag_seconds\", instance=\"$instance\"}",
           "refId": "A",
-          "legendFormat": "User Service"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "order_service_nodejs_eventloop_lag_seconds",
-          "refId": "B",
-          "legendFormat": "Order Service"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "product_service_nodejs_eventloop_lag_seconds",
-          "refId": "C",
-          "legendFormat": "Product Service"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "cart_service_nodejs_eventloop_lag_seconds",
-          "refId": "D",
-          "legendFormat": "Cart Service"
+          "legendFormat": "Event Loop Lag"
         }
       ],
-      "title": "🔄 Event Loop Lag (like GC pause)",
+      "title": "🔄 Event Loop Lag - $instance",
       "type": "timeseries"
     },
     {
@@ -1514,9 +853,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 44
+        "y": 36
       },
-      "id": 16,
+      "id": 10,
       "options": {
         "legend": {
           "calcs": ["mean", "max", "last"],
@@ -1535,57 +874,21 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "user_service_nodejs_active_handles",
+          "expr": "{__name__=~\".*_nodejs_active_handles\", instance=\"$instance\"}",
           "refId": "A",
-          "legendFormat": "User - Active Handles"
+          "legendFormat": "Active Handles"
         },
         {
           "datasource": {
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "user_service_nodejs_active_requests_total",
+          "expr": "{__name__=~\".*_nodejs_active_requests_total\", instance=\"$instance\"}",
           "refId": "B",
-          "legendFormat": "User - Active Requests"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "order_service_nodejs_active_handles",
-          "refId": "C",
-          "legendFormat": "Order - Active Handles"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "order_service_nodejs_active_requests_total",
-          "refId": "D",
-          "legendFormat": "Order - Active Requests"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "product_service_nodejs_active_handles",
-          "refId": "E",
-          "legendFormat": "Product - Active Handles"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "cart_service_nodejs_active_handles",
-          "refId": "F",
-          "legendFormat": "Cart - Active Handles"
+          "legendFormat": "Active Requests"
         }
       ],
-      "title": "🔗 Active Handles & Requests",
+      "title": "🔗 Active Handles & Requests - $instance",
       "type": "timeseries"
     }
   ],
@@ -1594,7 +897,25 @@
   "style": "dark",
   "tags": ["microservices", "monitoring"],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "name": "instance",
+        "label": "Instance",
+        "type": "query",
+        "hide": 0,
+        "datasource": {
+          "type": "prometheus",
+          "uid": "PBFA97CFB590B2093"
+        },
+        "query": "label_values(up{job=~\".*-service\"}, instance)",
+        "regex": "",
+        "sort": 1,
+        "refresh": 1,
+        "options": [],
+        "includeAll": false,
+        "multi": false
+      }
+    ]
   },
   "time": {
     "from": "now-15m",
@@ -1604,7 +925,7 @@
   "timezone": "",
   "title": "Microservices Overview Dashboard",
   "uid": "microservices-overview",
-  "version": 1,
+  "version": 3,
   "weekStart": ""
 }
 

@@ -279,7 +279,7 @@ Dự án này đang được chuẩn bị sẵn sàng để deploy lên **Micros
 
 ### Quy Trình Deploy
 
-Tài liệu chi tiết: [AZURE_STUDENT_DEPLOY.md](./AZURE_STUDENT_DEPLOY.md)
+Tài liệu chi tiết: [AZURE_STUDENT_DEPLOY.md](AZURE_STUDENT_DEPLOY.md)
 
 **Tóm tắt các bước:**
 
