@@ -1,6 +1,11 @@
 import { Kafka } from 'kafkajs';
 import prisma from '../lib/prisma';
 import { transitionToPreparing } from '../controllers/store';
+import {
+  kafkaConsumerMessageCounter,
+  kafkaConsumerProcessingDuration,
+  kafkaConsumerErrorCounter,
+} from '../lib/kafkaMetrics';
 
 const kafka = new Kafka({
   clientId: 'restaurant-service',
@@ -17,16 +22,24 @@ export async function runConsumer() {
 
     await consumer.run({
       eachMessage: async (payload: { topic: string; partition: number; message: { value?: Buffer | string | null } }) => {
+        const { message, topic } = payload;
+        const end = kafkaConsumerProcessingDuration.startTimer({ topic });
+
         try {
-          const { message, topic } = payload;
           const event = JSON.parse((message.value?.toString && message.value.toString()) || '{}');
           console.log('Restaurant service received message on', topic, event.eventType || 'no-eventType');
 
           if (event.eventType === 'ORDER_CONFIRMED') {
             await handleOrderConfirmed(event);
           }
+
+          kafkaConsumerMessageCounter.inc({ topic, status: 'success' });
+          end();
         } catch (err) {
           console.error('Error processing kafka message in restaurant-service:', err);
+          kafkaConsumerErrorCounter.inc({ topic, error_type: (err as Error).name || 'unknown' });
+          kafkaConsumerMessageCounter.inc({ topic, status: 'error' });
+          end();
         }
       }
     });

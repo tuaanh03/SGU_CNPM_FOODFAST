@@ -1,6 +1,14 @@
 import { Kafka, Partitioners } from "kafkajs";
 import { processPayment } from "./vnpay";
 import prisma from "../lib/prisma";
+import {
+  kafkaProducerMessageCounter,
+  kafkaProducerLatency,
+  kafkaProducerErrorCounter,
+  kafkaConsumerMessageCounter,
+  kafkaConsumerProcessingDuration,
+  kafkaConsumerErrorCounter,
+} from "../lib/kafkaMetrics";
 
 const kafka = new Kafka({
   clientId: "payment-service",
@@ -148,28 +156,41 @@ export async function publishEvent(
   paymentIntentId: string,
   paymentUrl?: string
 ) {
-  if (!isProducerConnected) {
-    await producer.connect();
-    isProducerConnected = true;
+  const topic = "payment.event";
+  const end = kafkaProducerLatency.startTimer({ topic });
+
+  try {
+    if (!isProducerConnected) {
+      await producer.connect();
+      isProducerConnected = true;
+    }
+
+    const messageData = {
+      orderId,
+      userId,
+      email,
+      amount,
+      item,
+      paymentStatus,
+      paymentIntentId,
+      paymentUrl,
+    };
+
+    await producer.send({
+      topic,
+      messages: [
+        { key: `message-${Date.now()}`, value: JSON.stringify(messageData) },
+      ],
+    });
+
+    kafkaProducerMessageCounter.inc({ topic, status: 'success' });
+    end();
+  } catch (error) {
+    kafkaProducerErrorCounter.inc({ topic, error_type: (error as Error).name || 'unknown' });
+    kafkaProducerMessageCounter.inc({ topic, status: 'error' });
+    end();
+    throw error;
   }
-
-  const messageData = {
-    orderId,
-    userId,
-    email,
-    amount,
-    item,
-    paymentStatus,
-    paymentIntentId,
-    paymentUrl,
-  };
-
-  await producer.send({
-    topic: "payment.event",
-    messages: [
-      { key: `message-${Date.now()}`, value: JSON.stringify(messageData) },
-    ],
-  });
 }
 
 const consumer = kafka.consumer({
@@ -371,90 +392,107 @@ export async function runConsumer() {
     // Process messages
     await consumer.run({
       eachMessage: async ({ topic, message }) => {
-        const orderData = JSON.parse(message.value?.toString() || "{}");
+        const end = kafkaConsumerProcessingDuration.startTimer({ topic });
 
-        // Xử lý order.expired event
-        if (topic === "order.expired") {
-          await handleOrderExpired(orderData);
-          return;
-        }
+        try {
+          const orderData = JSON.parse(message.value?.toString() || "{}");
 
-        // Xử lý order.create event và order.retry.payment event
-        const { orderId, userId, totalPrice, items, isRetry } = orderData;
-        const isRetryPayment = topic === "order.retry.payment" || isRetry === true;
+          // Xử lý order.expired event
+          if (topic === "order.expired") {
+            await handleOrderExpired(orderData);
+            kafkaConsumerMessageCounter.inc({ topic, status: 'success' });
+            end();
+            return;
+          }
 
-        if (!orderId || !userId || !totalPrice) {
-          console.error("Invalid order data:", orderData);
-          return;
-        }
+          // Xử lý order.create event và order.retry.payment event
+          const { orderId, userId, totalPrice, items, isRetry } = orderData;
+          const isRetryPayment = topic === "order.retry.payment" || isRetry === true;
 
-        console.log(`Processing payment for order ${orderId}${isRetryPayment ? ' (RETRY)' : ''}`);
+          if (!orderId || !userId || !totalPrice) {
+            console.error("Invalid order data:", orderData);
+            kafkaConsumerErrorCounter.inc({ topic, error_type: 'invalid_data' });
+            kafkaConsumerMessageCounter.inc({ topic, status: 'error' });
+            end();
+            return;
+          }
 
-        // Tạo mô tả đơn hàng từ items
-        const orderDescription =
-          items && items.length > 0
-            ? `Order ${orderId} - ${items.length} items`
-            : `Order ${orderId}`;
+          console.log(`Processing payment for order ${orderId}${isRetryPayment ? ' (RETRY)' : ''}`);
 
-        // Kiểm tra nếu là retry payment
-        let result;
-        if (isRetryPayment) {
-          // Gọi retryPaymentIntent để tìm PaymentIntent cũ và tạo PaymentAttempt mới
-          result = await retryPaymentIntent(
-            orderId,
-            userId,
-            totalPrice,
-            orderDescription
-          );
-        } else {
-          // Gọi createPaymentIntent để tạo PaymentIntent và PaymentAttempt mới
-          result = await createPaymentIntent(
-            orderId,
-            userId,
-            totalPrice,
-            orderDescription
-          );
-        }
+          // Tạo mô tả đơn hàng từ items
+          const orderDescription =
+            items && items.length > 0
+              ? `Order ${orderId} - ${items.length} items`
+              : `Order ${orderId}`;
 
-        console.log(`Payment processing result for order ${orderId}:`, result);
-
-        if (result.success && result.paymentUrl) {
-          const paymentIntentId = result.paymentIntentId!;
-
-          // Publish event với payment URL để frontend có thể redirect
-          await publishEvent(
-            orderId,
-            userId,
-            "system@vnpay.com",
-            totalPrice,
-            orderDescription,
-            "pending",
-            paymentIntentId,
-            result.paymentUrl
-          );
-
-          console.log(`Payment URL sent for order ${orderId}: ${result.paymentUrl}`);
-        } else {
-          // Nếu là retry và failed, không publish event "failed"
-          // Vì PaymentIntent vẫn REQUIRES_PAYMENT, user có thể retry lại
+          // Kiểm tra nếu là retry payment
+          let result;
           if (isRetryPayment) {
-            console.error(`❌ Retry payment failed for order ${orderId}: ${'error' in result ? result.error : 'Unknown error'}`);
-            console.log(`User can retry again. PaymentIntent still active.`);
-            // Không publish event để tránh Order Service xóa session
+            // Gọi retryPaymentIntent để tìm PaymentIntent cũ và tạo PaymentAttempt mới
+            result = await retryPaymentIntent(
+              orderId,
+              userId,
+              totalPrice,
+              orderDescription
+            );
           } else {
-            // Nếu là lần tạo đầu tiên và failed, publish event "failed"
-            const paymentIntentId = result.paymentIntentId || "N/A";
+            // Gọi createPaymentIntent để tạo PaymentIntent và PaymentAttempt mới
+            result = await createPaymentIntent(
+              orderId,
+              userId,
+              totalPrice,
+              orderDescription
+            );
+          }
+
+          console.log(`Payment processing result for order ${orderId}:`, result);
+
+          if (result.success && result.paymentUrl) {
+            const paymentIntentId = result.paymentIntentId!;
+
+            // Publish event với payment URL để frontend có thể redirect
             await publishEvent(
               orderId,
               userId,
               "system@vnpay.com",
               totalPrice,
               orderDescription,
-              "failed",
+              "pending",
               paymentIntentId,
-              ""
+              result.paymentUrl
             );
+
+            console.log(`Payment URL sent for order ${orderId}: ${result.paymentUrl}`);
+          } else {
+            // Nếu là retry và failed, không publish event "failed"
+            // Vì PaymentIntent vẫn REQUIRES_PAYMENT, user có thể retry lại
+            if (isRetryPayment) {
+              console.error(`❌ Retry payment failed for order ${orderId}: ${'error' in result ? result.error : 'Unknown error'}`);
+              console.log(`User can retry again. PaymentIntent still active.`);
+              // Không publish event để tránh Order Service xóa session
+            } else {
+              // Nếu là lần tạo đầu tiên và failed, publish event "failed"
+              const paymentIntentId = result.paymentIntentId || "N/A";
+              await publishEvent(
+                orderId,
+                userId,
+                "system@vnpay.com",
+                totalPrice,
+                orderDescription,
+                "failed",
+                paymentIntentId,
+                ""
+              );
+            }
           }
+
+          kafkaConsumerMessageCounter.inc({ topic, status: 'success' });
+          end();
+        } catch (error) {
+          console.error(`Error processing ${topic} event:`, error);
+          kafkaConsumerErrorCounter.inc({ topic, error_type: (error as Error).name || 'unknown' });
+          kafkaConsumerMessageCounter.inc({ topic, status: 'error' });
+          end();
         }
       },
     });
