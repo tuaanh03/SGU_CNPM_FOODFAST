@@ -13,5 +13,7 @@ export const OrderSchema = z.object({
   deliveryAddress: z.string().optional(),
   contactPhone: z.string().optional(),
   note: z.string().optional(),
+  // storeId: optional, nếu order thuộc về một cửa hàng (merchant)
+  storeId: z.string().optional(),
   // totalPrice sẽ được tính toán dựa trên items từ Product Service
 });

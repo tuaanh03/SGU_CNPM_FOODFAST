@@ -13,6 +13,7 @@ datasource db {
 enum UserRole {
   CUSTOMER // Khách hàng - chỉ có thể đặt hàng
   STORE_ADMIN // Admin cửa hàng - quản lý sản phẩm, đơn hàng
+  SYSTEM_ADMIN // Admin hệ thống - quản lý toàn bộ hệ thống (admin dashboard)
 }
 
 enum UserStatus {
@@ -61,6 +62,10 @@ model Address {
   district  String // Quận/Huyện
   province  String // Tỉnh/Thành phố
   isDefault Boolean @default(false)
+
+  // Tọa độ địa lý
+  latitude  Float?
+  longitude Float?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

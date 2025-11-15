@@ -88,7 +88,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
             return;
         }
 
-        const { items, deliveryAddress, contactPhone, note } = parsedBody.data;
+        const { items, deliveryAddress, contactPhone, note, storeId } = parsedBody.data;
 
         try {
             // Tính toán tổng tiền và validate sản phẩm
@@ -102,6 +102,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
             const savedOrder = await prisma.order.create({
                 data: {
                     userId,
+                    storeId: storeId || null,
                     totalPrice,
                     deliveryAddress,
                     contactPhone,
@@ -134,6 +135,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
             const orderPayload = {
                 orderId: savedOrder.id,
                 userId: savedOrder.userId,
+                storeId: savedOrder.storeId || null,
                 items: validItems, // Gửi thông tin items cho payment
                 totalPrice: savedOrder.totalPrice,
                 expiresAt: session.expirationTime.toISOString(),
@@ -160,6 +162,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
                     deliveryAddress: savedOrder.deliveryAddress,
                     contactPhone: savedOrder.contactPhone,
                     note: savedOrder.note,
+                    storeId: savedOrder.storeId,
                     session: {
                         expiresAt: session.expirationTime.toISOString(),
                         durationMinutes: session.durationMinutes
@@ -211,7 +214,7 @@ export const getOrderStatus = async (
             return;
         }
 
-        const order = await prisma.order.findUnique({
+        const order = await prisma.order.findFirst({
             where: {
                 id: orderId,
                 userId,
@@ -285,7 +288,7 @@ export const getPaymentUrl = async (
         }
 
         // Kiểm tra order có thuộc về user này không
-        const order = await prisma.order.findUnique({
+        const order = await prisma.order.findFirst({
             where: {
                 id: orderId,
                 userId,
@@ -395,6 +398,7 @@ export const getUserOrders = async (
                 quantity: item.quantity,
                 subtotal: item.productPrice * item.quantity
             })),
+            storeId: order.storeId,
             createdAt: order.createdAt,
             updatedAt: order.updatedAt
         }));
@@ -515,6 +519,7 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
         const savedOrder = await prisma.order.create({
             data: {
                 userId,
+                storeId: storeId || null,
                 totalPrice: validationResult.totalPrice,
                 deliveryAddress,
                 contactPhone,
@@ -547,6 +552,7 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
         const orderPayload = {
             orderId: savedOrder.id,
             userId: savedOrder.userId,
+            storeId: savedOrder.storeId || null,
             items: validationResult.validItems, // Gửi full items info với price snapshot
             totalPrice: savedOrder.totalPrice,
             expiresAt: session.expirationTime.toISOString(),
@@ -575,6 +581,7 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
                 deliveryAddress: savedOrder.deliveryAddress,
                 contactPhone: savedOrder.contactPhone,
                 note: savedOrder.note,
+                storeId: savedOrder.storeId,
                 session: {
                     expiresAt: session.expirationTime.toISOString(),
                     durationMinutes: session.durationMinutes
@@ -619,7 +626,7 @@ export const retryPayment = async (req: AuthenticatedRequest, res: Response): Pr
         }
 
         // Lấy order và kiểm tra quyền sở hữu
-        const order = await prisma.order.findUnique({
+        const order = await prisma.order.findFirst({
             where: {
                 id: orderId,
                 userId
@@ -736,4 +743,3 @@ export const retryPayment = async (req: AuthenticatedRequest, res: Response): Pr
         });
     }
 };
-

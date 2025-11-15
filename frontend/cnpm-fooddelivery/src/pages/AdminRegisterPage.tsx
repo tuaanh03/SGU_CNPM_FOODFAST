@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Link, useNavigate } from "react-router";
 import { Loader2 } from "lucide-react";
+import API_BASE_URL from "@/config/api";
 
 const AdminRegisterPage = () => {
   const { registerAdmin } = useAuth();
@@ -16,7 +17,21 @@ const AdminRegisterPage = () => {
     confirmPassword: "",
     name: "",
     phone: "",
+    // address fields for restaurant
+    address: "",
+    latitude: undefined as number | undefined,
+    longitude: undefined as number | undefined,
+    ward: "",
+    district: "",
+    province: "",
   });
+  // address search states
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const searchTimeoutRef = useRef<number | null>(null);
+  const searchContainerRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -73,18 +88,82 @@ const AdminRegisterPage = () => {
 
     setLoading(true);
     try {
+      // Include address fields in payload; backend may accept or ignore extras
       await registerAdmin({
         email: formData.email,
         password: formData.password,
         name: formData.name,
         phone: formData.phone,
-      });
+        address: formData.address,
+        latitude: formData.latitude,
+        longitude: formData.longitude,
+        ward: formData.ward,
+        district: formData.district,
+        province: formData.province,
+      } as any);
       navigate("/admin");
     } catch (error) {
       console.error(error);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Search address function (calls API Gateway -> location service)
+  const searchAddress = async (q: string) => {
+    if (!q || q.length < 3) {
+      setSearchResults([]);
+      return;
+    }
+    setIsSearching(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/locations/search?query=${encodeURIComponent(q)}`);
+      if (!res.ok) throw new Error("Failed to search address");
+      const data = await res.json();
+      if (data.success && data.data) {
+        setSearchResults(data.data);
+        setShowResults(true);
+      } else {
+        setSearchResults([]);
+      }
+    } catch (err) {
+      console.error("Error searching address:", err);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // debounced effect for searchQuery
+  useEffect(() => {
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    // @ts-ignore node timeout
+    searchTimeoutRef.current = setTimeout(() => searchAddress(searchQuery), 400) as unknown as number;
+    return () => {
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    };
+  }, [searchQuery]);
+
+  // click outside to close
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setShowResults(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handleSelectAddress = (result: any) => {
+    setFormData((prev) => ({
+      ...prev,
+      address: result.place_name,
+      longitude: result.center ? result.center[0] : prev.longitude,
+      latitude: result.center ? result.center[1] : prev.latitude,
+    }));
+    setSearchQuery(result.place_name);
+    setShowResults(false);
   };
 
   return (
@@ -135,6 +214,8 @@ const AdminRegisterPage = () => {
               <Label htmlFor="phone">Số điện thoại</Label>
               <Input
                 id="phone"
+                name="tel"
+                autoComplete="tel"
                 type="tel"
                 value={formData.phone}
                 onChange={(e) => handleChange("phone", e.target.value)}
@@ -143,6 +224,44 @@ const AdminRegisterPage = () => {
                 disabled={loading}
               />
               {errors.phone && <p className="text-sm text-red-500">{errors.phone}</p>}
+            </div>
+
+            {/* Address search and selection for restaurant */}
+            <div className="space-y-2 relative" ref={searchContainerRef}>
+              <Label htmlFor="search-address">Địa chỉ cửa hàng</Label>
+              <div className="relative">
+                <Input
+                  id="search-address"
+                  name="street-address"
+                  autoComplete="street-address"
+                  value={searchQuery}
+                  onChange={(e) => { setSearchQuery(e.target.value); setShowResults(true); }}
+                  onFocus={() => searchResults.length > 0 && setShowResults(true)}
+                  placeholder="Nhập tên đường, quận, thành phố..."
+                  className="pl-3"
+                  disabled={loading}
+                />
+                {isSearching && (
+                  <div className="absolute right-2 top-1/2 transform -translate-y-1/2 text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  </div>
+                )}
+               </div>
+
+              {showResults && searchResults.length > 0 && (
+                <div className="absolute z-50 w-full mt-1 bg-background border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                  {searchResults.map((r, idx) => (
+                    <div key={idx} className="px-3 py-2 hover:bg-accent cursor-pointer" onClick={() => handleSelectAddress(r)}>
+                      <div className="text-sm font-medium truncate">{r.text}</div>
+                      <div className="text-xs text-muted-foreground truncate">{r.place_name}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {formData.address && (
+                <p className="text-xs text-muted-foreground mt-1">Địa chỉ đã chọn: {formData.address}</p>
+              )}
             </div>
 
             <div className="space-y-2">

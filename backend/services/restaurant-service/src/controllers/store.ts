@@ -17,7 +17,9 @@ export const createStore = async (req: Request, res: Response) => {
       phone,
       email,
       openTime,
-      closeTime
+      closeTime,
+      latitude,
+      longitude
     } = req.body;
 
     // Kiểm tra user đã có cửa hàng chưa
@@ -43,6 +45,8 @@ export const createStore = async (req: Request, res: Response) => {
         ward,
         district,
         province,
+        latitude,
+        longitude,
         phone,
         email,
         openTime,
@@ -106,6 +110,8 @@ export const updateStore = async (req: Request, res: Response) => {
       ward,
       district,
       province,
+      latitude,
+      longitude,
       phone,
       email,
       openTime,
@@ -135,6 +141,8 @@ export const updateStore = async (req: Request, res: Response) => {
         ...(ward && { ward }),
         ...(district && { district }),
         ...(province && { province }),
+        ...(latitude !== undefined && { latitude }),
+        ...(longitude !== undefined && { longitude }),
         ...(phone && { phone }),
         ...(email && { email }),
         ...(openTime && { openTime }),
@@ -261,3 +269,59 @@ export const checkStoreByOwnerId = async (req: Request, res: Response) => {
   }
 };
 
+// New: Lấy orders cho cửa hàng của merchant (STORE_ADMIN)
+export const getMyOrders = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+
+    // Tìm store của merchant
+    const store = await prisma.store.findUnique({ where: { ownerId: userId } });
+    if (!store) {
+      return res.status(404).json({ success: false, message: "Bạn chưa có cửa hàng" });
+    }
+
+    const { page = 1, limit = 20, status } = req.query as any;
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const where: any = { storeId: store.id };
+    if (status) where.restaurantStatus = status;
+
+    const [orders, total] = await Promise.all([
+      prisma.restaurantOrder.findMany({ where, orderBy: { receivedAt: 'desc' }, skip, take: Number(limit) }),
+      prisma.restaurantOrder.count({ where })
+    ]);
+
+    // Map to response shape
+    const data = orders.map((o: any) => ({
+      id: o.id,
+      orderId: o.orderId,
+      storeId: o.storeId,
+      items: o.items,
+      totalPrice: o.totalPrice,
+      customerInfo: o.customerInfo,
+      restaurantStatus: o.restaurantStatus,
+      receivedAt: o.receivedAt,
+      confirmedAt: o.confirmedAt,
+      readyAt: o.readyAt
+    }));
+
+    res.json({ success: true, data, pagination: { page: Number(page), limit: Number(limit), total, totalPages: Math.ceil(total / Number(limit)) } });
+  } catch (error) {
+    console.error('Error getting store orders:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi lấy đơn hàng của cửa hàng' });
+  }
+};
+
+// New: transitionToPreparing helper used by kafka consumer to auto-start preparing
+export async function transitionToPreparing(restaurantOrderId: string) {
+    console.log(` transitioning order to PREPARING:`)
+    const updated = await prisma.restaurantOrder.update({
+    where: { id: restaurantOrderId },
+    data: {
+      restaurantStatus: "PREPARING",
+      preparingStartedAt: new Date()
+    }
+  });
+
+  console.log(`📦 Order ${updated.orderId} is now PREPARING`);
+}

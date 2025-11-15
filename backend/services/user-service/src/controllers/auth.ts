@@ -130,6 +130,69 @@ export const registerAdmin = async (req: Request, res: Response) => {
     }
 };
 
+// --------------------- Đăng ký system admin ---------------------
+export const registerSystemAdmin = async (req: Request, res: Response) => {
+    try {
+        const { email, password, name, phone } = req.body;
+
+        // Kiểm tra email đã tồn tại
+        const existingUser = await prisma.user.findUnique({ where: { email } });
+        if (existingUser) {
+            return res.status(400).json({
+                success: false,
+                message: "Email đã được sử dụng",
+            });
+        }
+
+        // Mã hóa password
+        const hashedPassword = await bcrypt.hash(password, 12);
+
+        // Tạo user mới với role SYSTEM_ADMIN
+        const user = await prisma.user.create({
+            data: {
+                email,
+                password: hashedPassword,
+                name,
+                phone,
+                role: "SYSTEM_ADMIN",
+            },
+            select: {
+                id: true,
+                email: true,
+                name: true,
+                phone: true,
+                role: true,
+                status: true,
+                createdAt: true,
+            },
+        });
+
+        // Tạo JWT token với jti để hỗ trợ logout
+        const jti = crypto.randomUUID();
+        const token = jwt.sign(
+            {
+                userId: user.id,
+                email: user.email,
+                role: user.role,
+            },
+            process.env.JWT_SECRET_KEY || "secret",
+            { expiresIn: "7d", jwtid: jti }
+        );
+
+        res.status(201).json({
+            success: true,
+            data: { user, token },
+            message: "Đăng ký system admin thành công",
+        });
+    } catch (error) {
+        console.error("Error registering system admin:", error);
+        res.status(500).json({
+            success: false,
+            message: "Lỗi khi đăng ký",
+        });
+    }
+};
+
 // --------------------- Đăng nhập customer ---------------------
 export const loginCustomer = async (req: Request, res: Response) => {
     try {
@@ -269,6 +332,79 @@ export const loginAdmin = async (req: Request, res: Response) => {
         });
     } catch (error) {
         console.error("Error logging in admin:", error);
+        res.status(500).json({
+            success: false,
+            message: "Lỗi khi đăng nhập",
+        });
+    }
+};
+
+// --------------------- Đăng nhập system admin ---------------------
+export const loginSystemAdmin = async (req: Request, res: Response) => {
+    try {
+        const { email, password } = req.body;
+
+        // Tìm user theo email
+        const user = await prisma.user.findUnique({
+            where: { email },
+        });
+
+        if (!user) {
+            return res.status(400).json({
+                success: false,
+                message: "Email hoặc mật khẩu không đúng",
+            });
+        }
+
+        // Kiểm tra role - chỉ cho phép SYSTEM_ADMIN đăng nhập
+        if (user.role !== "SYSTEM_ADMIN") {
+            return res.status(403).json({
+                success: false,
+                message: "Tài khoản không tồn tại trong hệ thống quản trị",
+            });
+        }
+
+        // Kiểm tra account status
+        if (user.status !== "ACTIVE") {
+            return res.status(403).json({
+                success: false,
+                message: "Tài khoản đã bị khóa hoặc vô hiệu hóa",
+            });
+        }
+
+        // Kiểm tra password
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+        if (!isPasswordValid) {
+            return res.status(400).json({
+                success: false,
+                message: "Email hoặc mật khẩu không đúng",
+            });
+        }
+
+        // Tạo JWT token với jti để hỗ trợ logout
+        const jti = crypto.randomUUID();
+        const token = jwt.sign(
+            {
+                userId: user.id,
+                email: user.email,
+                role: user.role,
+            },
+            process.env.JWT_SECRET_KEY || "secret",
+            { expiresIn: "7d", jwtid: jti }
+        );
+
+        const { password: _, ...userWithoutPassword } = user;
+
+        res.json({
+            success: true,
+            data: {
+                user: userWithoutPassword,
+                token,
+            },
+            message: "Đăng nhập thành công",
+        });
+    } catch (error) {
+        console.error("Error logging in system admin:", error);
         res.status(500).json({
             success: false,
             message: "Lỗi khi đăng nhập",

@@ -38,6 +38,8 @@ export const createAddress = async (req: Request, res: Response) => {
       ward,
       district,
       province,
+      latitude,
+      longitude,
       isDefault = false
     } = req.body;
 
@@ -58,6 +60,8 @@ export const createAddress = async (req: Request, res: Response) => {
         ward,
         district,
         province,
+        latitude,
+        longitude,
         isDefault
       }
     });
@@ -88,6 +92,8 @@ export const updateAddress = async (req: Request, res: Response) => {
       ward,
       district,
       province,
+      latitude,
+      longitude,
       isDefault
     } = req.body;
 
@@ -120,6 +126,8 @@ export const updateAddress = async (req: Request, res: Response) => {
         ...(ward && { ward }),
         ...(district && { district }),
         ...(province && { province }),
+        ...(latitude !== undefined && { latitude }),
+        ...(longitude !== undefined && { longitude }),
         ...(isDefault !== undefined && { isDefault })
       }
     });

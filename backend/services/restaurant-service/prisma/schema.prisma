@@ -25,6 +25,10 @@ model Store {
   district String
   province String
 
+  // Tọa độ địa lý
+  latitude  Float?
+  longitude Float?
+
   phone String?
   email String?
 
@@ -39,4 +43,29 @@ model Store {
 
   @@index([ownerId])
   @@index([isActive])
+  @@index([latitude, longitude])
+  @@index([district, isActive])
+}
+
+// RestaurantOrder: snapshot of orders relevant to a restaurant (stored in restaurant-service)
+model RestaurantOrder {
+  id      String @id @default(uuid())
+  orderId String @unique // Reference to Order Service (no FK enforced)
+  storeId String // Restaurant (Store) that received the order
+
+  // Snapshot data
+  items        Json
+  totalPrice   Int
+  customerInfo Json
+
+  // Restaurant-specific status
+  restaurantStatus String @default("CONFIRMED") // e.g. CONFIRMED, PREPARING, READY, etc.
+
+  receivedAt         DateTime  @default(now())
+  confirmedAt        DateTime?
+  readyAt            DateTime?
+  preparingStartedAt DateTime?
+
+  @@index([storeId, receivedAt])
+  @@index([restaurantStatus])
 }

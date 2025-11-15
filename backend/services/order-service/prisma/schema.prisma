@@ -16,8 +16,10 @@ enum OrderStatus {
 
 // ---------- Order & OrderItem ----------
 model Order {
-  id     String  @id @default(uuid())
-  userId String? // Reference to User in user-service (no FK constraint)
+  id      String  @id @default(uuid())
+  userId  String? // Reference to User in user-service (no FK constraint)
+  // Store reference: optional storeId to link order to a restaurant (no FK)
+  storeId String?
 
   status     OrderStatus @default(pending)
   totalPrice Int
@@ -37,6 +39,7 @@ model Order {
 
   @@index([userId, createdAt])
   @@index([status, createdAt])
+  @@index([storeId, createdAt])
   @@index([expirationTime]) // Index để query orders cần expire
 }
 

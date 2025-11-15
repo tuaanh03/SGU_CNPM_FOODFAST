@@ -17,7 +17,7 @@ const PORT = config.port;
 
 /** 1) CORS đặt trước mọi middleware/route */
 server.use(cors({
-    origin: "http://localhost:5173",
+    origin: ["http://localhost:5173", "http://localhost:8080", "http://localhost:8081", "http://localhost"],
     credentials: true,
     methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
     allowedHeaders: ["Content-Type","Authorization","X-Requested-With"]
@@ -121,6 +121,12 @@ const cartServiceProxy = proxy(config.cartServiceUrl, {
     ...addCorsOnProxyResp
 });
 
+// proxy middleware for Location Service (public routes)
+const locationServiceProxy = proxy(config.locationServiceUrl, {
+    proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api/, ""),
+    ...addCorsOnProxyResp
+});
+
 // ====== AGGREGATION ENDPOINT ======
 // GET /api/restaurants/:restaurantId/menu
 // Gọi song song restaurant-service và product-service, gom kết quả trả về client
@@ -174,6 +180,9 @@ server.use("/api/payment", authenticateToken, paymentServiceProxy);
 // product service routes (không cần xác thực cho GET, POST/PUT/DELETE cần xác thực)
 server.use("/api/products", productServiceProxy);
 server.use("/api/categories", productServiceProxy);
+
+// location service routes (public routes)
+server.use("/api/locations", locationServiceProxy);
 
 // restaurant service routes
 server.use("/api/stores", restaurantServiceProxy);

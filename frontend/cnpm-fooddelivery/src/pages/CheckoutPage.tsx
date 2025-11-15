@@ -74,9 +74,21 @@ const CheckoutPage = () => {
 
     setLoading(true);
     try {
+      // Resolve storeId: prefer state.restaurant.id, fallback to localStorage
+      let storeId: string | null | undefined = state.restaurant?.id;
+      if (!storeId) {
+        storeId = localStorage.getItem('cart_restaurantId');
+      }
+
+      if (!storeId) {
+        toast.error('Không xác định được ID nhà hàng (storeId). Vui lòng thử lại');
+        setLoading(false);
+        return;
+      }
+
       // Bước 1: Tạo order từ cart qua API Gateway
       const response = await orderService.createOrderFromCart({
-        storeId: state.restaurant.id,
+        storeId: String(storeId),
         deliveryAddress: formData.deliveryAddress,
         contactPhone: formData.contactPhone,
         note: formData.note || undefined,

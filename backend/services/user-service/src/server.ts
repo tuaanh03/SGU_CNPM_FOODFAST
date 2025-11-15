@@ -9,6 +9,9 @@ import authRoutes from "./routes/auth.routes";
 import addressRoutes from "./routes/address.routes";
 import paymentMethodRoutes from "./routes/payment-methods.routes";
 
+// Import metrics
+import metricsRegister, { httpRequestCounter, httpRequestDuration } from "./lib/metrics";
+
 env.config();
 
 const server = express();
@@ -22,6 +25,50 @@ server.use(
   })
 );
 server.use(morgan("dev"));
+
+// Metrics middleware - track all HTTP requests
+server.use((req: Request, res: Response, next: NextFunction) => {
+  const start = Date.now();
+
+  res.on('finish', () => {
+    const duration = (Date.now() - start) / 1000;
+    const route = req.route?.path || req.path;
+
+    httpRequestCounter.inc({
+      method: req.method,
+      route: route,
+      status_code: res.statusCode,
+    });
+
+    httpRequestDuration.observe(
+      {
+        method: req.method,
+        route: route,
+        status_code: res.statusCode,
+      },
+      duration
+    );
+  });
+
+  next();
+});
+
+// Prometheus metrics endpoint
+server.get("/actuator/prometheus", async (req: Request, res: Response) => {
+  res.set("Content-Type", metricsRegister.contentType);
+  res.end(await metricsRegister.metrics());
+});
+
+// Health Check Route
+server.get("/health", (req: Request, res: Response) => {
+  res.status(200).json({
+    success: true,
+    message: "User service is healthy",
+    service: "user-service",
+    version: "1.0.0",
+    timestamp: new Date().toISOString(),
+  });
+});
 
 // Routes
 server.use("/auth", authRoutes);
