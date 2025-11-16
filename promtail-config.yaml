@@ -30,47 +30,21 @@ scrape_configs:
         target_label: 'container_id'
 
     pipeline_stages:
-      # Parse Docker JSON log format (outer layer)
+      # Parse JSON log trực tiếp (Docker đã output pure JSON)
       - json:
           expressions:
-            log: log
-            stream: stream
-            time: time
-
-      # Parse application JSON log (inner layer từ morgan)
-      - json:
-          expressions:
-            timestamp: timestamp
             level: level
-            service: service
             method: method
-            path: path
             status: status
-            responseTime: responseTime
-            contentLength: contentLength
-            userAgent: userAgent
-            ip: ip
-          source: log
+            service: service
+            timestamp: timestamp
 
-      # Gắn labels cho Loki
+      # Promote to labels
       - labels:
-          stream:
           level:
-          service:
           method:
           status:
 
-      # Parse timestamp từ application log
-      - timestamp:
-          source: timestamp
-          format: RFC3339
-          fallback_formats:
-            - "2006-01-02T15:04:05.000Z"
-            - RFC3339Nano
-
-      # Output log content
-      - output:
-          source: log
 
   # Thu thập application log files từ ./logs/*.log
   - job_name: node-app-logs

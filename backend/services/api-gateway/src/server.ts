@@ -37,21 +37,23 @@ server.options("*", cors());
 server.use(helmet());
 
 // JSON logger cho Loki
-morgan.token('timestamp', () => new Date().toISOString());
-const logFormat = JSON.stringify({
-  timestamp: ':timestamp',
-  level: 'info',
-  service: 'api-gateway',
-  method: ':method',
-  path: ':url',
-  status: ':status',
-  responseTime: ':response-time',
-  contentLength: ':res[content-length]',
-  userAgent: ':user-agent',
-  ip: ':remote-addr'
+// Custom JSON token for structured logging
+morgan.token('json', (req: any, res: any) => {
+  return JSON.stringify({
+    timestamp: new Date().toISOString(),
+    level: res.statusCode >= 500 ? 'error' : (res.statusCode >= 400 ? 'warn' : 'info'),
+    service: 'api-gateway',
+    method: req.method,
+    path: req.originalUrl || req.url,
+    status: res.statusCode.toString(),
+    responseTime: res.responseTime || 0,
+    contentLength: res.get('content-length') || 0,
+    userAgent: req.get('user-agent') || '',
+    ip: req.ip || req.connection?.remoteAddress || ''
+  });
 });
 
-server.use(morgan(logFormat));
+server.use(morgan(':json'));
 server.use(compression());
 server.use(bodyParser.json());
 
