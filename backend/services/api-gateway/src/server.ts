@@ -35,7 +35,23 @@ server.options("/api/*", cors());
 server.options("*", cors());
 
 server.use(helmet());
-server.use(morgan("dev"));
+
+// JSON logger cho Loki
+morgan.token('timestamp', () => new Date().toISOString());
+const logFormat = JSON.stringify({
+  timestamp: ':timestamp',
+  level: 'info',
+  service: 'api-gateway',
+  method: ':method',
+  path: ':url',
+  status: ':status',
+  responseTime: ':response-time',
+  contentLength: ':res[content-length]',
+  userAgent: ':user-agent',
+  ip: ':remote-addr'
+});
+
+server.use(morgan(logFormat));
 server.use(compression());
 server.use(bodyParser.json());
 

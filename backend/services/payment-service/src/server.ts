@@ -22,7 +22,23 @@ server.use(
     origin: "http://localhost:3000",
   })
 );
-server.use(morgan("dev"));
+
+// JSON logger cho Loki
+morgan.token('timestamp', () => new Date().toISOString());
+const logFormat = JSON.stringify({
+  timestamp: ':timestamp',
+  level: 'info',
+  service: 'payment-service',
+  method: ':method',
+  path: ':url',
+  status: ':status',
+  responseTime: ':response-time',
+  contentLength: ':res[content-length]',
+  userAgent: ':user-agent',
+  ip: ':remote-addr'
+});
+
+server.use(morgan(logFormat));
 
 // Metrics middleware - track all HTTP requests
 server.use((req: Request, res: Response, next: NextFunction) => {

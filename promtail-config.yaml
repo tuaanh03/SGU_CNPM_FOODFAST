@@ -30,53 +30,47 @@ scrape_configs:
         target_label: 'container_id'
 
     pipeline_stages:
-      # Parse Docker JSON log format
+      # Parse Docker JSON log format (outer layer)
       - json:
           expressions:
-            output: log
+            log: log
             stream: stream
             time: time
 
-      # Thử parse JSON content bên trong log
+      # Parse application JSON log (inner layer từ morgan)
       - json:
           expressions:
+            timestamp: timestamp
             level: level
-            msg: msg
-            message: message
-          source: output
+            service: service
+            method: method
+            path: path
+            status: status
+            responseTime: responseTime
+            contentLength: contentLength
+            userAgent: userAgent
+            ip: ip
+          source: log
 
-      # Gắn label stream (stdout/stderr)
+      # Gắn labels cho Loki
       - labels:
           stream:
-
-      # Gắn label level nếu có trong JSON
-      - labels:
           level:
+          service:
+          method:
+          status:
 
-      # Nếu không có level trong JSON, extract từ text
-      - regex:
-          expression: '(?i).*\[?(?P<extracted_level>DEBUG|INFO|WARN|WARNING|ERROR|FATAL)\]?.*'
-          source: output
-
-      # Normalize extracted_level thành lowercase và gán vào level
-      - template:
-          source: extracted_level
-          template: '{{ if .Value }}{{ .Value | ToLower }}{{ end }}'
-
-      # Gắn extracted_level như label level
-      - labels:
-          extracted_level:
-
-      # Parse timestamp
+      # Parse timestamp từ application log
       - timestamp:
-          source: time
-          format: RFC3339Nano
+          source: timestamp
+          format: RFC3339
           fallback_formats:
-            - RFC3339
+            - "2006-01-02T15:04:05.000Z"
+            - RFC3339Nano
 
-      # Output
+      # Output log content
       - output:
-          source: output
+          source: log
 
   # Thu thập application log files từ ./logs/*.log
   - job_name: node-app-logs
@@ -155,26 +149,30 @@ scrape_configs:
       # Parse JSON logs
       - json:
           expressions:
-            level: level
-            msg: msg
-            message: message
-            time: time
             timestamp: timestamp
+            level: level
+            service: service
+            method: method
+            path: path
+            status: status
+            responseTime: responseTime
+            contentLength: contentLength
+            userAgent: userAgent
+            ip: ip
 
-      # Gắn label level
+      # Gắn labels
       - labels:
           level:
+          service:
+          method:
+          status:
 
       # Parse timestamp
       - timestamp:
-          source: time
+          source: timestamp
           format: RFC3339
           fallback_formats:
             - "2006-01-02T15:04:05.000Z"
-            - "2006-01-02T15:04:05Z07:00"
-
-      # Output
-      - output:
-          source: msg
+            - RFC3339Nano
 
 
