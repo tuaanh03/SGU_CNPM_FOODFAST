@@ -29,15 +29,15 @@ scrape_configs:
     static_configs:
       - targets: ['cart-service:3006']
 
-#  - job_name: 'payment-service'
-#    metrics_path: '/actuator/prometheus'
-#    static_configs:
-#      - targets: ['payment-service:4000']
+  - job_name: 'payment-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['payment-service:4000']
 
-#  - job_name: 'restaurant-service'
-#    metrics_path: '/actuator/prometheus'
-#    static_configs:
-#      - targets: ['restaurant-service:3005']
+  - job_name: 'restaurant-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['restaurant-service:3005']
 
   # Kafka Exporter - scrapes Kafka broker/topic/consumer metrics
   - job_name: 'kafka-exporter'
