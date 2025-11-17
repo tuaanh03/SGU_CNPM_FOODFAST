@@ -1,0 +1,102 @@
+╔════════════════════════════════════════════════════════════════╗
+║          HƯỚNG DẪN NHANH - FIX NETWORK ERROR                   ║
+╚════════════════════════════════════════════════════════════════╝
+
+## ✅ ĐÃ SỬA XONG - SẴN SÀNG SỬ DỤNG
+
+---
+
+## 🐳 CHẠY LOCAL (KHÔNG ẢNH HƯỞNG)
+
+```bash
+docker-compose up -d --build
+```
+
+✅ Mọi thứ hoạt động như cũ
+✅ Frontend build với `/api` và dùng HTTP
+✅ Nginx proxy tới `http://api-gateway:3000`
+
+**Truy cập:**
+- http://localhost (Customer)
+- http://localhost:8080 (Merchant)
+- http://localhost:8081 (Admin)
+
+---
+
+## 🚀 DEPLOY RAILWAY (CẦN CẤU HÌNH)
+
+### Bước 1: Lấy API Gateway Domain
+
+1. Vào Railway Dashboard
+2. Click service **api-gateway**
+3. Tab **Settings** → Copy domain
+4. VD: `api-gateway-production-abc.up.railway.app`
+
+### Bước 2: Set Environment Variables
+
+Vào service **cnpm-fooddelivery** → **Variables** → Add:
+
+```
+USE_HTTPS=true
+API_GATEWAY_HOST=api-gateway-production-abc.up.railway.app
+```
+
+⚠️ **LƯU Ý:**
+- KHÔNG có `https://`
+- KHÔNG có `/` ở cuối
+- CHỈ domain name
+
+### Bước 3: Deploy
+
+```bash
+git add .
+git commit -m "Fix: Network error - Support Railway deployment"
+git push
+```
+
+Railway sẽ tự động build và deploy.
+
+### Bước 4: Kiểm tra
+
+1. Mở `https://<frontend-url>`
+2. DevTools → Console → Kiểm tra không có lỗi
+3. DevTools → Network → Xem request `/api/products`
+
+✅ Nếu thấy status 200 → THÀNH CÔNG!
+
+---
+
+## 📚 TÀI LIỆU CHI TIẾT
+
+- **DEPLOYMENT_GUIDE.txt** - Hướng dẫn đầy đủ
+- **CHANGES_SUMMARY.txt** - Danh sách thay đổi
+- **FIX_NETWORK_ERROR.md** - Giải thích kỹ thuật
+
+---
+
+## 🐛 NẾU CÒN LỖI
+
+### Lỗi Network Error:
+→ Kiểm tra `API_GATEWAY_HOST` đã đúng chưa
+→ Kiểm tra `USE_HTTPS=true` đã set chưa
+
+### Lỗi CORS:
+→ Kiểm tra domain frontend có trong `server.ts` chưa
+
+### Frontend hiển thị trống:
+→ Xem Console logs có lỗi gì
+→ Check Network tab xem API có được gọi không
+
+---
+
+## 💡 TIPS
+
+✅ Railway mất 1-2 phút để apply env vars
+✅ Sau khi set env vars phải Redeploy service
+✅ Test API Gateway trước: `curl https://<api-gw-url>/api/products`
+✅ Xem Railway logs real-time để debug
+
+---
+
+CÓ THẮC MẮC? Đọc DEPLOYMENT_GUIDE.txt
+
