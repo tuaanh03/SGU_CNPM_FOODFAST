@@ -22,7 +22,7 @@ server.use(cors({
         "http://localhost:8080",
         "http://localhost:8081",
         "http://localhost",
-        "https://sgucnpmfoodfast-production.up.railway.app"
+        "https://sgucnpmfoodfast-production.up.railway.app" // cors fix
     ],
     credentials: true,
     methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
