@@ -40,7 +40,12 @@ build/Release
 
 # Dependency directories
 node_modules/
-jspm_packages/
+
+# Environment files
+.env
+.env.*
+frontend/cnpm-fooddelivery/.env.development
+frontend/cnpm-fooddelivery/.env.production
 
 # Snowpack dependency directory (https://snowpack.dev/)
 web_modules/
