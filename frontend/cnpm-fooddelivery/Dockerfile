@@ -28,8 +28,5 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # Expose port 80
 EXPOSE 80
 
-# Set default value for API_GATEWAY_HOST if not provided
-ENV API_GATEWAY_HOST=api-gateway-service-production-04a1.up.railway.app
-
 # Start nginx with environment variable substitution
-CMD ["/bin/sh", "-c", "envsubst '${API_GATEWAY_HOST}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
+CMD ["/bin/sh", "-c", "export API_GATEWAY_HOST=${API_GATEWAY_HOST:-api-gateway-service-production-04a1.up.railway.app} && envsubst '${API_GATEWAY_HOST}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && cat /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
