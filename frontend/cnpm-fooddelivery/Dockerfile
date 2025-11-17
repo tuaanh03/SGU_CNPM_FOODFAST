@@ -9,8 +9,9 @@ COPY package*.json ./
 # Install dependencies
 RUN npm install
 
-# Copy all source files
+# Copy all source files, exclude nginx.conf
 COPY . .
+RUN rm -f nginx.conf
 
 # Build the application
 RUN npm run build
