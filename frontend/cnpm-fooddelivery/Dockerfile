@@ -23,9 +23,8 @@ RUN npm run build
 # Stage 2: Production stage with Nginx
 FROM nginx:alpine
 
-# Copy both nginx configuration templates
-COPY nginx.conf.template /etc/nginx/templates/nginx.conf.template.railway
-COPY nginx.conf.template.local /etc/nginx/templates/nginx.conf.template.local
+# Copy nginx configuration template (Railway HTTPS version)
+COPY nginx.conf.template /etc/nginx/templates/nginx.conf.template
 
 # Copy built files from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
@@ -37,15 +36,17 @@ EXPOSE 80
 # USE_HTTPS: set to 'true' for Railway (HTTPS), unset or 'false' for local (HTTP)
 # API_GATEWAY_HOST có thể được set từ Railway environment variables hoặc docker-compose
 CMD ["/bin/sh", "-c", "\
-    if [ \"$USE_HTTPS\" = \"true\" ]; then \
-        echo 'Using HTTPS config for Railway...'; \
-        export TEMPLATE_FILE=/etc/nginx/templates/nginx.conf.template.railway; \
-    else \
-        echo 'Using HTTP config for local...'; \
-        export TEMPLATE_FILE=/etc/nginx/templates/nginx.conf.template.local; \
-    fi && \
     export API_GATEWAY_HOST=${API_GATEWAY_HOST:-api-gateway:3000} && \
-    envsubst '${API_GATEWAY_HOST}' < $TEMPLATE_FILE > /etc/nginx/conf.d/default.conf && \
+    envsubst '${API_GATEWAY_HOST}' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/conf.d/default.conf && \
+    if [ \"$USE_HTTPS\" != \"true\" ]; then \
+        echo 'Using HTTP for local environment...'; \
+        sed -i 's|https://|http://|g' /etc/nginx/conf.d/default.conf; \
+        sed -i '/proxy_ssl_verify/d' /etc/nginx/conf.d/default.conf; \
+        sed -i '/proxy_ssl_server_name/d' /etc/nginx/conf.d/default.conf; \
+        sed -i \"s/Host \${API_GATEWAY_HOST}/Host \$host/g\" /etc/nginx/conf.d/default.conf; \
+    else \
+        echo 'Using HTTPS for Railway...'; \
+    fi && \
     echo '=== Nginx Config ===' && \
     cat /etc/nginx/conf.d/default.conf && \
     echo '===================' && \
