@@ -64,12 +64,22 @@ server.use(compression());
 server.use(bodyParser.json());
 
 /** Helper: decorator chung để gắn CORS header vào response từ proxy */
+const allowedOrigins = [
+    "http://localhost:5173",
+    "http://localhost:8080",
+    "http://localhost:8081",
+    "http://localhost",
+    "https://sgucnpmfoodfast-production.up.railway.app"
+];
 const addCorsOnProxyResp = {
-    userResHeaderDecorator: (headers: any) => {
-        headers["Access-Control-Allow-Origin"] = "http://localhost:5173";
+    userResHeaderDecorator: (headers: any, req: any) => {
+        const origin = req.headers.origin;
+        if (allowedOrigins.includes(origin)) {
+            headers["Access-Control-Allow-Origin"] = origin;
+        }
         headers["Access-Control-Allow-Credentials"] = "true";
-        headers["Vary"] = "Origin";      // quan trọng cho CORS caching
-        delete headers["etag"];           // tránh vòng 304 lần sau
+        headers["Vary"] = "Origin";
+        delete headers["etag"];
         return headers;
     }
 };
