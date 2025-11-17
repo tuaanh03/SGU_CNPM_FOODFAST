@@ -4,11 +4,11 @@ WORKDIR /app/notification-service
 
 RUN npm install -g pnpm
 
-COPY backend/services/notification-service/package.json backend/services/notification-service/pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml ./
 
 RUN pnpm install --frozen-lockfile
 
-COPY backend/services/notification-service .
+COPY . .
 
 RUN pnpm run build
 

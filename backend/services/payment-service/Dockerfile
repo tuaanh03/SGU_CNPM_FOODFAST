@@ -4,11 +4,11 @@ WORKDIR /app/payment-service
 
 RUN npm install -g pnpm
 
-COPY backend/services/payment-service/package.json backend/services/payment-service/pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml ./
 
 RUN pnpm install --frozen-lockfile
 
-COPY backend/services/payment-service .
+COPY . .
 
 # Generate Prisma Client
 RUN npx prisma generate

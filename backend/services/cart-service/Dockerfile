@@ -4,11 +4,11 @@ WORKDIR /app/cart-service
 
 RUN npm install -g pnpm
 
-COPY backend/services/cart-service/package.json backend/services/cart-service/pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml ./
 
 RUN pnpm install --frozen-lockfile
 
-COPY backend/services/cart-service .
+COPY . .
 
 RUN pnpm run build
 

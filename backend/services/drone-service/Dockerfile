@@ -4,11 +4,11 @@ WORKDIR /app/drone-service
 
 RUN npm install -g pnpm
 
-COPY backend/services/drone-service/package.json backend/services/drone-service/pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml ./
 
 RUN pnpm install --frozen-lockfile
 
-COPY backend/services/drone-service .
+COPY . .
 
 RUN npx prisma generate
 

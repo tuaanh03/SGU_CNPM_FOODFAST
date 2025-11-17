@@ -4,11 +4,11 @@ WORKDIR /app/restaurant-service
 
 RUN npm install -g pnpm
 
-COPY backend/services/restaurant-service/package.json backend/services/restaurant-service/pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml ./
 
 RUN pnpm install --frozen-lockfile
 
-COPY backend/services/restaurant-service .
+COPY . .
 
 RUN npx prisma generate
 
