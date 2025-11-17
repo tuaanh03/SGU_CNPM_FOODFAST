@@ -17,7 +17,8 @@ server {
 
     # Proxy API requests to api-gateway
     location /api/ {
-        # Proxy to API Gateway nội bộ
+        # Proxy to API Gateway
+        # Biến VITE_API_BASE_URL_INTERNAL sẽ được thay thế khi container khởi động
         proxy_pass ${VITE_API_BASE_URL_INTERNAL};
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;

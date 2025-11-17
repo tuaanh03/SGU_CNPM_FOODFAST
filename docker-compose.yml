@@ -347,10 +347,8 @@ services:
       - api-gateway
     restart: unless-stopped
     environment:
-      # Không dùng HTTPS cho local Docker
-      - USE_HTTPS=false
-      # API Gateway host trong Docker network
-      - API_GATEWAY_HOST=api-gateway:3000
+      - VITE_API_BASE_URL=http://localhost:3000/api
+      - VITE_API_BASE_URL_INTERNAL=http://api-gateway:3000/api/
 
   # Frontend - Restaurant Merchant Portal
   restaurant-merchant:
