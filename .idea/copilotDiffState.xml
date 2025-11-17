@@ -272,6 +272,15 @@
             </PendingDiffInfo>
           </value>
         </entry>
+        <entry key="$PROJECT_DIR$/frontend/cnpm-fooddelivery/Dockerfile">
+          <value>
+            <PendingDiffInfo>
+              <option name="filePath" value="$PROJECT_DIR$/frontend/cnpm-fooddelivery/Dockerfile" />
+              <option name="originalContent" value="# Stage 1: Build stage&#10;FROM node:20-alpine AS builder&#10;&#10;WORKDIR /app&#10;&#10;# Copy package files&#10;COPY package*.json ./&#10;&#10;# Install dependencies&#10;RUN npm install&#10;&#10;# Copy all source files&#10;COPY . .&#10;&#10;# Build the application&#10;RUN npm run build&#10;&#10;# Stage 2: Production stage with Nginx&#10;FROM nginx:alpine&#10;&#10;# Copy custom nginx configuration template&#10;COPY nginx.conf.template /etc/nginx/templates/default.conf.template&#10;&#10;# Copy built files from builder stage&#10;COPY --from=builder /app/dist /usr/share/nginx/html&#10;&#10;# Expose port 80&#10;EXPOSE 80&#10;&#10;# Start nginx with environment variable substitution&#10;CMD [&quot;/bin/sh&quot;, &quot;-c&quot;, &quot;envsubst &lt; /etc/nginx/templates/default.conf.template &gt; /etc/nginx/conf.d/default.conf &amp;&amp; nginx -g 'daemon off;'&quot;]&#10;" />
+              <option name="updatedContent" value="# Stage 1: Build stage&#10;FROM node:20-alpine AS builder&#10;&#10;WORKDIR /app&#10;&#10;# Copy package files&#10;COPY package*.json ./&#10;&#10;# Install dependencies&#10;RUN npm install&#10;&#10;# Copy all source files, exclude nginx.conf&#10;COPY . .&#10;RUN rm -f nginx.conf&#10;&#10;# Build the application&#10;RUN npm run build&#10;&#10;# Stage 2: Production stage with Nginx&#10;FROM nginx:alpine&#10;&#10;# Copy custom nginx configuration template&#10;COPY nginx.conf.template /etc/nginx/templates/default.conf.template&#10;&#10;# Copy built files from builder stage&#10;COPY --from=builder /app/dist /usr/share/nginx/html&#10;&#10;# Expose port 80&#10;EXPOSE 80&#10;&#10;# Start nginx with environment variable substitution&#10;CMD [&quot;/bin/sh&quot;, &quot;-c&quot;, &quot;envsubst &lt; /etc/nginx/templates/default.conf.template &gt; /etc/nginx/conf.d/default.conf &amp;&amp; nginx -g 'daemon off;'&quot;]" />
+            </PendingDiffInfo>
+          </value>
+        </entry>
         <entry key="$PROJECT_DIR$/frontend/cnpm-fooddelivery/nginx.conf">
           <value>
             <PendingDiffInfo>
