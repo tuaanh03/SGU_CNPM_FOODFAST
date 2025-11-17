@@ -1,0 +1,216 @@
+╔══════════════════════════════════════════════════════════════╗
+║        GIẢI QUYẾT LỖI CORS - RAILWAY DEPLOYMENT              ║
+╚══════════════════════════════════════════════════════════════╝
+
+## 🔴 VẤN ĐỀ PHÁT HIỆN:
+
+**Lỗi CORS:**
+```
+Access-Control-Allow-Origin: http://localhost:3000
+Request Origin: https://sgucnpmfoodfast-production.up.railway.app
+```
+
+→ API Gateway trả về CORS header SAI!
+
+## 🎯 NGUYÊN NHÂN:
+
+1. **Nginx proxy che mất Origin header**
+   - Browser gửi: `Origin: https://sgucnpmfoodfast...`
+   - Nginx forward với Host header sai
+   - API Gateway nhận Origin sai → trả CORS header sai
+
+2. **Hoặc request không đến API Gateway**
+   - Nginx lỗi SSL handshake
+   - API Gateway domain sai
+   - Network routing lỗi
+
+## ✅ GIẢI PHÁP ĐÃ THỰC HIỆN:
+
+### 1. Sửa nginx.conf.template
+
+**Thay đổi:**
+- Giữ nguyên `Host: $host` (frontend domain)
+- Thêm `X-Forwarded-Host` để API Gateway biết đúng origin
+- Thêm `proxy_ssl_name` để SNI đúng
+- Disable buffering để stream response
+
+**Config mới:**
+```nginx
+location /api/ {
+    proxy_pass https://${API_GATEWAY_HOST}/api/;
+    proxy_set_header Host $host;  # ← Frontend domain
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_ssl_name ${API_GATEWAY_HOST};  # ← SNI cho SSL
+    ...
+}
+```
+
+### 2. Thêm debug log vào startup script
+
+Để xem config sau khi generate có đúng không.
+
+## 🚀 HÀNH ĐỘNG BẠN CẦN LÀM:
+
+### Bước 1: Commit và Push
+
+```bash
+cd /Users/anhngo/Downloads/Developer/NAM4/CNPM/Project/payment-processing-microservices-main
+
+# Add files
+git add frontend/cnpm-fooddelivery/nginx.conf.template \
+        frontend/cnpm-fooddelivery/docker-entrypoint.sh
+
+# Commit
+git commit -m "Fix: CORS issue - Forward correct Host header and add SSL name"
+
+# Push
+git push
+```
+
+### Bước 2: Đợi Railway Deploy
+
+Railway sẽ tự động deploy lại.
+
+### Bước 3: Kiểm tra Logs
+
+Vào Railway → cnpm-fooddelivery → Logs
+
+**Tìm đoạn:**
+```
+Proxy Location Config:
+location /api/ {
+    proxy_pass https://api-gateway-xxx.railway.app/api/;
+    proxy_set_header Host $host;
+    ...
+}
+```
+
+**Verify:**
+- `proxy_set_header Host $host` ← Phải là $host chứ KHÔNG phải ${API_GATEWAY_HOST}
+- `proxy_ssl_name ${API_GATEWAY_HOST}` ← Phải có dòng này
+
+### Bước 4: Test
+
+1. Mở frontend: https://sgucnpmfoodfast-production.up.railway.app
+2. DevTools → Network → Reload page
+3. Click vào request `/api/products`
+4. Check Response Headers:
+
+**Phải thấy:**
+```
+Access-Control-Allow-Origin: https://sgucnpmfoodfast-production.up.railway.app
+Access-Control-Allow-Credentials: true
+```
+
+**KHÔNG được thấy:**
+```
+Access-Control-Allow-Origin: http://localhost:3000
+```
+
+## 🔍 NẾU VẪN LỖI:
+
+### Kiểm tra 1: API Gateway có nhận request không?
+
+Vào Railway → api-gateway → Logs
+
+**Phải thấy log:**
+```
+{"method":"GET","path":"/api/products","origin":"https://sgucnpmfoodfast..."}
+```
+
+**Nếu KHÔNG thấy:**
+→ Request không đến API Gateway
+→ Nginx SSL handshake fail
+→ Kiểm tra API_GATEWAY_HOST có đúng không
+
+### Kiểm tra 2: Domain API Gateway đúng không?
+
+```bash
+# Test kết nối từ máy local
+curl -v https://api-gateway-service-production-04a1.up.railway.app/api/products
+```
+
+**Phải thấy:**
+- SSL certificate OK
+- Response 200 hoặc 401 (không phải 404/502)
+- JSON data
+
+### Kiểm tra 3: Railway Environment Variables
+
+Vào Railway → cnpm-fooddelivery → Variables
+
+**Phải có:**
+```
+USE_HTTPS=true
+API_GATEWAY_HOST=api-gateway-service-production-04a1.up.railway.app
+```
+
+**Kiểm tra domain:**
+- Vào api-gateway service
+- Settings → Domain
+- Copy CHÍNH XÁC domain (không thêm https://, không thêm /)
+
+## 💡 TẠI SAO SỬA NHƯ VẬY?
+
+### Vấn đề với Host header:
+
+**SAI:**
+```nginx
+proxy_set_header Host ${API_GATEWAY_HOST};
+```
+→ API Gateway thấy request đến từ `api-gateway-xxx.railway.app`
+→ CORS middleware không match với allowedOrigins
+→ Trả về default origin: `localhost:3000`
+
+**ĐÚNG:**
+```nginx
+proxy_set_header Host $host;
+```
+→ API Gateway thấy request đến từ `sgucnpmfoodfast-production.railway.app`
+→ CORS middleware match với allowedOrigins
+→ Trả về đúng origin: `https://sgucnpmfoodfast-production.railway.app`
+
+### Vấn đề với SSL:
+
+Railway routing internal cần SNI (Server Name Indication) đúng:
+
+```nginx
+proxy_ssl_name ${API_GATEWAY_HOST};
+```
+
+Để SSL handshake thành công với API Gateway.
+
+## 📋 CHECKLIST SAU KHI DEPLOY:
+
+- [ ] Code đã push lên Git
+- [ ] Railway deploy thành công
+- [ ] Logs hiển thị nginx config đúng
+- [ ] `proxy_set_header Host $host` có trong config
+- [ ] Frontend mở được không lỗi
+- [ ] Network tab không còn CORS error
+- [ ] Response headers có `Access-Control-Allow-Origin: https://sgucnpm...`
+- [ ] Products load được
+
+## 🎯 KẾT QUẢ MONG ĐỢI:
+
+**Trước (Lỗi):**
+```
+Request: https://sgucnpmfoodfast.../api/products
+Response Headers:
+  Access-Control-Allow-Origin: http://localhost:3000  ← SAI
+Browser: ❌ CORS Error
+```
+
+**Sau (OK):**
+```
+Request: https://sgucnpmfoodfast.../api/products
+Response Headers:
+  Access-Control-Allow-Origin: https://sgucnpmfoodfast...  ← ĐÚNG
+  Access-Control-Allow-Credentials: true
+Browser: ✅ Data loaded
+```
+
+═══════════════════════════════════════════════════════════════
+
+COMMIT VÀ PUSH CODE NGAY!
+

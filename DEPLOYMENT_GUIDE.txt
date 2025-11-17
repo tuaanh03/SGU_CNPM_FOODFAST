@@ -139,12 +139,33 @@ Railway sẽ tự động:
 
 Railway Dashboard → cnpm-fooddelivery → Deployments → View Logs
 
-Tìm:
+Tìm các dòng sau (phải thấy đầy đủ):
 ```
-Using HTTPS config for Railway...
-=== Nginx Config ===
-proxy_pass https://api-gateway-xxx.up.railway.app/api/;
+=========================================
+Starting Nginx Configuration...
+=========================================
+Environment Variables:
+  API_GATEWAY_HOST: <domain-api-gateway>
+  USE_HTTPS: true
+
+Generating nginx configuration...
+Configuring for RAILWAY (HTTPS)...
+
+=========================================
+Generated Nginx Configuration:
+=========================================
+...
+proxy_pass https://<domain-api-gateway>/api/;
+...
+=========================================
+
+Testing nginx configuration...
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+Starting nginx...
 ```
+
+**Nếu KHÔNG thấy output này** → Container fail, xem error logs
 
 #### 3.2 Test API Gateway
 
