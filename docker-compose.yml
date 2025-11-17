@@ -334,10 +334,6 @@ services:
     build:
       context: ./frontend/cnpm-fooddelivery
       dockerfile: Dockerfile
-      args:
-        # Override VITE_API_BASE_URL cho local: frontend không dùng /api mà gọi trực tiếp
-        # Vì nginx vẫn sẽ proxy /api/ sang api-gateway
-        VITE_API_BASE_URL: /api
     container_name: frontend
     ports:
       - "80:80"
@@ -347,7 +343,7 @@ services:
       - api-gateway
     restart: unless-stopped
     environment:
-      - VITE_API_BASE_URL=http://localhost:3000/api
+      # Nginx sẽ proxy /api/ sang api-gateway (nội bộ docker network)
       - VITE_API_BASE_URL_INTERNAL=http://api-gateway:3000/api/
 
   # Frontend - Restaurant Merchant Portal
