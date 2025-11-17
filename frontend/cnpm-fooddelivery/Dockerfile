@@ -11,7 +11,6 @@ RUN npm install
 
 # Copy all source files, exclude nginx.conf
 COPY . .
-RUN rm -f nginx.conf
 
 # Build argument for API base URL (có thể override khi build)
 ARG VITE_API_BASE_URL=/api
@@ -26,15 +25,11 @@ FROM nginx:alpine
 # Copy nginx configuration template
 COPY nginx.conf.template /etc/nginx/templates/nginx.conf.template
 
-# Copy startup script
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
-
 # Copy built files from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Expose port 80
 EXPOSE 80
 
-# Use startup script
-CMD ["/docker-entrypoint.sh"]
+# Use default nginx CMD
+CMD ["nginx", "-g", "daemon off;"]
