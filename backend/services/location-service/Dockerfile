@@ -6,13 +6,13 @@ WORKDIR /app
 RUN npm install -g pnpm
 
 # Copy package files
-COPY package.json pnpm-lock.yaml* ./
+COPY backend/services/location-service/package.json backend/services/location-service/pnpm-lock.yaml* ./
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
 
 # Copy source code
-COPY . .
+COPY backend/services/location-service .
 
 # Build TypeScript
 RUN pnpm run build

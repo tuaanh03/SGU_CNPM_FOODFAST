@@ -6,13 +6,13 @@ WORKDIR /app/user-service
 RUN apk add --no-cache python3 make g++ \
     && npm install -g pnpm
 
-COPY package.json pnpm-lock.yaml ./
+COPY backend/services/user-service/package.json backend/services/user-service/pnpm-lock.yaml ./
 
 RUN pnpm install --frozen-lockfile
 
 RUN apk del python3 make g++
 
-COPY . .
+COPY backend/services/user-service .
 
 RUN npx prisma generate
 

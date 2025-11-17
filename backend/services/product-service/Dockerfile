@@ -4,11 +4,11 @@ WORKDIR /app/product-service
 
 RUN npm install -g pnpm
 
-COPY package.json pnpm-lock.yaml ./
+COPY backend/services/product-service/package.json backend/services/product-service/pnpm-lock.yaml ./
 
 RUN pnpm install --frozen-lockfile
 
-COPY . .
+COPY backend/services/product-service .
 
 RUN npx prisma generate
 

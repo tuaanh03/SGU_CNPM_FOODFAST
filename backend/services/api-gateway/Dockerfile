@@ -4,11 +4,11 @@ WORKDIR /app/api-gateway
 
 RUN npm install -g pnpm
 
-COPY package.json pnpm-lock.yaml ./
+COPY backend/services/api-gateway/package.json backend/services/api-gateway/pnpm-lock.yaml ./
 
 RUN pnpm install --frozen-lockfile
 
-COPY . .
+COPY backend/services/api-gateway .
 
 RUN pnpm run build
 
