@@ -29,7 +29,7 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 EXPOSE 80
 
 # Set default value for API_GATEWAY_HOST if not provided
-#ENV API_GATEWAY_HOST=localhost:3000
+ENV API_GATEWAY_HOST=api-gateway-service-production-04a1.up.railway.app
 
 # Start nginx with environment variable substitution
 CMD ["/bin/sh", "-c", "envsubst '${API_GATEWAY_HOST}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
