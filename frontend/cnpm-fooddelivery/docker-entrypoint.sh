@@ -36,6 +36,10 @@ echo "========================================="
 cat /etc/nginx/conf.d/default.conf
 echo "========================================="
 echo ""
+echo "Proxy Location Config:"
+grep -A 20 "location /api/" /etc/nginx/conf.d/default.conf || echo "ERROR: /api/ location not found!"
+echo "========================================="
+echo ""
 
 # Test nginx configuration
 echo "Testing nginx configuration..."
