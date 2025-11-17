@@ -25,10 +25,7 @@ FROM nginx:alpine
 # Copy nginx configuration template
 COPY nginx.conf.template /etc/nginx/templates/nginx.conf.template
 
-# Copy built files from builder stage
-# Copy startup script
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
+
 
 COPY --from=builder /app/dist /usr/share/nginx/html
 
