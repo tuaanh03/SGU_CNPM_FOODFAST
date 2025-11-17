@@ -1,0 +1,272 @@
+====================================================================
+TÓM TẮT CẤU HÌNH ĐÃ HOÀN THÀNH
+====================================================================
+
+1. METRICS CHO RESTAURANT-SERVICE VÀ PAYMENT-SERVICE
+------------------------------------------------------------------
+
+✅ File: prometheus.yml
+   - Đã bật job 'payment-service' (port 4000)
+   - Đã bật job 'restaurant-service' (port 3005)
+   - Endpoint metrics: /actuator/prometheus
+
+✅ Metrics đã có sẵn trong code của 2 services:
+
+   PAYMENT-SERVICE:
+   - payment_service_http_requests_total
+   - payment_service_http_request_duration_seconds
+   - payment_service_payments_total
+   - payment_service_payment_amount
+
+   RESTAURANT-SERVICE:
+   - restaurant_service_http_requests_total
+   - restaurant_service_http_request_duration_seconds
+   - restaurant_service_restaurants_total
+   - restaurant_service_active_restaurants
+
+
+2. LOKI + PROMTAIL ĐỂ THU THẬP LOGS
+------------------------------------------------------------------
+
+✅ File: docker-compose.yml
+
+   a) Service LOKI:
+      - Image: grafana/loki:2.9.3
+      - Port: 3100
+      - Volume: loki_data
+      - Lưu trữ và query logs
+
+   b) Service PROMTAIL:
+      - Image: grafana/promtail:2.9.3
+      - Volumes:
+        + /var/run/docker.sock (đọc Docker metadata)
+        + /var/lib/docker/containers (đọc container logs)
+        + ./promtail-config.yaml (config file)
+        + ./logs (application log files)
+      - Thu thập logs và đẩy lên Loki
+
+   c) GRAFANA:
+      - Đã thêm depends_on: loki
+      - Sẽ tự động load Loki datasource
+
+✅ File: promtail-config.yaml
+
+   a) Scrape Config 1 - DOCKER LOGS:
+      - Job name: "docker"
+      - Path: /var/lib/docker/containers/*/*-json.log
+      - Thu thập logs từ TẤT CẢ containers
+      - Pipeline:
+        + Parse Docker JSON format
+        + Extract container_id
+        + Gắn labels: stream, container_id
+
+   b) Scrape Config 2 - FILE LOGS:
+      - Job name: "node-app-logs"
+      - Paths: /var/log/app/<service-name>/*.log
+      - Thu thập logs từ 10 services:
+        + user-service
+        + order-service
+        + product-service
+        + payment-service
+        + restaurant-service
+        + cart-service
+        + notification-service
+        + location-service
+        + drone-service
+        + api-gateway
+      - Pipeline:
+        + Parse JSON logs
+        + Extract: level, msg, time, error
+        + Gắn label level (INFO, ERROR, v.v.)
+        + Parse timestamp
+
+✅ File: grafana-datasource.yml
+   - Đã thêm Loki datasource
+   - URL: http://loki:3100
+   - maxLines: 1000
+
+
+3. CÁCH KHỞI ĐỘNG
+------------------------------------------------------------------
+
+Bước 1: Khởi động hệ thống
+
+docker-compose up -d --build
+
+Bước 2: Kiểm tra services
+
+docker-compose ps
+
+Phải thấy:
+- loki (port 3100)
+- promtail
+- grafana (port 3001)
+- prometheus (port 9090)
+- payment-service (port 4000)
+- restaurant-service (port 3005)
+
+Bước 3: Test Loki
+
+curl http://localhost:3100/ready
+
+Bước 4: Test Metrics
+
+curl http://localhost:4000/actuator/prometheus
+curl http://localhost:3005/actuator/prometheus
+
+Bước 5: Truy cập Grafana
+
+URL: http://localhost:3001
+Username: admin
+Password: admin
+
+
+4. QUERY LOGS TRONG GRAFANA
+------------------------------------------------------------------
+
+Vào Explore → Chọn Loki datasource
+
+a) Xem logs từ payment-service:
+
+{service="payment-service"}
+
+b) Xem logs ERROR:
+
+{service="payment-service"} | json | level="error"
+
+c) Xem logs từ nhiều services:
+
+{service=~"payment-service|restaurant-service"}
+
+d) Tìm kiếm trong logs:
+
+{job="docker"} |= "error"
+
+e) Đếm số logs:
+
+sum(count_over_time({service="payment-service"}[5m]))
+
+
+5. QUERY METRICS TRONG GRAFANA
+------------------------------------------------------------------
+
+Vào Explore → Chọn Prometheus datasource
+
+a) Tổng HTTP requests của payment-service:
+
+sum(payment_service_http_requests_total)
+
+b) Request rate:
+
+rate(payment_service_http_requests_total[5m])
+
+c) Số restaurants đang hoạt động:
+
+restaurant_service_active_restaurants
+
+d) Request duration p95:
+
+histogram_quantile(0.95,
+  rate(payment_service_http_request_duration_seconds_bucket[5m])
+)
+
+
+6. KIỂM TRA NHANH
+------------------------------------------------------------------
+
+Test Loki có logs:
+
+curl http://localhost:3100/loki/api/v1/labels
+
+Test query logs:
+
+curl -G -s "http://localhost:3100/loki/api/v1/query" \
+  --data-urlencode 'query={service="payment-service"}' \
+  --data-urlencode 'limit=5'
+
+Test Prometheus targets:
+
+curl http://localhost:9090/api/v1/targets
+
+Test metrics:
+
+curl 'http://localhost:9090/api/v1/query?query=up{job="payment-service"}'
+
+
+7. GIẢI THÍCH CẤU HÌNH
+------------------------------------------------------------------
+
+A. LOKI:
+   - Log aggregation system (giống Elasticsearch nhưng nhẹ hơn)
+   - Không index full-text, chỉ index labels
+   - Lưu trữ logs theo chunks
+   - API endpoint: http://loki:3100
+
+B. PROMTAIL:
+   - Log collector agent
+   - Đọc logs từ 2 nguồn:
+     1) Docker containers (/var/lib/docker/containers)
+     2) Application log files (./logs/*.log)
+   - Parse logs và gắn labels
+   - Push logs lên Loki qua HTTP
+
+C. PROMTAIL SCRAPE CONFIGS:
+
+   Config 1 - Docker Logs:
+   - __path__: Đường dẫn tới log files
+   - pipeline_stages: Xử lý logs trước khi gửi
+     + json: Parse JSON format
+     + regex: Extract thông tin từ path
+     + docker: Đọc Docker metadata
+     + labels: Gắn labels
+     + output: Format output
+
+   Config 2 - File Logs:
+   - Mỗi service có path riêng
+   - Label "service" để phân biệt
+   - pipeline_stages:
+     + json: Parse JSON logs
+     + labels: Extract level (INFO, ERROR)
+     + timestamp: Parse timestamp
+     + output: Format message
+
+D. GRAFANA DATASOURCES:
+   - Prometheus: Query metrics
+   - Loki: Query logs
+   - Cả 2 datasources tự động provision khi Grafana start
+
+
+8. FILES QUAN TRỌNG
+------------------------------------------------------------------
+
+docker-compose.yml          - Định nghĩa services
+prometheus.yml              - Cấu hình Prometheus targets
+promtail-config.yaml        - Cấu hình Promtail scraping
+grafana-datasource.yml      - Cấu hình Grafana datasources
+HUONG_DAN_SU_DUNG.txt      - Hướng dẫn chi tiết
+
+
+9. PORTS
+------------------------------------------------------------------
+
+3100  - Loki API
+9080  - Promtail metrics
+3001  - Grafana UI
+9090  - Prometheus UI
+4000  - Payment Service + metrics
+3005  - Restaurant Service + metrics
+
+
+10. LƯU Ý
+------------------------------------------------------------------
+
+- Docker logs được thu thập TỰ ĐỘNG từ /var/lib/docker/containers
+- File logs cần services ghi vào thư mục ./logs/<service-name>/
+- Promtail mount volumes :ro (read-only) để bảo mật
+- Loki lưu logs vào volume loki_data (persistent)
+- Grafana tự động load cả Prometheus và Loki datasources
+
+====================================================================
+Xem HUONG_DAN_SU_DUNG.txt để biết thêm chi tiết!
+====================================================================
+

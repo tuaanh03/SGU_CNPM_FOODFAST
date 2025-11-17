@@ -1,5 +1,13 @@
 import { Kafka, Partitioners } from "kafkajs";
 import prisma from "../lib/prisma";
+import {
+    kafkaProducerMessageCounter,
+    kafkaProducerLatency,
+    kafkaProducerErrorCounter,
+    kafkaConsumerMessageCounter,
+    kafkaConsumerProcessingDuration,
+    kafkaConsumerErrorCounter,
+} from "../lib/kafkaMetrics";
 
 const kafka = new Kafka({
     clientId: "product-service",
@@ -22,6 +30,9 @@ export async function publishProductSyncEvent(
     eventType: 'CREATED' | 'UPDATED' | 'DELETED',
     productData: any
 ) {
+    const topic = "product.sync";
+    const end = kafkaProducerLatency.startTimer({ topic });
+
     try {
         if (!isProducerConnected) {
             await producer.connect();
@@ -36,7 +47,7 @@ export async function publishProductSyncEvent(
         };
 
         await producer.send({
-            topic: "product.sync",
+            topic,
             messages: [{
                 key: `product-${productData.id}-${Date.now()}`,
                 value: JSON.stringify(event)
@@ -44,8 +55,14 @@ export async function publishProductSyncEvent(
         });
 
         console.log(`Published product sync event: ${eventType}`, productData.id);
+        kafkaProducerMessageCounter.inc({ topic, status: 'success' });
+        end();
     } catch (error) {
         console.error("Error publishing product sync event:", error);
+        kafkaProducerErrorCounter.inc({ topic, error_type: (error as Error).name || 'unknown' });
+        kafkaProducerMessageCounter.inc({ topic, status: 'error' });
+        end();
+        throw error;
     }
 }
 
@@ -54,27 +71,40 @@ export async function publishInventoryReserveResult(
     status: "RESERVED" | "REJECTED",
     message?: string
 ) {
-    if (!isProducerConnected) {
-        await producer.connect();
-        isProducerConnected = true;
+    const topic = "inventory.reserve.result";
+    const end = kafkaProducerLatency.startTimer({ topic });
+
+    try {
+        if (!isProducerConnected) {
+            await producer.connect();
+            isProducerConnected = true;
+        }
+
+        const payload = {
+            orderId,
+            status,
+            message: message || "",
+            timestamp: new Date().toISOString(),
+        };
+
+        await producer.send({
+            topic,
+            messages: [
+                {
+                    key: `reserve-result-${orderId}`,
+                    value: JSON.stringify(payload),
+                },
+            ],
+        });
+
+        kafkaProducerMessageCounter.inc({ topic, status: 'success' });
+        end();
+    } catch (error) {
+        kafkaProducerErrorCounter.inc({ topic, error_type: (error as Error).name || 'unknown' });
+        kafkaProducerMessageCounter.inc({ topic, status: 'error' });
+        end();
+        throw error;
     }
-
-    const payload = {
-        orderId,
-        status,
-        message: message || "",
-        timestamp: new Date().toISOString(),
-    };
-
-    await producer.send({
-        topic: "inventory.reserve.result",
-        messages: [
-            {
-                key: `reserve-result-${orderId}`,
-                value: JSON.stringify(payload),
-            },
-        ],
-    });
 }
 
 const consumer = kafka.consumer({
@@ -188,8 +218,13 @@ export async function initKafka() {
 
         await consumer.run({
             eachMessage: async ({ topic, partition, message }) => {
+                const end = kafkaConsumerProcessingDuration.startTimer({ topic });
                 const value = message.value?.toString();
-                if (!value) return;
+
+                if (!value) {
+                    end();
+                    return;
+                }
 
                 try {
                     const data = JSON.parse(value);
@@ -204,8 +239,14 @@ export async function initKafka() {
                         default:
                             console.log(`Chủ đề không được xử lý: ${topic}`);
                     }
+
+                    kafkaConsumerMessageCounter.inc({ topic, status: 'success' });
+                    end();
                 } catch (error) {
                     console.error(`Lỗi xử lý tin nhắn từ chủ đề ${topic}:`, error);
+                    kafkaConsumerErrorCounter.inc({ topic, error_type: (error as Error).name || 'unknown' });
+                    kafkaConsumerMessageCounter.inc({ topic, status: 'error' });
+                    end();
                 }
             },
         });

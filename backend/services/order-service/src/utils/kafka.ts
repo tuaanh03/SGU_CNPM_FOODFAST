@@ -1,6 +1,14 @@
 import { Kafka, Partitioners } from "kafkajs";
 import prisma from "../lib/prisma";
 import { deleteOrderSession } from "./redisSessionManager";
+import {
+  kafkaProducerMessageCounter,
+  kafkaProducerLatency,
+  kafkaProducerErrorCounter,
+  kafkaConsumerMessageCounter,
+  kafkaConsumerProcessingDuration,
+  kafkaConsumerErrorCounter,
+} from "../lib/kafkaMetrics";
 
 const kafka = new Kafka({
   clientId: "order-service",
@@ -19,62 +27,114 @@ const producer = kafka.producer({
 let isProducerConnected = false;
 
 export async function publishEvent(messages: string) {
-  if (!isProducerConnected) {
-    await producer.connect();
-    isProducerConnected = true;
+  const topic = "order.create";
+  const end = kafkaProducerLatency.startTimer({ topic });
+
+  try {
+    if (!isProducerConnected) {
+      await producer.connect();
+      isProducerConnected = true;
+    }
+    await producer.send({
+      topic,
+      messages: [{ key: `message-${Date.now()}`, value: messages }],
+    });
+
+    kafkaProducerMessageCounter.inc({ topic, status: 'success' });
+    end();
+  } catch (error) {
+    kafkaProducerErrorCounter.inc({ topic, error_type: (error as Error).name || 'unknown' });
+    kafkaProducerMessageCounter.inc({ topic, status: 'error' });
+    end();
+    throw error;
   }
-  await producer.send({
-    topic: "order.create",
-    messages: [{ key: `message-${Date.now()}`, value: messages }],
-  });
 }
 
 export async function publishOrderExpirationEvent(payload: any) {
-  if (!isProducerConnected) {
-    await producer.connect();
-    isProducerConnected = true;
+  const topic = "order.expired";
+  const end = kafkaProducerLatency.startTimer({ topic });
+
+  try {
+    if (!isProducerConnected) {
+      await producer.connect();
+      isProducerConnected = true;
+    }
+    await producer.send({
+      topic,
+      messages: [
+        {
+          key: `order-expired-${payload.orderId}`,
+          value: JSON.stringify(payload),
+        },
+      ],
+    });
+
+    kafkaProducerMessageCounter.inc({ topic, status: 'success' });
+    end();
+  } catch (error) {
+    kafkaProducerErrorCounter.inc({ topic, error_type: (error as Error).name || 'unknown' });
+    kafkaProducerMessageCounter.inc({ topic, status: 'error' });
+    end();
+    throw error;
   }
-  await producer.send({
-    topic: "order.expired",
-    messages: [
-      {
-        key: `order-expired-${payload.orderId}`,
-        value: JSON.stringify(payload),
-      },
-    ],
-  });
 }
 
 export async function publishRetryPaymentEvent(payload: any) {
-  if (!isProducerConnected) {
-    await producer.connect();
-    isProducerConnected = true;
+  const topic = "order.retry.payment";
+  const end = kafkaProducerLatency.startTimer({ topic });
+
+  try {
+    if (!isProducerConnected) {
+      await producer.connect();
+      isProducerConnected = true;
+    }
+    await producer.send({
+      topic,
+      messages: [
+        {
+          key: `order-retry-${payload.orderId}`,
+          value: JSON.stringify(payload),
+        },
+      ],
+    });
+
+    kafkaProducerMessageCounter.inc({ topic, status: 'success' });
+    end();
+  } catch (error) {
+    kafkaProducerErrorCounter.inc({ topic, error_type: (error as Error).name || 'unknown' });
+    kafkaProducerMessageCounter.inc({ topic, status: 'error' });
+    end();
+    throw error;
   }
-  await producer.send({
-    topic: "order.retry.payment",
-    messages: [
-      {
-        key: `order-retry-${payload.orderId}`,
-        value: JSON.stringify(payload),
-      },
-    ],
-  });
 }
 
 export async function publishOrderConfirmedEvent(payload: any) {
-  if (!isProducerConnected) {
-    await producer.connect();
-    isProducerConnected = true;
+  const topic = "order.confirmed";
+  const end = kafkaProducerLatency.startTimer({ topic });
+
+  try {
+    if (!isProducerConnected) {
+      await producer.connect();
+      isProducerConnected = true;
+    }
+    await producer.send({
+      topic,
+      messages: [
+        {
+          key: `order-confirmed-${payload.orderId}`,
+          value: JSON.stringify(payload),
+        },
+      ],
+    });
+
+    kafkaProducerMessageCounter.inc({ topic, status: 'success' });
+    end();
+  } catch (error) {
+    kafkaProducerErrorCounter.inc({ topic, error_type: (error as Error).name || 'unknown' });
+    kafkaProducerMessageCounter.inc({ topic, status: 'error' });
+    end();
+    throw error;
   }
-  await producer.send({
-    topic: "order.confirmed",
-    messages: [
-      {
-        key: `order-confirmed-${payload.orderId}`,
-        value: JSON.stringify(payload),
-      },
-    ],
-  });
 }
 
 const consumer = kafka.consumer({
@@ -93,12 +153,14 @@ export async function runConsumer() {
     // Process messages
     await consumer.run({
       eachMessage: async ({ topic, message }) => {
-        const event = message.value?.toString() as string;
-        const data = JSON.parse(event);
-
-        console.log(`Received event from topic ${topic}:`, data);
+        const end = kafkaConsumerProcessingDuration.startTimer({ topic });
 
         try {
+          const event = message.value?.toString() as string;
+          const data = JSON.parse(event);
+
+          console.log(`Received event from topic ${topic}:`, data);
+
           if (topic === "payment.event") {
             await handlePaymentEvent(data);
           } else if (topic === "inventory.reserve.result") {
@@ -106,8 +168,14 @@ export async function runConsumer() {
           } else if (topic === "product.sync") {
             await handleProductSync(data);
           }
+
+          kafkaConsumerMessageCounter.inc({ topic, status: 'success' });
+          end();
         } catch (error) {
           console.error(`Error processing ${topic} event:`, error);
+          kafkaConsumerErrorCounter.inc({ topic, error_type: (error as Error).name || 'unknown' });
+          kafkaConsumerMessageCounter.inc({ topic, status: 'error' });
+          end();
         }
       },
     });

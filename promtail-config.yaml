@@ -1,0 +1,152 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Thu thập Docker container logs sử dụng Docker service discovery
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+
+    relabel_configs:
+      # Gắn service name từ docker-compose label
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: 'service'
+
+      # Gắn container name
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container_name'
+
+      # Gắn container ID
+      - source_labels: ['__meta_docker_container_id']
+        target_label: 'container_id'
+
+    pipeline_stages:
+      # Parse JSON log trực tiếp (Docker đã output pure JSON)
+      - json:
+          expressions:
+            level: level
+            method: method
+            status: status
+            service: service
+            timestamp: timestamp
+
+      # Promote to labels
+      - labels:
+          level:
+          method:
+          status:
+
+
+  # Thu thập application log files từ ./logs/*.log
+  - job_name: node-app-logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: node-app-logs
+          service: user-service
+          __path__: /var/log/app/user-service/*.log
+
+      - targets:
+          - localhost
+        labels:
+          job: node-app-logs
+          service: order-service
+          __path__: /var/log/app/order-service/*.log
+
+      - targets:
+          - localhost
+        labels:
+          job: node-app-logs
+          service: product-service
+          __path__: /var/log/app/product-service/*.log
+
+      - targets:
+          - localhost
+        labels:
+          job: node-app-logs
+          service: payment-service
+          __path__: /var/log/app/payment-service/*.log
+
+      - targets:
+          - localhost
+        labels:
+          job: node-app-logs
+          service: restaurant-service
+          __path__: /var/log/app/restaurant-service/*.log
+
+      - targets:
+          - localhost
+        labels:
+          job: node-app-logs
+          service: cart-service
+          __path__: /var/log/app/cart-service/*.log
+
+      - targets:
+          - localhost
+        labels:
+          job: node-app-logs
+          service: notification-service
+          __path__: /var/log/app/notification-service/*.log
+
+      - targets:
+          - localhost
+        labels:
+          job: node-app-logs
+          service: location-service
+          __path__: /var/log/app/location-service/*.log
+
+      - targets:
+          - localhost
+        labels:
+          job: node-app-logs
+          service: drone-service
+          __path__: /var/log/app/drone-service/*.log
+
+      - targets:
+          - localhost
+        labels:
+          job: node-app-logs
+          service: api-gateway
+          __path__: /var/log/app/api-gateway/*.log
+
+    pipeline_stages:
+      # Parse JSON logs
+      - json:
+          expressions:
+            timestamp: timestamp
+            level: level
+            service: service
+            method: method
+            path: path
+            status: status
+            responseTime: responseTime
+            contentLength: contentLength
+            userAgent: userAgent
+            ip: ip
+
+      # Gắn labels
+      - labels:
+          level:
+          service:
+          method:
+          status:
+
+      # Parse timestamp
+      - timestamp:
+          source: timestamp
+          format: RFC3339
+          fallback_formats:
+            - "2006-01-02T15:04:05.000Z"
+            - RFC3339Nano
+
+

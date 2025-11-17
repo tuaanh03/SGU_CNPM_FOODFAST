@@ -1,0 +1,296 @@
+================================================================
+KẾT QUẢ CẤU HÌNH LOKI + PROMTAIL + METRICS
+================================================================
+
+✅ ĐÃ HOÀN THÀNH
+----------------------------------------------------------------
+
+1. METRICS CHO PAYMENT-SERVICE VÀ RESTAURANT-SERVICE
+   - File prometheus.yml đã bật scraping
+   - Metrics endpoint: /actuator/prometheus
+   - Port: payment-service:4000, restaurant-service:3005
+
+2. LOKI + PROMTAIL ĐỂ THU THẬP LOGS
+   - Loki: port 3100
+   - Promtail: đã cấu hình Docker service discovery
+   - Thu thập logs từ Docker containers
+   - Thu thập logs từ file ./logs/*.log
+
+3. LABELS HIỆN CÓ TRONG LOKI
+   ✅ service      - Tên service (payment-service, restaurant-service, kafka, v.v.)
+   ✅ container_id - Docker container ID
+   ✅ container_name - Tên container
+   ✅ job          - Job name (docker hoặc node-app-logs)
+   ✅ stream       - stdout hoặc stderr
+   ✅ project      - Docker compose project name
+   ⚠️  level       - Log level (chỉ có khi logs chứa INFO, ERROR, WARN, v.v.)
+   ⚠️  extracted_level - Level được extract từ text
+
+
+CÁCH SỬ DỤNG
+================================================================
+
+1. KHỞI ĐỘNG HỆ THỐNG
+----------------------------------------------------------------
+docker-compose up -d --build
+
+
+2. KIỂM TRA SERVICES
+----------------------------------------------------------------
+docker-compose ps
+
+Phải thấy:
+- loki (port 3100)
+- promtail
+- grafana (port 3001)
+- prometheus (port 9090)
+
+
+3. KIỂM TRA LABELS TRONG LOKI
+----------------------------------------------------------------
+curl http://localhost:3100/loki/api/v1/labels
+
+Kết quả:
+{"status":"success","data":["container_id","container_name","job","service","stream",...]}
+
+
+4. KIỂM TRA SERVICES CÓ TRONG LOKI
+----------------------------------------------------------------
+curl http://localhost:3100/loki/api/v1/label/service/values
+
+Kết quả:
+payment-service, restaurant-service, order-service, kafka, v.v.
+
+
+5. QUERY LOGS TRONG GRAFANA
+----------------------------------------------------------------
+
+URL: http://localhost:3001
+Username: admin
+Password: admin
+
+Vào Explore → Chọn Loki datasource
+
+QUERY VÍ DỤ:
+
+a) Tất cả logs từ payment-service:
+{service="payment-service"}
+
+b) Tất cả logs từ restaurant-service:
+{service="restaurant-service"}
+
+c) Logs từ nhiều services:
+{service=~"payment-service|restaurant-service|order-service"}
+
+d) Logs có chứa "error":
+{service="payment-service"} |= "error"
+
+e) Logs từ Docker containers:
+{job="docker"}
+
+f) Logs từ file logs:
+{job="node-app-logs"}
+
+g) Đếm số logs trong 5 phút:
+sum(count_over_time({service="payment-service"}[5m]))
+
+
+6. QUERY METRICS TRONG GRAFANA
+----------------------------------------------------------------
+
+Vào Explore → Chọn Prometheus datasource
+
+PAYMENT-SERVICE METRICS:
+
+a) Tổng HTTP requests:
+sum(payment_service_http_requests_total)
+
+b) Request rate (requests/second):
+rate(payment_service_http_requests_total[5m])
+
+c) Tổng payments theo provider:
+sum by(provider) (payment_service_payments_total)
+
+d) Request duration p95:
+histogram_quantile(0.95,
+  rate(payment_service_http_request_duration_seconds_bucket[5m])
+)
+
+RESTAURANT-SERVICE METRICS:
+
+a) Số restaurants đang hoạt động:
+restaurant_service_active_restaurants
+
+b) Restaurant creation rate:
+rate(restaurant_service_restaurants_total[5m])
+
+c) HTTP request duration p99:
+histogram_quantile(0.99,
+  rate(restaurant_service_http_request_duration_seconds_bucket[5m])
+)
+
+
+VẤN ĐỀ VÀ GIẢI PHÁP
+================================================================
+
+VẤN ĐỀ 1: KHÔNG CÓ LABEL LEVEL
+----------------------------------------------------------------
+
+NGUYÊN NHÂN:
+- Logs của các Node.js services không có format JSON với field "level"
+- Logs chỉ là HTTP access logs từ Morgan middleware
+- Ví dụ: "GET /actuator/prometheus 200 2.753 ms"
+
+GIẢI PHÁP:
+- Label "level" chỉ xuất hiện khi logs có format:
+  + JSON: {"level":"info","msg":"..."}
+  + Text: "[INFO] message" hoặc "ERROR: message"
+
+- Để có label level, cần config logger trong Node.js services
+  Ví dụ với winston hoặc pino:
+
+  const logger = winston.createLogger({
+    format: winston.format.json(),
+    transports: [new winston.transports.Console()]
+  });
+
+  logger.info('Server started');  // {"level":"info","message":"Server started"}
+
+
+VẤN ĐỀ 2: QUERY KHÔNG TRẢ VỀ KẾT QUẢ
+----------------------------------------------------------------
+
+NGUYÊN NHÂN:
+- Service chưa có logs mới
+- Hoặc time range không đúng
+
+GIẢI PHÁP:
+- Sử dụng query_range thay vì query:
+  curl -G "http://localhost:3100/loki/api/v1/query_range" \
+    --data-urlencode 'query={service="payment-service"}' \
+    --data-urlencode 'limit=10'
+
+- Trong Grafana, chọn time range "Last 15 minutes" hoặc "Last 1 hour"
+
+
+VẤN ĐỀ 3: PROMTAIL LỖI "AT LEAST ONE LABEL PAIR IS REQUIRED"
+----------------------------------------------------------------
+
+NGUYÊN NHÂN:
+- Pipeline stages gắn labels sai cú pháp
+- Hoặc labels stage cố gắng gắn biến không tồn tại
+
+GIẢI PHÁP:
+- Đã sửa trong promtail-config.yaml
+- Dùng relabel_configs để gắn labels từ Docker metadata
+- Labels stage chỉ gắn các field đã được extract
+
+
+CẤU TRÚC FILE
+================================================================
+
+promtail-config.yaml
+├── scrape_configs
+│   ├── job: docker
+│   │   ├── docker_sd_configs (auto-discover containers)
+│   │   ├── relabel_configs (gắn service, container_name, container_id)
+│   │   └── pipeline_stages
+│   │       ├── json (parse Docker JSON format)
+│   │       ├── json (parse log content nếu là JSON)
+│   │       ├── labels (gắn stream, level, extracted_level)
+│   │       ├── regex (extract level từ text)
+│   │       ├── template (normalize level)
+│   │       ├── timestamp (parse timestamp)
+│   │       └── output
+│   │
+│   └── job: node-app-logs
+│       ├── static_configs (path đến file logs)
+│       └── pipeline_stages
+│           ├── json (parse JSON logs)
+│           ├── labels (gắn level)
+│           ├── timestamp (parse timestamp)
+│           └── output
+
+
+GIẢI THÍCH CẤU HÌNH
+================================================================
+
+1. DOCKER_SD_CONFIGS
+   - Tự động phát hiện Docker containers
+   - Đọc metadata từ Docker API
+   - Refresh mỗi 5 giây
+
+2. RELABEL_CONFIGS
+   - Gắn label "service" từ docker-compose service name
+   - Gắn label "container_name" từ container name
+   - Gắn label "container_id" từ container ID
+   - Các labels này sẽ xuất hiện trong Loki
+
+3. PIPELINE_STAGES - JSON
+   - Parse Docker JSON log format: {"log":"...", "stream":"...", "time":"..."}
+   - Thử parse nested JSON content (nếu log là JSON)
+
+4. PIPELINE_STAGES - LABELS
+   - Gắn labels từ các field đã extract
+   - stream: stdout/stderr
+   - level: từ JSON field hoặc extracted từ text
+
+5. PIPELINE_STAGES - REGEX
+   - Extract level từ text logs
+   - Pattern: DEBUG|INFO|WARN|WARNING|ERROR|FATAL
+
+6. PIPELINE_STAGES - TEMPLATE
+   - Normalize level thành lowercase
+   - Transform dữ liệu trước khi gắn label
+
+7. PIPELINE_STAGES - TIMESTAMP
+   - Parse timestamp từ Docker logs
+   - Support nhiều formats: RFC3339Nano, RFC3339
+
+8. PIPELINE_STAGES - OUTPUT
+   - Chọn field nào làm log content
+   - Default: field "output" từ Docker JSON
+
+
+KIỂM TRA VÀ DEBUG
+================================================================
+
+1. Kiểm tra Promtail có lỗi:
+   docker logs promtail --tail 50 | grep error
+
+2. Kiểm tra Promtail đang scrape containers nào:
+   docker logs promtail | grep "added Docker target"
+
+3. Kiểm tra labels trong Loki:
+   curl http://localhost:3100/loki/api/v1/labels
+
+4. Kiểm tra values của label service:
+   curl http://localhost:3100/loki/api/v1/label/service/values
+
+5. Query logs để xem cấu trúc stream:
+   curl -G "http://localhost:3100/loki/api/v1/query_range" \
+     --data-urlencode 'query={service="payment-service"}' \
+     --data-urlencode 'limit=1'
+
+6. Kiểm tra Prometheus targets:
+   http://localhost:9090/targets
+
+
+TÓM TẮT
+================================================================
+
+✅ HOÀN THÀNH:
+- Metrics cho payment-service và restaurant-service
+- Loki + Promtail thu thập Docker logs
+- Label "service" để filter logs theo service
+- Label "stream" (stdout/stderr)
+- Label "container_name", "container_id"
+- Grafana datasource cho Loki và Prometheus
+
+⚠️ GHI CHÚ:
+- Label "level" chỉ có khi logs có format JSON hoặc text với level prefix
+- Logs hiện tại chủ yếu là HTTP access logs (Morgan) không có level
+- Để có level, cần config structured logging trong code
+
+================================================================
+

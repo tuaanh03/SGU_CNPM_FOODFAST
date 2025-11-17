@@ -24,7 +24,25 @@ server.use(
     origin: "http://localhost:3000",
   })
 );
-server.use(morgan("dev"));
+
+// JSON logger cho Loki
+// Custom JSON token for structured logging
+morgan.token('json', (req: any, res: any) => {
+  return JSON.stringify({
+    timestamp: new Date().toISOString(),
+    level: res.statusCode >= 500 ? 'error' : (res.statusCode >= 400 ? 'warn' : 'info'),
+    service: 'user-service',
+    method: req.method,
+    path: req.originalUrl || req.url,
+    status: res.statusCode.toString(),
+    responseTime: res.responseTime || 0,
+    contentLength: res.get('content-length') || 0,
+    userAgent: req.get('user-agent') || '',
+    ip: req.ip || req.connection?.remoteAddress || ''
+  });
+});
+
+server.use(morgan(':json'));
 
 // Metrics middleware - track all HTTP requests
 server.use((req: Request, res: Response, next: NextFunction) => {

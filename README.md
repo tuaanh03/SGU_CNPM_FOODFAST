@@ -98,6 +98,59 @@ payment-processing-microservices-main/
   docker-compose exec user-service npx prisma generate
   ```
 
+### Monitoring & Metrics
+
+#### Khởi động Monitoring Stack
+```bash
+# Bước 1: Start infrastructure và exporters
+docker compose up -d zookeeper kafka redis kafka-exporter redis-exporter
+
+# Bước 2: Start Prometheus và Grafana
+docker compose up -d prometheus grafana
+
+# Bước 3: Start databases và services
+docker compose up -d user-db order-db product-db
+docker compose up -d user-service cart-service order-service product-service
+```
+
+#### Truy cập Monitoring
+- **Grafana**: http://localhost:3001 (admin/admin)
+  - Dashboard: Kafka - Overview
+  - Dashboard: Kafka - Topics  
+  - Dashboard: Kafka - App Metrics
+  - Dashboard: Microservices Dashboard
+- **Prometheus**: http://localhost:9090
+- **Kafka Metrics**: http://localhost:9308/metrics
+- **Redis Metrics**: http://localhost:9121/metrics
+
+#### Kiểm tra Prometheus Targets
+```bash
+# Truy cập để xem các targets
+open http://localhost:9090/targets
+
+# Các targets phải UP:
+# - user-service:1000
+# - cart-service:3006
+# - order-service:2000
+# - product-service:3004
+# - kafka-exporter:9308
+# - redis-exporter:9121
+```
+
+#### Troubleshooting Monitoring
+```bash
+# Nếu kafka-exporter không xuất hiện trong targets
+docker compose ps | grep kafka-exporter
+docker compose up -d kafka-exporter
+docker compose restart prometheus
+
+# Kiểm tra metrics của kafka-exporter
+curl http://localhost:9308/metrics | grep kafka_
+
+# Reload Prometheus config (không cần restart)
+curl -X POST http://localhost:9090/-/reload
+```
+
 ### Kết nối và kiểm tra DB trực tiếp
 ```bash
 docker exec -it user-db psql -U postgres -d foodfast_user

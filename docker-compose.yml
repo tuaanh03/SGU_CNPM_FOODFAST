@@ -36,6 +36,20 @@ services:
     volumes:
       - kafka_data:/var/lib/kafka/data
 
+  # Kafka Exporter - exposes Kafka metrics for Prometheus
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: kafka-exporter
+    command:
+      - '--kafka.server=kafka:9092'
+    ports:
+      - "9308:9308"
+    networks:
+      - network
+    depends_on:
+      - kafka
+    restart: unless-stopped
+
   # Gateway service (acts as the proxy)
   api-gateway:
     build:
@@ -271,6 +285,20 @@ services:
       timeout: 3s
       retries: 3
 
+  # Redis Exporter - exposes Redis metrics for Prometheus
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: redis-exporter
+    command:
+      - '--redis.addr=redis:6379'
+    ports:
+      - "9121:9121"
+    networks:
+      - network
+    depends_on:
+      - redis
+    restart: unless-stopped
+
   # Cart service
   cart-service:
     build:
@@ -386,13 +414,23 @@ services:
   prometheus:
     image: prom/prometheus
     container_name: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
     ports:
       - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
     networks:
       - network
     restart: unless-stopped
+    depends_on:
+      - kafka-exporter
+      - redis-exporter
 
   # Grafana - Visualization & Dashboards
   grafana:
@@ -412,15 +450,44 @@ services:
     volumes:
       - ./grafana-datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml
       - ./grafana-dashboard-provider.yml:/etc/grafana/provisioning/dashboards/provider.yml
-      - ./grafana-microservices-dashboard.json:/etc/grafana/provisioning/dashboards/microservices-overview.json
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
       - grafana_data:/var/lib/grafana
     networks:
       - network
     restart: unless-stopped
     depends_on:
       - prometheus
+      - loki
 
+  # Loki - Log Aggregation System
+  loki:
+    image: grafana/loki:2.9.3
+    container_name: loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki_data:/loki
+    networks:
+      - network
+    restart: unless-stopped
 
+  # Promtail - Log Collector
+  promtail:
+    image: grafana/promtail:2.9.3
+    container_name: promtail
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./promtail-config.yaml:/etc/promtail/config.yml:ro
+      - ./logs:/var/log/app:ro
+      - promtail_data:/tmp
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - network
+    restart: unless-stopped
+    depends_on:
+      - loki
 
 volumes:
   userdb:
@@ -434,6 +501,9 @@ volumes:
   redis_data:
   dronedb:
   grafana_data:
+  prometheus_data:
+  loki_data:
+  promtail_data:
 
 networks:
   network:

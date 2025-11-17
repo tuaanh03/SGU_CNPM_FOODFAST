@@ -1,13 +1,25 @@
 {
   "annotations": {
-    "list": []
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
   },
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": null,
+  "id": 7,
   "links": [],
-  "liveNow": false,
   "panels": [
     {
       "datasource": {
@@ -17,29 +29,33 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "continuous-GrYlRd"
           },
           "custom": {
+            "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
+            "fillOpacity": 20,
+            "gradientMode": "scheme",
             "hideFrom": {
+              "legend": false,
               "tooltip": false,
-              "viz": false,
-              "legend": false
+              "viz": false
             },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "never",
+            "showPoints": "auto",
+            "showValues": false,
             "spanNulls": false,
             "stacking": {
               "group": "A",
@@ -55,7 +71,101 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 11,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "hidden",
+          "placement": "right",
+          "showLegend": false
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.2.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum({__name__=~\".*_http_requests_total\", instance=\"$instance\"})",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Total request from $instance",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
               }
             ]
           },
@@ -67,7 +177,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 7
       },
       "id": 1,
       "options": {
@@ -78,10 +188,12 @@
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "single",
           "sort": "none"
         }
       },
+      "pluginVersion": "12.2.1",
       "targets": [
         {
           "datasource": {
@@ -89,12 +201,56 @@
             "uid": "PBFA97CFB590B2093"
           },
           "expr": "rate({__name__=~\".*_http_requests_total\", instance=\"$instance\"}[1m])",
-          "refId": "A",
-          "legendFormat": "{{method}} {{route}} ({{status_code}})"
+          "legendFormat": "{{method}} {{route}} ({{status_code}})",
+          "refId": "A"
         }
       ],
       "title": "HTTP Request Rate - $instance",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "ff4b45xyl1f5sc"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 15
+      },
+      "id": 12,
+      "options": {
+        "dedupStrategy": "none",
+        "enableInfiniteScrolling": false,
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "pluginVersion": "12.2.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "ff4b45xyl1f5sc"
+          },
+          "direction": "backward",
+          "editorMode": "builder",
+          "expr": "{service=\"$service\"} |= `` | json | method = `$method` | status = `$status` | level = `$level`",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Logs - $service",
+      "type": "logs"
     },
     {
       "datasource": {
@@ -112,7 +268,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "yellow",
@@ -132,22 +288,25 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 8
+        "y": 23
       },
       "id": 2,
       "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
         "orientation": "auto",
         "reduceOptions": {
-          "values": false,
           "calcs": [
             "lastNotNull"
           ],
-          "fields": ""
+          "fields": "",
+          "values": false
         },
         "showThresholdLabels": false,
-        "showThresholdMarkers": true
+        "showThresholdMarkers": true,
+        "sizing": "auto"
       },
-      "pluginVersion": "9.0.0",
+      "pluginVersion": "12.2.1",
       "targets": [
         {
           "datasource": {
@@ -155,8 +314,8 @@
             "uid": "PBFA97CFB590B2093"
           },
           "expr": "{__name__=~\".*_process_resident_memory_bytes\", instance=\"$instance\"}",
-          "refId": "A",
-          "legendFormat": "Memory"
+          "legendFormat": "Memory",
+          "refId": "A"
         }
       ],
       "title": "Memory Usage - $instance",
@@ -173,19 +332,22 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 10,
             "gradientMode": "none",
             "hideFrom": {
+              "legend": false,
               "tooltip": false,
-              "viz": false,
-              "legend": false
+              "viz": false
             },
+            "insertNulls": false,
             "lineInterpolation": "linear",
             "lineWidth": 1,
             "pointSize": 5,
@@ -193,6 +355,7 @@
               "type": "linear"
             },
             "showPoints": "never",
+            "showValues": false,
             "spanNulls": false,
             "stacking": {
               "group": "A",
@@ -208,7 +371,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
@@ -220,7 +383,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 8
+        "y": 23
       },
       "id": 3,
       "options": {
@@ -235,19 +398,23 @@
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "single",
           "sort": "none"
         }
       },
+      "pluginVersion": "12.2.1",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
+          "editorMode": "code",
           "expr": "rate({__name__=~\".*_process_cpu_seconds_total\", instance=\"$instance\"}[1m])",
-          "refId": "A",
-          "legendFormat": "CPU"
+          "legendFormat": "CPU",
+          "range": true,
+          "refId": "A"
         }
       ],
       "title": "CPU Usage - $instance",
@@ -264,19 +431,22 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 10,
             "gradientMode": "none",
             "hideFrom": {
+              "legend": false,
               "tooltip": false,
-              "viz": false,
-              "legend": false
+              "viz": false
             },
+            "insertNulls": false,
             "lineInterpolation": "linear",
             "lineWidth": 1,
             "pointSize": 5,
@@ -284,6 +454,7 @@
               "type": "linear"
             },
             "showPoints": "never",
+            "showValues": false,
             "spanNulls": false,
             "stacking": {
               "group": "A",
@@ -299,7 +470,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
@@ -315,8 +486,8 @@
               {
                 "id": "color",
                 "value": {
-                  "mode": "fixed",
-                  "fixedColor": "yellow"
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
                 }
               }
             ]
@@ -330,8 +501,8 @@
               {
                 "id": "color",
                 "value": {
-                  "mode": "fixed",
-                  "fixedColor": "red"
+                  "fixedColor": "red",
+                  "mode": "fixed"
                 }
               }
             ]
@@ -342,21 +513,25 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 16
+        "y": 31
       },
       "id": 4,
       "options": {
         "legend": {
-          "calcs": ["sum"],
+          "calcs": [
+            "sum"
+          ],
           "displayMode": "table",
           "placement": "right",
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "multi",
           "sort": "none"
         }
       },
+      "pluginVersion": "12.2.1",
       "targets": [
         {
           "datasource": {
@@ -364,8 +539,8 @@
             "uid": "PBFA97CFB590B2093"
           },
           "expr": "sum(rate({__name__=~\".*_http_requests_total\", status_code=~\"4..\", instance=\"$instance\"}[1m])) by (status_code)",
-          "refId": "A",
-          "legendFormat": "4xx - {{status_code}}"
+          "legendFormat": "4xx - {{status_code}}",
+          "refId": "A"
         },
         {
           "datasource": {
@@ -373,8 +548,8 @@
             "uid": "PBFA97CFB590B2093"
           },
           "expr": "sum(rate({__name__=~\".*_http_requests_total\", status_code=~\"5..\", instance=\"$instance\"}[1m])) by (status_code)",
-          "refId": "B",
-          "legendFormat": "5xx - {{status_code}}"
+          "legendFormat": "5xx - {{status_code}}",
+          "refId": "B"
         }
       ],
       "title": "❌ HTTP Errors (4xx & 5xx) - $instance",
@@ -395,8 +570,8 @@
               "options": {
                 "match": "null",
                 "result": {
-                  "text": "DOWN",
-                  "color": "red"
+                  "color": "red",
+                  "text": "DOWN"
                 }
               },
               "type": "special"
@@ -407,7 +582,7 @@
             "steps": [
               {
                 "color": "red",
-                "value": null
+                "value": 0
               },
               {
                 "color": "green",
@@ -423,23 +598,26 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 16
+        "y": 31
       },
       "id": 5,
       "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
         "orientation": "auto",
         "reduceOptions": {
-          "values": false,
           "calcs": [
             "lastNotNull"
           ],
-          "fields": ""
+          "fields": "",
+          "values": false
         },
         "showThresholdLabels": false,
         "showThresholdMarkers": true,
+        "sizing": "auto",
         "text": {}
       },
-      "pluginVersion": "9.0.0",
+      "pluginVersion": "12.2.1",
       "targets": [
         {
           "datasource": {
@@ -447,8 +625,8 @@
             "uid": "PBFA97CFB590B2093"
           },
           "expr": "up{instance=\"$instance\"}",
-          "refId": "A",
-          "legendFormat": "Health"
+          "legendFormat": "Health",
+          "refId": "A"
         }
       ],
       "title": "❤️ Service Health - $instance",
@@ -470,7 +648,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
@@ -482,7 +660,7 @@
         "h": 4,
         "w": 24,
         "x": 0,
-        "y": 24
+        "y": 39
       },
       "id": 6,
       "options": {
@@ -490,16 +668,19 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
-          "values": false,
           "calcs": [
             "lastNotNull"
           ],
-          "fields": ""
+          "fields": "",
+          "values": false
         },
-        "textMode": "auto"
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
       },
-      "pluginVersion": "9.0.0",
+      "pluginVersion": "12.2.1",
       "targets": [
         {
           "datasource": {
@@ -507,8 +688,8 @@
             "uid": "PBFA97CFB590B2093"
           },
           "expr": "time() - {__name__=~\".*_process_start_time_seconds\", instance=\"$instance\"}",
-          "refId": "A",
-          "legendFormat": "Uptime"
+          "legendFormat": "Uptime",
+          "refId": "A"
         }
       ],
       "title": "⏱️ Service Uptime - $instance",
@@ -525,19 +706,22 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 10,
             "gradientMode": "none",
             "hideFrom": {
+              "legend": false,
               "tooltip": false,
-              "viz": false,
-              "legend": false
+              "viz": false
             },
+            "insertNulls": false,
             "lineInterpolation": "linear",
             "lineWidth": 1,
             "pointSize": 5,
@@ -545,6 +729,7 @@
               "type": "linear"
             },
             "showPoints": "never",
+            "showValues": false,
             "spanNulls": false,
             "stacking": {
               "group": "A",
@@ -560,7 +745,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "yellow",
@@ -580,21 +765,26 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 28
+        "y": 43
       },
       "id": 7,
       "options": {
         "legend": {
-          "calcs": ["mean", "max"],
+          "calcs": [
+            "mean",
+            "max"
+          ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "multi",
           "sort": "none"
         }
       },
+      "pluginVersion": "12.2.1",
       "targets": [
         {
           "datasource": {
@@ -602,8 +792,8 @@
             "uid": "PBFA97CFB590B2093"
           },
           "expr": "{__name__=~\".*_nodejs_heap_size_used_bytes\", instance=\"$instance\"}",
-          "refId": "A",
-          "legendFormat": "Heap Used"
+          "legendFormat": "Heap Used",
+          "refId": "A"
         }
       ],
       "title": "💾 Heap Memory Used - $instance",
@@ -620,19 +810,22 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 10,
             "gradientMode": "none",
             "hideFrom": {
+              "legend": false,
               "tooltip": false,
-              "viz": false,
-              "legend": false
+              "viz": false
             },
+            "insertNulls": false,
             "lineInterpolation": "linear",
             "lineWidth": 1,
             "pointSize": 5,
@@ -640,6 +833,7 @@
               "type": "linear"
             },
             "showPoints": "never",
+            "showValues": false,
             "spanNulls": false,
             "stacking": {
               "group": "A",
@@ -655,7 +849,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "yellow",
@@ -675,21 +869,26 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 28
+        "y": 43
       },
       "id": 8,
       "options": {
         "legend": {
-          "calcs": ["mean", "max"],
+          "calcs": [
+            "mean",
+            "max"
+          ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "multi",
           "sort": "none"
         }
       },
+      "pluginVersion": "12.2.1",
       "targets": [
         {
           "datasource": {
@@ -697,8 +896,8 @@
             "uid": "PBFA97CFB590B2093"
           },
           "expr": "{__name__=~\".*_nodejs_external_memory_bytes\", instance=\"$instance\"}",
-          "refId": "A",
-          "legendFormat": "External Memory"
+          "legendFormat": "External Memory",
+          "refId": "A"
         }
       ],
       "title": "📊 Non-Heap (External Memory) - $instance",
@@ -715,19 +914,22 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 10,
             "gradientMode": "none",
             "hideFrom": {
+              "legend": false,
               "tooltip": false,
-              "viz": false,
-              "legend": false
+              "viz": false
             },
+            "insertNulls": false,
             "lineInterpolation": "linear",
             "lineWidth": 1,
             "pointSize": 5,
@@ -735,6 +937,7 @@
               "type": "linear"
             },
             "showPoints": "never",
+            "showValues": false,
             "spanNulls": false,
             "stacking": {
               "group": "A",
@@ -750,7 +953,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "red",
@@ -766,21 +969,27 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 36
+        "y": 51
       },
       "id": 9,
       "options": {
         "legend": {
-          "calcs": ["mean", "max", "last"],
+          "calcs": [
+            "mean",
+            "max",
+            "last"
+          ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "multi",
           "sort": "none"
         }
       },
+      "pluginVersion": "12.2.1",
       "targets": [
         {
           "datasource": {
@@ -788,8 +997,8 @@
             "uid": "PBFA97CFB590B2093"
           },
           "expr": "{__name__=~\".*_nodejs_eventloop_lag_seconds\", instance=\"$instance\"}",
-          "refId": "A",
-          "legendFormat": "Event Loop Lag"
+          "legendFormat": "Event Loop Lag",
+          "refId": "A"
         }
       ],
       "title": "🔄 Event Loop Lag - $instance",
@@ -806,19 +1015,22 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 10,
             "gradientMode": "none",
             "hideFrom": {
+              "legend": false,
               "tooltip": false,
-              "viz": false,
-              "legend": false
+              "viz": false
             },
+            "insertNulls": false,
             "lineInterpolation": "linear",
             "lineWidth": 1,
             "pointSize": 5,
@@ -826,6 +1038,7 @@
               "type": "linear"
             },
             "showPoints": "never",
+            "showValues": false,
             "spanNulls": false,
             "stacking": {
               "group": "A",
@@ -841,7 +1054,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
@@ -853,21 +1066,27 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 36
+        "y": 51
       },
       "id": 10,
       "options": {
         "legend": {
-          "calcs": ["mean", "max", "last"],
+          "calcs": [
+            "mean",
+            "max",
+            "last"
+          ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "multi",
           "sort": "none"
         }
       },
+      "pluginVersion": "12.2.1",
       "targets": [
         {
           "datasource": {
@@ -875,8 +1094,8 @@
             "uid": "PBFA97CFB590B2093"
           },
           "expr": "{__name__=~\".*_nodejs_active_handles\", instance=\"$instance\"}",
-          "refId": "A",
-          "legendFormat": "Active Handles"
+          "legendFormat": "Active Handles",
+          "refId": "A"
         },
         {
           "datasource": {
@@ -884,36 +1103,124 @@
             "uid": "PBFA97CFB590B2093"
           },
           "expr": "{__name__=~\".*_nodejs_active_requests_total\", instance=\"$instance\"}",
-          "refId": "B",
-          "legendFormat": "Active Requests"
+          "legendFormat": "Active Requests",
+          "refId": "B"
         }
       ],
       "title": "🔗 Active Handles & Requests - $instance",
       "type": "timeseries"
     }
   ],
+  "preload": false,
   "refresh": "5s",
-  "schemaVersion": 36,
-  "style": "dark",
-  "tags": ["microservices", "monitoring"],
+  "schemaVersion": 42,
+  "tags": [
+    "microservices",
+    "monitoring"
+  ],
   "templating": {
     "list": [
       {
-        "name": "instance",
-        "label": "Instance",
-        "type": "query",
-        "hide": 0,
         "datasource": {
           "type": "prometheus",
           "uid": "PBFA97CFB590B2093"
         },
+        "includeAll": false,
+        "label": "Instance",
+        "name": "instance",
+        "options": [],
         "query": "label_values(up{job=~\".*-service\"}, instance)",
+        "refresh": 1,
         "regex": "",
         "sort": 1,
-        "refresh": 1,
+        "type": "query"
+      },
+      {
+        "datasource": {
+          "type": "loki",
+          "uid": "ff4b45xyl1f5sc"
+        },
+        "definition": "",
+        "includeAll": true,
+        "label": "Service",
+        "multi": true,
+        "name": "service",
         "options": [],
-        "includeAll": false,
-        "multi": false
+        "query": {
+          "label": "service",
+          "refId": "LokiVariableQueryEditor-VariableQuery",
+          "stream": "",
+          "type": 1
+        },
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "datasource": {
+          "type": "loki",
+          "uid": "ff4b45xyl1f5sc"
+        },
+        "definition": "",
+        "includeAll": true,
+        "label": "Log Level",
+        "multi": true,
+        "name": "level",
+        "options": [],
+        "query": {
+          "label": "level",
+          "refId": "LokiVariableQueryEditor-VariableQuery",
+          "stream": "",
+          "type": 1
+        },
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "datasource": {
+          "type": "loki",
+          "uid": "ff4b45xyl1f5sc"
+        },
+        "definition": "",
+        "includeAll": true,
+        "label": "HTTP Method",
+        "multi": true,
+        "name": "method",
+        "options": [],
+        "query": {
+          "label": "method",
+          "refId": "LokiVariableQueryEditor-VariableQuery",
+          "stream": "",
+          "type": 1
+        },
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "datasource": {
+          "type": "loki",
+          "uid": "ff4b45xyl1f5sc"
+        },
+        "includeAll": true,
+        "label": "HTTP Status",
+        "multi": true,
+        "name": "status",
+        "options": [],
+        "query": {
+          "label": "status",
+          "refId": "LokiVariableQueryEditor-VariableQuery",
+          "stream": "",
+          "type": 1
+        },
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
       }
     ]
   },
@@ -925,7 +1232,5 @@
   "timezone": "",
   "title": "Microservices Overview Dashboard",
   "uid": "microservices-overview",
-  "version": 3,
-  "weekStart": ""
+  "version": 33
 }
-
