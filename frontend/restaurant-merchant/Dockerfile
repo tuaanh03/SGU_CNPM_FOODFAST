@@ -12,6 +12,10 @@ RUN npm install
 # Copy all source files
 COPY . .
 
+# Build argument for API base URL
+ARG VITE_API_BASE_URL=/api
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+
 # Build the application
 RUN npm run build
 

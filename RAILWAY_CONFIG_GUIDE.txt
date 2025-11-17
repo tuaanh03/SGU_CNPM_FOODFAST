@@ -1,0 +1,115 @@
+========================================
+HƯỚNG DẪN CẤU HÌNH RAILWAY - FRONTEND FOODDELIVERY
+========================================
+
+## VẤN ĐỀ ĐÃ PHÁT HIỆN:
+
+1. Frontend bundle KHÔNG có giá trị VITE_API_BASE_URL vì:
+   - Vite chỉ nhúng biến môi trường vào BUILD TIME
+   - Dockerfile không set biến này khi build
+   - Kết quả: axios gọi API với URL undefined → Network Error
+
+2. Nginx proxy có thể không kết nối được API Gateway vì:
+   - API_GATEWAY_HOST chưa được set đúng
+   - Railway dùng HTTPS nên cần proxy_pass https://
+
+
+## GIẢI PHÁP ĐÃ THỰC HIỆN:
+
+✅ 1. Sửa Dockerfile - Thêm ENV VITE_API_BASE_URL=/api trước khi build
+✅ 2. Sửa nginx.conf.template - Dùng HTTPS và thêm SSL config
+✅ 3. Cập nhật timeout và headers cho proxy
+
+
+## CẤU HÌNH RAILWAY - QUAN TRỌNG:
+
+### A. Service: cnpm-fooddelivery (Frontend)
+
+Vào Settings → Environment Variables, thêm:
+
+API_GATEWAY_HOST=<TÊN-SERVICE-API-GATEWAY>.up.railway.app
+
+Ví dụ:
+API_GATEWAY_HOST=api-gateway-service-production-04a1.up.railway.app
+
+CHÚ Ý:
+- KHÔNG có https://
+- KHÔNG có / ở cuối
+- CHỈ có domain name
+
+
+### B. Service: api-gateway
+
+Kiểm tra Environment Variables có đầy đủ:
+
+PORT=3000
+USER_SERVICE_URL=http://user-service.railway.internal:1000
+ORDER_SERVICE_URL=http://order-service.railway.internal:2000
+PAYMENT_SERVICE_URL=http://payment-service.railway.internal:4000
+PRODUCT_SERVICE_URL=http://product-service.railway.internal:3004
+RESTAURANT_SERVICE_URL=http://restaurant-service.railway.internal:3005
+CART_SERVICE_URL=http://cart-service.railway.internal:3006
+LOCATION_SERVICE_URL=http://location-service.railway.internal:3007
+JWT_SECRET=<your-secret>
+
+CHÚ Ý:
+- Railway internal network: <service-name>.railway.internal
+- Port phải khớp với service
+
+
+### C. Các Backend Services
+
+Mỗi service cần có biến môi trường cơ bản:
+- PORT=<port-number>
+- DATABASE_URL=<nếu cần>
+- KAFKA_BROKERS=<nếu dùng kafka>
+
+
+## DEPLOY LẠI:
+
+1. Commit và push code đã sửa
+2. Railway sẽ tự động deploy lại
+3. HOẶC vào Railway Dashboard → Manual Deploy
+
+
+## KIỂM TRA SAU KHI DEPLOY:
+
+1. Mở Railway Logs của frontend service
+   - Tìm dòng: "export API_GATEWAY_HOST=..."
+   - Kiểm tra nginx config đã được generate đúng chưa
+
+2. Test API Gateway trực tiếp:
+   https://<api-gateway-url>/api/products
+
+3. Test Frontend:
+   https://<frontend-url>
+   - Mở DevTools → Network
+   - Xem request /api/products có gọi đúng URL không
+
+
+## DEBUG TIPS:
+
+1. Nếu vẫn lỗi Network Error:
+   - Vào Railway → api-gateway → Logs
+   - Xem có request từ frontend đến không
+
+2. Nếu API Gateway không nhận request:
+   - Kiểm tra API_GATEWAY_HOST có đúng không
+   - Thử curl từ frontend container:
+     Railway → frontend → Shell
+     curl https://$API_GATEWAY_HOST/api/products
+
+3. Nếu CORS error:
+   - API Gateway đã config CORS cho domain Railway
+   - Kiểm tra domain frontend có trong allowedOrigins không
+
+
+## LƯU Ý QUAN TRỌNG:
+
+❗ Railway tự động cấp HTTPS cho public URL
+❗ Internal service dùng HTTP, external dùng HTTPS
+❗ Biến môi trường Railway có thể mất 1-2 phút để apply
+❗ Mỗi lần thay đổi env var phải redeploy service
+
+========================================
+
