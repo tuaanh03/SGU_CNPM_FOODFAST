@@ -1,0 +1,244 @@
+╔══════════════════════════════════════════════════════════════╗
+║           GIẢI QUYẾT LỖI 502 BAD GATEWAY - RAILWAY          ║
+╚══════════════════════════════════════════════════════════════╝
+
+## 🔴 VẤN ĐỀ:
+
+**Lỗi:** `502 Bad Gateway` khi frontend gọi `/api/stores`
+
+**Nguyên nhân:**
+Nginx không kết nối được với API Gateway vì:
+1. Railway KHÔNG cho phép service gọi service khác qua public HTTPS URL
+2. Cần dùng **Railway Private Networking** (internal domain)
+3. Hoặc API Gateway service đang down
+
+## ✅ GIẢI PHÁP:
+
+### CÁC CÁCH RAILWAY SERVICE COMMUNICATION:
+
+#### 🔹 Cách 1: RAILWAY PRIVATE NETWORKING (Khuyến nghị)
+
+Railway cung cấp private network cho services giao tiếp với nhau.
+
+**Domain format:** `<service-name>.railway.internal`
+
+**VÍ DỤ:**
+- Public URL: `https://api-gateway-service-production-04a1.up.railway.app`
+- Private URL: `api-gateway.railway.internal`
+
+**Config Railway:**
+```
+USE_HTTPS=true
+API_GATEWAY_HOST=api-gateway.railway.internal
+```
+
+Script sẽ tự động:
+- Detect `.railway.internal` domain
+- Dùng HTTP thay vì HTTPS (internal traffic)
+- Kết nối thành công!
+
+#### 🔹 Cách 2: PUBLIC DOMAIN (Không khuyến nghị)
+
+Nếu Railway cho phép public-to-public:
+
+**Config Railway:**
+```
+USE_HTTPS=true
+API_GATEWAY_HOST=api-gateway-service-production-04a1.up.railway.app
+```
+
+Nhưng có thể bị:
+- 502 vì Railway block service-to-service public calls
+- Latency cao
+- Rate limiting
+
+#### 🔹 Cách 3: INTERNAL PORT (Tốt nhất nếu có)
+
+Nếu Railway expose internal port:
+
+**Config Railway:**
+```
+USE_HTTPS=true
+API_GATEWAY_HOST=api-gateway:3000
+```
+
+## 🚀 HÀNH ĐỘNG NGAY:
+
+### Bước 1: Xác định API Gateway Internal Domain
+
+**Vào Railway Dashboard:**
+1. Click service **api-gateway**
+2. Tab **Settings**
+3. Tìm **Private Networking** hoặc **Internal URL**
+
+**Có 3 khả năng:**
+
+**A) Có Private Network (Tốt nhất):**
+```
+Internal Domain: api-gateway.railway.internal
+```
+→ Dùng domain này!
+
+**B) Không có Private Network:**
+→ Cần enable Private Networking
+→ Railway Settings → Enable Private Networking
+
+**C) Chỉ có Public URL:**
+```
+Public Domain: api-gateway-service-production-04a1.up.railway.app
+```
+→ Dùng tạm, nhưng có thể lỗi 502
+
+### Bước 2: Cập nhật Environment Variables
+
+Vào **cnpm-fooddelivery** service → **Variables**
+
+**Xóa biến cũ và thêm mới:**
+
+#### Nếu có Private Network:
+```
+USE_HTTPS=true
+API_GATEWAY_HOST=api-gateway.railway.internal
+```
+
+#### Nếu không có Private Network:
+```
+USE_HTTPS=false
+API_GATEWAY_HOST=api-gateway:3000
+```
+
+### Bước 3: Commit Code Mới
+
+```bash
+cd /path/to/project
+
+git add frontend/cnpm-fooddelivery/docker-entrypoint.sh
+
+git commit -m "Fix: 502 error - Support Railway private networking"
+
+git push
+```
+
+### Bước 4: Redeploy Service
+
+Railway → **cnpm-fooddelivery** → **Settings** → **Redeploy**
+
+### Bước 5: Kiểm tra Logs
+
+Railway → **cnpm-fooddelivery** → **Logs**
+
+**Phải thấy:**
+```
+Configuring for RAILWAY...
+  -> Using Railway PRIVATE networking (HTTP)
+Testing API Gateway Connection...
+Target URL: http://api-gateway.railway.internal/api/products
+✓ Connection successful!
+```
+
+**Hoặc nếu public:**
+```
+Configuring for RAILWAY...
+  -> Using PUBLIC networking (HTTPS)
+Testing API Gateway Connection...
+✗ WARNING: Cannot connect to API Gateway!
+```
+
+Nếu thấy WARNING → Cần đổi sang private network!
+
+## 🔍 DEBUG:
+
+### Test 1: API Gateway có chạy không?
+
+Railway → **api-gateway** → **Logs**
+
+Phải thấy:
+```
+API Gateway is running on port 3000
+```
+
+Nếu không → API Gateway service down → Cần redeploy
+
+### Test 2: Kết nối từ frontend container
+
+Railway → **cnpm-fooddelivery** → **Shell**
+
+```bash
+# Test với private domain
+wget -O- http://api-gateway.railway.internal/api/products
+
+# Hoặc với public domain
+wget -O- https://api-gateway-service-production-04a1.up.railway.app/api/products
+```
+
+**Nếu thành công:** Trả về JSON data
+**Nếu thất bại:** Timeout hoặc connection refused
+
+### Test 3: Check Railway Private Networking
+
+Railway Dashboard → Project Settings → **Networking**
+
+**Enable Private Networking** nếu chưa có.
+
+## 📋 RAILWAY NETWORKING BEST PRACTICES:
+
+### ✅ ĐÚNG (Internal Communication):
+
+```
+Frontend → http://api-gateway.railway.internal:3000/api/products
+API Gateway → http://user-service.railway.internal:1000/...
+```
+
+### ❌ SAI (Public Communication):
+
+```
+Frontend → https://api-gateway-xxx.railway.app/api/products
+API Gateway → https://user-service-xxx.railway.app/...
+```
+
+**Tại sao sai?**
+- Latency cao (ra ngoài rồi vào lại)
+- Railway có thể block
+- SSL overhead không cần thiết
+- Rate limiting
+
+## 🎯 SOLUTION SUMMARY:
+
+### Vấn đề hiện tại:
+```
+nginx → https://api-gateway-service-production-04a1.up.railway.app/api/
+       ↓
+       ❌ 502 Bad Gateway (Railway block hoặc timeout)
+```
+
+### Giải pháp:
+```
+nginx → http://api-gateway.railway.internal/api/
+       ↓
+       ✅ 200 OK (Internal network)
+```
+
+## 🚨 URGENT ACTION:
+
+**NGAY BÂY GIỜ:**
+
+1. **Commit code:** `git push` (script đã sửa)
+
+2. **Vào Railway → cnpm-fooddelivery → Variables:**
+   ```
+   API_GATEWAY_HOST=api-gateway.railway.internal
+   ```
+   (Xóa domain public cũ)
+
+3. **Redeploy service**
+
+4. **Xem logs** - Phải thấy "Connection successful"
+
+5. **Test frontend** - Không còn 502!
+
+═══════════════════════════════════════════════════════════════
+
+**TÓM TẮT 1 DÒNG:**
+
+Đổi `API_GATEWAY_HOST` từ public domain sang private domain `.railway.internal`!
+
