@@ -17,7 +17,13 @@ const PORT = config.port;
 
 /** 1) CORS đặt trước mọi middleware/route */
 server.use(cors({
-    origin: ["http://localhost:5173", "http://localhost:8080", "http://localhost:8081", "http://localhost"],
+    origin: [
+        "http://localhost:5173",
+        "http://localhost:8080",
+        "http://localhost:8081",
+        "http://localhost",
+        "https://sgucnpmfoodfast-production.up.railway.app"
+    ],
     credentials: true,
     methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
     allowedHeaders: ["Content-Type","Authorization","X-Requested-With"]

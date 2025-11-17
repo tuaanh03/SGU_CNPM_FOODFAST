@@ -255,6 +255,24 @@
             </PendingDiffInfo>
           </value>
         </entry>
+        <entry key="$PROJECT_DIR$/frontend/cnpm-fooddelivery/.env">
+          <value>
+            <PendingDiffInfo>
+              <option name="filePath" value="$PROJECT_DIR$/frontend/cnpm-fooddelivery/.env" />
+              <option name="originalContent" value="VITE_API_BASE_URL=http://localhost:3000/api&#10;VITE_MAPBOX_ACCESS_TOKEN=pk.eyJ1IjoibmdvdHVhbmFuaCIsImEiOiJjbWdtaTQ3dXYwdGh2Mm9wcWwxd3g3dGV1In0.7_DXCJmqmBNQQuXSF5w3Ow&#10;&#10;&#10;" />
+              <option name="updatedContent" value="VITE_API_BASE_URL=https://api-gateway-service-production-04a1.up.railway.app/api&#10;VITE_MAPBOX_ACCESS_TOKEN=pk.eyJ1IjoibmdvdHVhbmFuaCIsImEiOiJjbWdtaTQ3dXYwdGh2Mm9wcWwxd3g3dGV1In0.7_DXCJmqmBNQQuXSF5w3Ow" />
+            </PendingDiffInfo>
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/frontend/cnpm-fooddelivery/.env.production">
+          <value>
+            <PendingDiffInfo>
+              <option name="filePath" value="$PROJECT_DIR$/frontend/cnpm-fooddelivery/.env.production" />
+              <option name="originalContent" value="# API Configuration for Docker/Production&#10;VITE_API_BASE_URL=/api&#10;VITE_MAPBOX_ACCESS_TOKEN=pk.eyJ1IjoibmFtNGFuaCIsImEiOiJjbTJ1cXkyY2cwN3ZqMmpwd3JncXhvcDJ1In0.t_gPXbIBqd9y-u9FH6BTZQ&#10;# API Configuration&#10;&#10;# Base URL cho API&#10;# - Trong Docker: để trống hoặc '/api' (nginx sẽ proxy)&#10;# - Local dev: 'http://localhost:3000/api'&#10;VITE_API_BASE_URL=/api&#10;&#10;" />
+              <option name="updatedContent" value="# API Configuration for Docker/Production&#10;VITE_API_BASE_URL=https://api-gateway-service-production-04a1.up.railway.app/api&#10;VITE_MAPBOX_ACCESS_TOKEN=pk.eyJ1IjoibmFtNGFuaCIsImEiOiJjbTJ1cXkyY2cwN3ZqMmpwd3JncXhvcDJ1In0.t_gPXbIBqd9y-u9FH6BTZQ&#10;# API Configuration&#10;&#10;# Base URL cho API&#10;# - Trong Docker: để trống hoặc '/api' (nginx sẽ proxy)&#10;# - Local dev: 'http://localhost:3000/api'&#10;VITE_API_BASE_URL=/api" />
+            </PendingDiffInfo>
+          </value>
+        </entry>
         <entry key="$PROJECT_DIR$/frontend/cnpm-fooddelivery/ADDRESS_MANAGER_GUIDE.md">
           <value>
             <PendingDiffInfo>
