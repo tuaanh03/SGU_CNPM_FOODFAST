@@ -26,10 +26,17 @@ FROM nginx:alpine
 COPY nginx.conf.template /etc/nginx/templates/nginx.conf.template
 
 # Copy built files from builder stage
+# Copy startup script
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Expose port 80
 EXPOSE 80
 
 # Use default nginx CMD
-CMD ["nginx", "-g", "daemon off;"]
+# Use startup script
+CMD ["/docker-entrypoint.sh"]
+
+
