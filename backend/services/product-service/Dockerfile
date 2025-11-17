@@ -17,3 +17,4 @@ RUN pnpm run build
 EXPOSE 3004
 
 CMD [ "node", "dist/server.js" ]
+
