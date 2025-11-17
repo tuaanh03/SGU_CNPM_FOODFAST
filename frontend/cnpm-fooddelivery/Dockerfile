@@ -18,8 +18,8 @@ RUN npm run build
 # Stage 2: Production stage with Nginx
 FROM nginx:alpine
 
-# Copy custom nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Copy custom nginx configuration template
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 
 # Copy built files from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
@@ -27,6 +27,5 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # Expose port 80
 EXPOSE 80
 
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"]
-
+# Start nginx with environment variable substitution
+CMD ["/bin/sh", "-c", "envsubst < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]

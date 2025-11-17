@@ -342,6 +342,8 @@ services:
     depends_on:
       - api-gateway
     restart: unless-stopped
+    environment:
+      - API_GATEWAY_HOST=api-gateway:3000
 
   # Frontend - Restaurant Merchant Portal
   restaurant-merchant:
