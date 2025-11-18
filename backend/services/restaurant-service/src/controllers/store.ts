@@ -167,9 +167,14 @@ export const updateStore = async (req: Request, res: Response) => {
 
 // Lấy danh sách tất cả cửa hàng (public)
 export const getAllStores = async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  console.log('[getAllStores] Request received at:', new Date().toISOString());
+
   try {
     const { page = 1, limit = 10, search, isActive } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
+
+    console.log('[getAllStores] Query params:', { page, limit, search, isActive });
 
     const where: any = {};
     if (search) {
@@ -181,6 +186,9 @@ export const getAllStores = async (req: Request, res: Response) => {
     if (isActive !== undefined) {
       where.isActive = isActive === 'true';
     }
+
+    console.log('[getAllStores] Starting database query...');
+    const dbStartTime = Date.now();
 
     const [stores, total] = await Promise.all([
       prisma.store.findMany({
@@ -194,7 +202,11 @@ export const getAllStores = async (req: Request, res: Response) => {
       prisma.store.count({ where })
     ]);
 
-    res.json({
+    const dbEndTime = Date.now();
+    console.log('[getAllStores] Database query completed in:', dbEndTime - dbStartTime, 'ms');
+    console.log('[getAllStores] Found', stores.length, 'stores, total:', total);
+
+    const response = {
       success: true,
       data: {
         stores,
@@ -205,12 +217,20 @@ export const getAllStores = async (req: Request, res: Response) => {
           totalPages: Math.ceil(total / Number(limit))
         }
       }
-    });
+    };
+
+    const endTime = Date.now();
+    console.log('[getAllStores] Total request time:', endTime - startTime, 'ms');
+
+    res.json(response);
   } catch (error) {
-    console.error("Error getting stores:", error);
+    const endTime = Date.now();
+    console.error("[getAllStores] Error after", endTime - startTime, "ms:", error);
+
     res.status(500).json({
       success: false,
-      message: "Lỗi khi lấy danh sách cửa hàng"
+      message: "Lỗi khi lấy danh sách cửa hàng",
+      error: process.env.NODE_ENV === 'development' ? String(error) : undefined
     });
   }
 };

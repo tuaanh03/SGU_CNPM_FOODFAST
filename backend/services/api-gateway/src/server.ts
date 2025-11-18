@@ -136,6 +136,15 @@ const paymentServiceProxy = proxy(config.paymentServiceUrl, {
 // proxy middleware for Product Service (thêm bỏ conditional headers)
 const productServiceProxy = proxy(config.productServiceUrl, {
     proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api/, ""),
+    timeout: 300000, // 5 minutes
+    proxyErrorHandler: function(err, res, next) {
+        console.error('[API Gateway] Error proxying to product-service:', err.message);
+        res.status(503).json({
+            success: false,
+            message: 'Product service is temporarily unavailable',
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined
+        });
+    },
     ...dropConditionalHeaders,
     ...addCorsOnProxyResp
 });
@@ -143,6 +152,15 @@ const productServiceProxy = proxy(config.productServiceUrl, {
 // proxy middleware for Restaurant Service (với user info forwarding cho protected routes)
 const restaurantServiceProxy = proxy(config.restaurantServiceUrl, {
     proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api/, ""),
+    timeout: 300000, // 5 minutes
+    proxyErrorHandler: function(err, res, next) {
+        console.error('[API Gateway] Error proxying to restaurant-service:', err.message);
+        res.status(503).json({
+            success: false,
+            message: 'Restaurant service is temporarily unavailable',
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined
+        });
+    },
     ...forwardUserInfo,
     ...dropConditionalHeaders,
     ...addCorsOnProxyResp
