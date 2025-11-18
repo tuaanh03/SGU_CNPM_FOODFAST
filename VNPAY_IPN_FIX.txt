@@ -1,0 +1,517 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔴 VNPAY IPN KHÔNG HOẠT ĐỘNG - ĐÃ SỬA XONG
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## ❌ VẤN ĐỀ BẠN GẶP
+
+**Triệu chứng:**
+- VNPay thanh toán thành công
+- User được redirect về frontend OK
+- ❌ Nhưng Order status KHÔNG được cập nhật
+- ❌ VNPay IPN callback KHÔNG hoạt động
+
+**URL đã config trên VNPay Sandbox:**
+```
+IPN URL: https://api-gateway-service-production-04a1.up.railway.app/api/payments/vnpay_ipn
+```
+
+**Vấn đề thực tế:**
+→ VNPay gọi IPN nhưng server KHÔNG NHẬN được hoặc bị chặn!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🐛 NGUYÊN NHÂN GỐC RỄ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### 1. ❌ ROUTE KHÔNG TỒN TẠI
+
+**API Gateway cũ:**
+```typescript
+// ❌ KHÔNG CÓ route /api/payments/vnpay_ipn
+server.use("/vnpay_return", paymentServiceProxy);  // ✅ OK
+server.use("/api/payment", authenticateToken, paymentServiceProxy);  // ❌ SAI!
+```
+
+→ Khi VNPay gọi `/api/payments/vnpay_ipn` → **404 Not Found**
+
+### 2. ❌ BỊ CHẶN BỞI AUTHENTICATION
+
+**Vấn đề:**
+- Route `/api/payment` có middleware `authenticateToken`
+- VNPay server gọi IPN **KHÔNG CÓ JWT TOKEN**
+- → Bị chặn với **401 Unauthorized**
+
+**Tại sao đây là vấn đề:**
+```
+VNPay Server (IPN)
+   ↓ Gọi không có Authorization header
+   ↓ GET https://...up.railway.app/api/payments/vnpay_ipn?vnp_xxx=...
+   ↓
+API Gateway
+   ↓ authenticateToken middleware
+   ↓ ❌ Không có JWT token
+   ↓
+❌ 401 Unauthorized
+```
+
+### 3. 🔒 BẢN CHẤT VNPay IPN
+
+**VNPay IPN là gì:**
+- **Server-to-server callback** từ VNPay đến backend
+- **Không phải** user request (không có JWT token)
+- **Phải** là public endpoint (không cần authentication)
+- **Bảo mật** bằng signature verification (vnp_SecureHash)
+
+**Flow đúng:**
+```
+User thanh toán trên VNPay
+   ↓
+VNPay xử lý thanh toán
+   ↓
+┌─────────────────┬─────────────────┐
+│  VNPay Return   │   VNPay IPN     │
+│  (User redirect)│  (Server callback)│
+└─────────────────┴─────────────────┘
+   ↓                    ↓
+Frontend           Backend (Public endpoint)
+   ↓                    ↓
+Show result        Update Order Status
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## ✅ ĐÃ SỬA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### 1. Sửa API Gateway Routing
+
+**File: `backend/services/api-gateway/src/server.ts`**
+
+```typescript
+// ==================== PAYMENT SERVICE ROUTES ====================
+
+// VNPay callback routes - KHÔNG CẦN AUTHENTICATION (VNPay server gọi vào)
+// VNPay IPN (Instant Payment Notification) - Server-to-server callback
+server.use("/api/payments/vnpay_ipn", paymentServiceProxy);
+
+// VNPay Return URL - User redirect từ VNPay về
+server.use("/vnpay_return", paymentServiceProxy);
+
+// Payment service API routes - CẦN AUTHENTICATION (Frontend gọi)
+server.use("/api/payment", authenticateToken, paymentServiceProxy);
+
+console.log('✅ Payment routes configured:');
+console.log('  - /api/payments/vnpay_ipn → Payment Service (NO AUTH - VNPay callback)');
+console.log('  - /vnpay_return → Payment Service (NO AUTH - User redirect)');
+console.log('  - /api/payment/* → Payment Service (WITH AUTH)');
+```
+
+**Điểm mốt quan trọng:**
+- ✅ `/api/payments/vnpay_ipn` → **KHÔNG có** `authenticateToken`
+- ✅ `/vnpay_return` → **KHÔNG có** `authenticateToken`
+- ✅ `/api/payment/*` → **CÓ** `authenticateToken` (cho frontend calls)
+
+### 2. Sửa Payment Service Routing
+
+**File: `backend/services/payment-service/src/server.ts`**
+
+```typescript
+// Routes
+// VNPay callbacks được gọi trực tiếp không qua /api prefix
+server.use("/", paymentRoute);
+
+// API endpoints được gọi qua /api/payment prefix từ Gateway
+server.use("/payment", paymentRoute);
+
+// VNPay IPN được gọi qua /api/payments/vnpay_ipn từ Gateway
+// Gateway sẽ remove /api và gửi /payments/vnpay_ipn đến đây
+server.use("/payments", paymentRoute);
+
+console.log('✅ Payment Service routes configured:');
+console.log('  - / → Direct VNPay callbacks');
+console.log('  - /payment → API Gateway routes (WITH AUTH)');
+console.log('  - /payments → API Gateway VNPay IPN route (NO AUTH)');
+```
+
+### 3. Security - Vẫn An Toàn!
+
+**Dù không có JWT authentication, IPN vẫn bảo mật bằng:**
+
+```typescript
+// File: payment-service/src/controllers/payment.ts
+export const vnpayIPN = async (req: Request, res: Response) => {
+    // ✅ Bước 1 & 2: Verify signature từ VNPay
+    const verify = vnpay.verifyIpnCall(req.query as any);
+
+    if (!verify.isVerified) {
+        // ❌ Signature không đúng → Reject
+        console.error("Invalid signature in VNPay IPN");
+        return res.json(IpnFailChecksum);
+    }
+
+    console.log("✓ VNPay IPN signature verified successfully");
+
+    // ✅ Chỉ xử lý khi signature ĐÚNG
+    // VNPay ký bằng VNPAY_HASH_SECRET (chỉ VNPay và server biết)
+    // → Không ai khác có thể giả mạo IPN call
+}
+```
+
+**Tại sao an toàn:**
+- ✅ VNPay ký mỗi request bằng `vnp_SecureHash`
+- ✅ Hash được tạo từ `VNPAY_HASH_SECRET` (chỉ VNPay và bạn biết)
+- ✅ Server verify signature trước khi xử lý
+- ✅ Không thể giả mạo IPN request
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🚀 CẤU HÌNH VNPAY SANDBOX
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### BƯỚC 1: Đăng nhập VNPay Sandbox
+
+URL: https://sandbox.vnpayment.vn/merchantv2/
+
+### BƯỚC 2: Cấu hình IPN URL
+
+**Vào:** Cấu hình → Thông tin cấu hình → IPN URL
+
+**Cấu hình:**
+```
+IPN URL: https://api-gateway-service-production-04a1.up.railway.app/api/payments/vnpay_ipn
+```
+
+⚠️ **LƯU Ý QUAN TRỌNG:**
+- ✅ Phải là URL **PUBLIC** (Railway public domain)
+- ✅ Phải là **HTTPS**
+- ✅ Không có `/` ở cuối
+- ✅ Path chính xác: `/api/payments/vnpay_ipn` (có chữ "s")
+- ❌ KHÔNG dùng domain nội bộ `.railway.internal`
+- ❌ KHÔNG dùng localhost
+
+### BƯỚC 3: Lưu thay đổi
+
+Click **Lưu** trong VNPay Merchant Portal
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🔧 CẤU HÌNH BIẾN MÔI TRƯỜNG RAILWAY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Payment Service trên Railway:
+
+```bash
+# VNPay Configuration
+VNPAY_TMN_CODE=<your_tmn_code>
+VNPAY_HASH_SECRET=<your_hash_secret>
+VNPAY_API_URL=https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
+
+# Return URL - User redirect sau khi thanh toán
+VNPAY_RETURN_URL=https://sgu-cnpm-foodfast.vercel.app/payment-result
+
+# ❌ KHÔNG CẦN config VNPAY_IPN_URL (VNPay config trên portal)
+# IPN URL được config trên VNPay Merchant Portal, không phải biến môi trường
+
+# Frontend URL cho redirect
+FRONTEND_URL=https://sgu-cnpm-foodfast.vercel.app
+
+# Database
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+
+# Kafka
+KAFKA_BROKERS=<cluster>.confluent.cloud:9092
+KAFKA_USERNAME=<api_key>
+KAFKA_PASSWORD=<api_secret>
+KAFKA_SECURITY_PROTOCOL=SASL_SSL
+KAFKA_SASL_MECHANISM=PLAIN
+
+# Other
+PORT=4000
+NODE_ENV=production
+```
+
+**Giải thích:**
+- ✅ `VNPAY_RETURN_URL`: Frontend URL để redirect user
+- ❌ `VNPAY_IPN_URL`: **KHÔNG CẦN** - Config trực tiếp trên VNPay portal
+- ✅ `FRONTEND_URL`: Fallback cho return URL
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🧪 KIỂM TRA VÀ DEBUG
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### BƯỚC 1: Deploy và kiểm tra logs
+
+**Sau khi deploy API Gateway và Payment Service:**
+
+**API Gateway logs phải thấy:**
+```
+✅ Payment routes configured:
+  - /api/payments/vnpay_ipn → Payment Service (NO AUTH - VNPay callback)
+  - /vnpay_return → Payment Service (NO AUTH - User redirect)
+  - /api/payment/* → Payment Service (WITH AUTH)
+```
+
+**Payment Service logs phải thấy:**
+```
+✅ Payment Service routes configured:
+  - / → Direct VNPay callbacks
+  - /payment → API Gateway routes (WITH AUTH)
+  - /payments → API Gateway VNPay IPN route (NO AUTH)
+```
+
+### BƯỚC 2: Test thanh toán
+
+**1. Tạo đơn hàng và thanh toán:**
+```
+Frontend → Create Order → Get Payment URL → Redirect to VNPay
+```
+
+**2. Thanh toán trên VNPay (Sandbox):**
+```
+Thẻ test: 9704198526191432198
+Tên: NGUYEN VAN A
+Ngày phát hành: 07/15
+Mã OTP: 123456
+```
+
+**3. Kiểm tra logs Payment Service:**
+
+**TRƯỚC (Lỗi - Không nhận IPN):**
+```
+❌ Không có log nào từ VNPay IPN
+```
+
+**SAU (Thành công):**
+```
+✅ VNPay IPN received: { vnp_TxnRef: '...', vnp_Amount: '...', ... }
+✅ VNPay IPN signature verified successfully
+✅ Updated PaymentIntent xxx and PaymentAttempt to success
+✅ Published payment success event for order yyy
+```
+
+### BƯỚC 3: Verify Order Status
+
+**Kiểm tra Order đã được cập nhật:**
+```bash
+# API call
+GET /api/order/{orderId}
+Authorization: Bearer {token}
+
+# Response
+{
+  "success": true,
+  "data": {
+    "id": "order_xxx",
+    "status": "PAID",  // ✅ Đã được cập nhật từ PENDING_PAYMENT
+    "totalPrice": 50000,
+    ...
+  }
+}
+```
+
+### BƯỚC 4: Test trực tiếp IPN endpoint
+
+**Dùng Postman hoặc curl (chỉ để test routing):**
+
+```bash
+curl -X GET "https://api-gateway-service-production-04a1.up.railway.app/api/payments/vnpay_ipn?vnp_TxnRef=test&vnp_Amount=5000000" -v
+```
+
+**Kết quả mong đợi:**
+```
+< HTTP/2 200
+{
+  "RspCode": "97",  // IpnFailChecksum - Vì signature không đúng (expected)
+  "Message": "Invalid Checksum"
+}
+```
+
+**Điều này chứng tỏ:**
+- ✅ Route hoạt động (không 404)
+- ✅ Không bị chặn authentication (không 401)
+- ✅ Payment Service nhận được request
+- ❌ Signature verification failed (đúng như mong đợi - test không có signature đúng)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🔄 FLOW HOÀN CHỈNH SAU KHI SỬA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━��━━━━━━━━━━━━
+
+### 1. User thanh toán trên VNPay
+
+```
+User → VNPay Payment Page
+     → Nhập thông tin thẻ
+     → Click "Thanh toán"
+```
+
+### 2. VNPay xử lý thanh toán
+
+```
+VNPay Server
+  ├─→ Kiểm tra thẻ
+  ├─→ Xử lý giao dịch
+  └─→ Thanh toán thành công
+```
+
+### 3. VNPay gửi 2 callbacks
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                    VNPay Callbacks                       │
+├──────────────────────┬───────────────────────────────────┤
+│   Return URL         │         IPN URL                   │
+│   (User redirect)    │    (Server notification)          │
+└──────────────────────┴───────────────────────────────────┘
+         ↓                            ↓
+    Frontend                    API Gateway
+         ↓                            ↓
+   Show result               /api/payments/vnpay_ipn
+                                      ↓
+                              Payment Service
+                                      ↓
+                              Verify signature
+                                      ↓
+                              Update Order Status
+                                      ↓
+                              Publish Kafka Event
+                                      ↓
+                              Order Service
+                                      ↓
+                            Update Order → PAID
+```
+
+### 4. User thấy kết quả
+
+```
+Frontend → /payment-result?status=success&orderId=xxx
+        → Hiển thị "Thanh toán thành công"
+        → Order status: PAID
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🐳 DOCKER-COMPOSE (LOCAL) - KHÔNG ẢNH HƯỞNG
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**Local development:**
+- ✅ VNPay Return URL vẫn hoạt động
+- ⚠️ VNPay IPN sẽ **KHÔNG hoạt động** local (VNPay không thể gọi localhost)
+- ✅ Dùng **ngrok** để test IPN local (như cũ)
+
+**Ngrok setup (nếu cần test IPN local):**
+```bash
+# Terminal 1: Run services
+docker-compose up
+
+# Terminal 2: Expose API Gateway
+ngrok http 3000
+
+# Lấy ngrok URL và config trên VNPay sandbox
+# IPN URL: https://xxxx.ngrok.io/api/payments/vnpay_ipn
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 📋 CHECKLIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Railway Deployment:
+
+□ Deploy API Gateway với code mới
+□ Deploy Payment Service với code mới
+□ Kiểm tra logs: Payment routes configured
+□ Kiểm tra API Gateway logs: vnpay_ipn route exists
+□ Verify biến môi trường Payment Service đầy đủ
+
+### VNPay Configuration:
+
+□ Đăng nhập VNPay Sandbox
+□ Vào Cấu hình → IPN URL
+□ Set: `https://api-gateway-service-production-04a1.up.railway.app/api/payments/vnpay_ipn`
+□ Click Lưu
+□ Verify URL đã được lưu
+
+### Testing:
+
+□ Tạo đơn hàng mới
+□ Thanh toán qua VNPay (sandbox)
+□ Kiểm tra Payment Service logs: IPN received
+□ Kiểm tra Payment Service logs: Signature verified
+□ Kiểm tra Payment Service logs: Order updated
+□ Verify Order status: PAID
+□ Verify frontend hiển thị thành công
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## ❓ TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Lỗi: VNPay IPN vẫn không nhận được
+
+**Kiểm tra:**
+1. IPN URL trên VNPay portal có đúng không?
+2. API Gateway có log "Payment routes configured" không?
+3. Payment Service có chạy không? (health check)
+4. Firewall Railway có chặn không? (check Railway settings)
+
+**Debug:**
+```bash
+# Test IPN endpoint trực tiếp
+curl -X GET "https://api-gateway-service-production-04a1.up.railway.app/api/payments/vnpay_ipn?test=1" -v
+
+# Kết quả mong đợi: 200 OK (không 404, không 401)
+```
+
+### Lỗi: "Invalid signature"
+
+**Nguyên nhân:**
+- `VNPAY_HASH_SECRET` sai
+- Request parameters bị thay đổi trong quá trình proxy
+
+**Giải pháp:**
+- Verify `VNPAY_HASH_SECRET` trên Railway
+- Kiểm tra logs: VNPay IPN received parameters
+
+### Lỗi: Order status không cập nhật
+
+**Nguyên nhân:**
+- Kafka event không được publish
+- Order Service không consume event
+
+**Kiểm tra:**
+- Payment Service logs: "Published payment success event"
+- Order Service logs: "Received payment event"
+- Kafka cluster connection
+
+### Lỗi: 404 Not Found
+
+**Nguyên nhân:**
+- API Gateway chưa deploy code mới
+- Route config sai
+
+**Giải pháp:**
+- Redeploy API Gateway
+- Verify logs: "Payment routes configured"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🎯 TÓM TẮT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**Vấn đề gốc:**
+- VNPay IPN bị chặn bởi JWT authentication
+- Route `/api/payments/vnpay_ipn` không tồn tại
+
+**Giải pháp:**
+- ✅ Thêm route `/api/payments/vnpay_ipn` KHÔNG có authentication
+- ✅ Vẫn bảo mật bằng signature verification
+- ✅ Payment Service routing hỗ trợ path mới
+
+**Cấu hình VNPay:**
+- IPN URL: `https://api-gateway-service-production-04a1.up.railway.app/api/payments/vnpay_ipn`
+- Return URL: Dùng biến `VNPAY_RETURN_URL` (frontend URL)
+
+**Files đã sửa:**
+1. `backend/services/api-gateway/src/server.ts` ✅
+2. `backend/services/payment-service/src/server.ts` ✅
+
+**Bước tiếp theo:**
+1. Deploy API Gateway và Payment Service
+2. Config IPN URL trên VNPay Sandbox
+3. Test thanh toán
+4. Verify Order status được cập nhật
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
