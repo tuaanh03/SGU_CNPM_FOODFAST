@@ -14,11 +14,19 @@ env.config();
 
 const server = express();
 
-// run kafka consumer
-runConsumer();
+// Async initialization
+(async () => {
+    // run kafka consumer
+    await runConsumer();
 
-// Khởi tạo Redis expiration listener để tự động hủy orders hết hạn
-initializeRedisExpirationListener();
+    // Khởi tạo Redis expiration listener để tự động hủy orders hết hạn
+    await initializeRedisExpirationListener();
+
+    console.log('✅ All async initializations complete');
+})().catch((error) => {
+    console.error('❌ Failed to initialize services:', error);
+    process.exit(1);
+});
 
 // middleware's
 server.use(express.json());
