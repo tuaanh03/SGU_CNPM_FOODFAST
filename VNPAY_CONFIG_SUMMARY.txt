@@ -1,0 +1,140 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ CẤU HÌNH VNPAY URL - HOÀN TẤT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 📋 ĐÃ THỰC HIỆN
+
+✅ Cập nhật vnpay.ts - Linh hoạt RETURN_URL theo môi trường
+✅ Cập nhật .env - Hướng dẫn cho Docker/Railway/Vercel
+✅ Tạo .env.example - Template đầy đủ
+✅ Tạo VNPAY_URL_CONFIG.txt - Hướng dẫn chi tiết
+✅ Thêm route /payment-result vào frontend
+✅ Frontend đã có PaymentResultPage xử lý kết quả
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🎯 CẤU HÌNH CHO PRODUCTION (VERCEL)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### **Bước 1: Railway - Payment Service**
+
+Vào Railway Dashboard → Payment Service → Variables
+
+Thêm/Cập nhật:
+```
+VNPAY_RETURN_URL=https://sgu-cnpm-foodfast.vercel.app/payment-result
+FRONTEND_URL=https://sgu-cnpm-foodfast.vercel.app
+```
+
+Redeploy payment service
+
+### **Bước 2: ⚠️ QUAN TRỌNG - VNPay Sandbox Portal**
+
+1. Vào: https://sandbox.vnpayment.vn/merchantv2/
+2. Login với tài khoản merchant (TMN Code: X8XUBJ2R)
+3. Vào: **Cấu hình** → **URL IPN**
+4. Nhập:
+   ```
+   https://api-gateway-service-production-04a1.up.railway.app/api/payments/vnpay_ipn
+   ```
+5. **LƯU LẠI**
+
+### **Bước 3: Test**
+
+1. Deploy frontend lên Vercel
+2. Tạo đơn hàng → Thanh toán
+3. Kiểm tra:
+   - VNPay redirect về: `https://sgu-cnpm-foodfast.vercel.app/payment-result?...`
+   - Log payment service nhận IPN
+   - Order status được update
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🐳 CẤU HÌNH CHO DOCKER-COMPOSE (NGROK)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### **Bước 1: Chạy ngrok**
+```bash
+ngrok http 3000
+```
+
+Ví dụ output: `https://abc-xyz-123.ngrok-free.dev`
+
+### **Bước 2: Cập nhật .env trong payment-service**
+```env
+VNPAY_RETURN_URL=https://abc-xyz-123.ngrok-free.dev/payment-result
+VNPAY_IPN_URL=https://abc-xyz-123.ngrok-free.dev/api/payments/vnpay_ipn
+FRONTEND_URL=http://localhost:3000
+```
+
+### **Bước 3: Cập nhật VNPay Portal IPN URL**
+```
+https://abc-xyz-123.ngrok-free.dev/api/payments/vnpay_ipn
+```
+
+### **Bước 4: Restart docker-compose**
+```bash
+docker-compose down
+docker-compose up -d --build payment-service
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## ❓ CÂU HỎI: CÓ CẦN CẤU HÌNH IPN URL TRONG VNPAY PORTAL?
+━━��━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**✅ CÓ, BẮT BUỘC!**
+
+IPN URL **PHẢI** được config trong VNPay Merchant Portal vì:
+- Thư viện vnpay không cho phép truyền IPN URL qua API
+- VNPay sẽ gửi server-to-server notification đến URL này
+- Nếu không config, payment sẽ thành công nhưng order không update
+
+**Return URL**: Không cần config trong portal, được truyền qua API
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🔄 LUỒNG HOẠT ĐỘNG
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### **Khi User thanh toán thành công:**
+
+1️⃣ VNPay redirect user → `VNPAY_RETURN_URL`
+   - Production: `https://sgu-cnpm-foodfast.vercel.app/payment-result?status=success&...`
+   - Docker: `https://your-ngrok.ngrok-free.dev/payment-result?status=success&...`
+   - Frontend hiển thị kết quả
+
+2️⃣ VNPay gửi IPN (background) → API Gateway → Payment Service
+   - Production: `https://api-gateway-service-production-04a1.up.railway.app/api/payments/vnpay_ipn`
+   - Docker: `https://your-ngrok.ngrok-free.dev/api/payments/vnpay_ipn`
+   - Payment service: Verify → Update DB → Kafka event → Order service update
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 📁 FILES ĐÃ CHỈNH SỬA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ backend/services/payment-service/src/utils/vnpay.ts
+   → Linh hoạt RETURN_URL
+
+✅ backend/services/payment-service/.env
+   → Cập nhật comment và config
+
+✅ backend/services/payment-service/.env.example
+   → Template cho mọi môi trường
+
+✅ backend/services/payment-service/VNPAY_URL_CONFIG.txt
+   → Hướng dẫn chi tiết đầy đủ
+
+✅ frontend/cnpm-fooddelivery/src/App.tsx
+   → Thêm route /payment-result
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🎉 HOÀN TẤT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ Code linh hoạt cho cả Docker/Railway/Vercel
+✅ Frontend có route /payment-result
+✅ Hướng dẫn đầy đủ trong VNPAY_URL_CONFIG.txt
+✅ Chỉ cần update biến môi trường khi deploy
+
+**BẮT ĐẦU DEPLOY:**
+1. Set biến trên Railway
+2. Config IPN URL trong VNPay Portal
+3. Deploy & Test!
+

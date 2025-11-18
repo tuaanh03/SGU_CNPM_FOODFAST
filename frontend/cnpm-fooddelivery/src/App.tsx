@@ -8,6 +8,7 @@ import HomePage from "./pages/HomePage";
 import ProductPage from "./pages/ProductPage";
 import OrderPage from "./pages/OrderPage";
 import PaymentPage from "./pages/PaymentPage";
+import PaymentResultPage from "./pages/PaymentResultPage";
 import ProfilePage from "./pages/ProfilePage";
 import MyOrderPage from "./pages/MyOrderPage";
 import NotFound from "./pages/NotFound";
@@ -32,6 +33,9 @@ function App() {
                             <Route path="/" element={<HomePage />} />
                             <Route path="/products" element={<ProductPage />} />
                             <Route path="/restaurant/:id" element={<RestaurantDetailPage />} />
+
+                            {/* Payment Result - Public (VNPay redirect) */}
+                            <Route path="/payment-result" element={<PaymentResultPage />} />
 
                             {/* Customer Auth Routes */}
                             <Route path="/login" element={<LoginPage />} />
