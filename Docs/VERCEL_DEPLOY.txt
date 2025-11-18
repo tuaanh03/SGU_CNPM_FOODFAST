@@ -1,0 +1,187 @@
+# 🚀 DEPLOY FRONTEND LÊN VERCEL
+
+## ✅ ĐÃ CẤU HÌNH XONG
+
+Frontend đã được cấu hình để hỗ trợ deploy lên Vercel với API Gateway từ Railway.
+
+---
+
+## 📋 BƯỚC 1: CẤU HÌNH BIẾN MÔI TRƯỜNG TRÊN RAILWAY
+
+### **API Gateway Service**
+
+Vào Railway Dashboard → API Gateway Service → Variables
+
+Thêm biến:
+```
+ALLOWED_ORIGINS=https://your-app.vercel.app
+```
+
+**Lưu ý:** Thay `https://your-app.vercel.app` bằng domain thực tế của Vercel.
+
+Nếu có nhiều domain, cách nhau bằng dấu phẩy:
+```
+ALLOWED_ORIGINS=https://your-app.vercel.app,https://your-app-staging.vercel.app
+```
+
+**Sau đó:** Redeploy API Gateway service
+
+---
+
+## 📋 BƯỚC 2: DEPLOY LÊN VERCEL
+
+### **Cách 1: Deploy qua Vercel Dashboard**
+
+1. Vào https://vercel.com/new
+2. Import GitHub repository
+3. Chọn folder: `frontend/cnpm-fooddelivery`
+4. Set **Environment Variables**:
+   ```
+   VITE_API_BASE_URL=https://api-gateway-service-production-04a1.up.railway.app/api
+   VITE_MAPBOX_ACCESS_TOKEN=pk.eyJ1IjoibmdvdHVhbmFuaCIsImEiOiJjbWdtaTQ3dXYwdGh2Mm9wcWwxd3g3dGV1In0.7_DXCJmqmBNQQuXSF5w3Ow
+   ```
+5. Click **Deploy**
+
+### **Cách 2: Deploy qua Vercel CLI**
+
+```bash
+# Cài Vercel CLI
+npm i -g vercel
+
+# Di chuyển vào folder frontend
+cd frontend/cnpm-fooddelivery
+
+# Login Vercel
+vercel login
+
+# Deploy
+vercel --prod
+
+# Khi được hỏi về env vars, nhập:
+# VITE_API_BASE_URL: https://api-gateway-service-production-04a1.up.railway.app/api
+# VITE_MAPBOX_ACCESS_TOKEN: pk.eyJ1IjoibmdvdHVhbmFuaCIsImEiOiJjbWdtaTQ3dXYwdGh2Mm9wcWwxd3g3dGV1In0.7_DXCJmqmBNQQuXSF5w3Ow
+```
+
+---
+
+## 📋 BƯỚC 3: CẬP NHẬT ALLOWED_ORIGINS TRÊN RAILWAY
+
+Sau khi deploy Vercel xong, bạn sẽ có domain như: `https://cnpm-fooddelivery-xyz.vercel.app`
+
+**Quay lại Railway:**
+1. Vào API Gateway Service → Variables
+2. Cập nhật biến `ALLOWED_ORIGINS`:
+   ```
+   ALLOWED_ORIGINS=https://cnpm-fooddelivery-xyz.vercel.app
+   ```
+3. **Redeploy** API Gateway service
+
+---
+
+## 🧪 KIỂM TRA
+
+1. Mở browser: `https://your-app.vercel.app`
+2. Mở DevTools Console, kiểm tra:
+   ```
+   🔧 API Configuration:
+     - API_BASE_URL: https://api-gateway-service-production-04a1.up.railway.app/api
+     - Mode: production
+   ```
+3. Mở DevTools Network tab, kiểm tra:
+   - Request URL: `https://api-gateway-service-production-04a1.up.railway.app/api/products`
+   - Status: 200 OK
+   - Response: có dữ liệu products
+
+---
+
+## 🔧 CÁCH HOẠT ĐỘNG
+
+### **Vercel:**
+```
+Frontend → API Gateway (public URL) → Backend Services
+```
+
+### **Railway/Docker:**
+```
+Frontend → Nginx → API Gateway (internal network) → Backend Services
+```
+
+**Sự khác biệt:**
+- **Vercel:** Frontend gọi trực tiếp đến public URL của API Gateway
+- **Railway:** Frontend gọi `/api`, Nginx proxy sang API Gateway internal
+
+**Code giống nhau:**
+- Frontend chỉ cần biến `VITE_API_BASE_URL`
+- Vercel: `VITE_API_BASE_URL=https://api-gateway...`
+- Railway: `VITE_API_BASE_URL=/api`
+
+---
+
+## 📝 TÓM TẮT BIẾN MÔI TRƯỜNG
+
+### **Vercel (frontend/cnpm-fooddelivery):**
+```
+VITE_API_BASE_URL=https://api-gateway-service-production-04a1.up.railway.app/api
+VITE_MAPBOX_ACCESS_TOKEN=pk.eyJ1IjoibmdvdHVhbmFuaCIsImEiOiJjbWdtaTQ3dXYwdGh2Mm9wcWwxd3g3dGV1In0.7_DXCJmqmBNQQuXSF5w3Ow
+```
+
+### **Railway API Gateway:**
+```
+ALLOWED_ORIGINS=https://your-app.vercel.app
+```
+
+### **Railway Frontend (nếu vẫn dùng):**
+```
+VITE_API_BASE_URL=/api
+VITE_API_BASE_URL_INTERNAL=http://api-gateway.railway.internal:3000/api/
+```
+
+---
+
+## 🚨 TROUBLESHOOTING
+
+### **Lỗi CORS:**
+```
+Access to fetch at '...' has been blocked by CORS policy
+```
+
+**Giải pháp:**
+- Kiểm tra biến `ALLOWED_ORIGINS` trên Railway đã đúng domain Vercel chưa
+- Redeploy API Gateway service
+- Clear cache browser
+
+### **Lỗi 404 Not Found khi gọi API:**
+```
+GET https://api-gateway.../api/products 404
+```
+
+**Giải pháp:**
+- Kiểm tra `VITE_API_BASE_URL` có đúng không
+- Kiểm tra API Gateway có đang chạy không
+- Test trực tiếp: `curl https://api-gateway.../api/products`
+
+### **Vercel build failed:**
+```
+Type error: ...
+```
+
+**Giải pháp:**
+- Kiểm tra TypeScript errors
+- Chạy `npm run build` ở local để test
+- Fix lỗi và push lại
+
+---
+
+## 🎉 HOÀN THÀNH
+
+Bây giờ bạn đã có:
+- ✅ Frontend deploy trên Vercel (nhanh, free tier tốt)
+- ✅ Backend vẫn chạy trên Railway (private networking, database)
+- ✅ CORS đã được config đúng
+- ✅ Code linh hoạt cho cả Vercel và Railway
+
+**Lợi ích:**
+- Vercel: CDN toàn cầu, deploy nhanh, preview URL cho mỗi commit
+- Railway: Backend mạnh mẽ, database, private networking
+- Tách biệt frontend/backend → dễ scale
+

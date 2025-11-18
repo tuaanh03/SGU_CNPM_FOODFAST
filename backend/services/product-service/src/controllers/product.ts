@@ -4,20 +4,13 @@ import { publishProductSyncEvent } from "../utils/kafka";
 
 // Lấy tất cả sản phẩm
 export const getAllProducts = async (req: Request, res: Response) => {
-  const startTime = Date.now();
-  console.log('[getAllProducts] Request received at:', new Date().toISOString());
-
   try {
     const { categoryId, isAvailable, storeId } = req.query;
-    console.log('[getAllProducts] Query params:', { categoryId, isAvailable, storeId });
 
     const where: any = {};
     if (categoryId) where.categoryId = categoryId as string;
     if (isAvailable !== undefined) where.isAvailable = isAvailable === 'true';
     if (storeId) where.storeId = storeId as string;
-
-    console.log('[getAllProducts] Starting database query...');
-    const dbStartTime = Date.now();
 
     const products = await prisma.product.findMany({
       where,
@@ -29,27 +22,15 @@ export const getAllProducts = async (req: Request, res: Response) => {
       }
     });
 
-    const dbEndTime = Date.now();
-    console.log('[getAllProducts] Database query completed in:', dbEndTime - dbStartTime, 'ms');
-    console.log('[getAllProducts] Found', products.length, 'products');
-
-    const response = {
+    res.json({
       success: true,
       data: products
-    };
-
-    const endTime = Date.now();
-    console.log('[getAllProducts] Total request time:', endTime - startTime, 'ms');
-
-    res.json(response);
+    });
   } catch (error) {
-    const endTime = Date.now();
-    console.error("[getAllProducts] Error after", endTime - startTime, "ms:", error);
-
+    console.error("Error fetching products:", error);
     res.status(500).json({
       success: false,
-      message: "Lỗi khi lấy danh sách sản phẩm",
-      error: process.env.NODE_ENV === 'development' ? String(error) : undefined
+      message: "Lỗi khi lấy danh sách sản phẩm"
     });
   }
 };

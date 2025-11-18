@@ -15,15 +15,24 @@ env.config();
 const server = express();
 const PORT = config.port;
 
+/** CORS origins - support Vercel and other deployments */
+const defaultCorsOrigins = [
+    "http://localhost:5173",
+    "http://localhost:8080",
+    "http://localhost:8081",
+    "http://localhost",
+    "https://sgucnpmfoodfast-production.up.railway.app"
+];
+
+const corsOrigins = process.env.ALLOWED_ORIGINS
+    ? [...defaultCorsOrigins, ...process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())]
+    : defaultCorsOrigins;
+
+console.log('✅ CORS origins:', corsOrigins);
+
 /** 1) CORS đặt trước mọi middleware/route */
 server.use(cors({
-    origin: [
-        "http://localhost:5173",
-        "http://localhost:8080",
-        "http://localhost:8081",
-        "http://localhost",
-        "https://sgucnpmfoodfast-production.up.railway.app" // cors fix
-    ],
+    origin: corsOrigins,
     credentials: true,
     methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
     allowedHeaders: ["Content-Type","Authorization","X-Requested-With"]
@@ -64,17 +73,10 @@ server.use(compression());
 server.use(bodyParser.json());
 
 /** Helper: decorator chung để gắn CORS header vào response từ proxy */
-const allowedOrigins = [
-    "http://localhost:5173",
-    "http://localhost:8080",
-    "http://localhost:8081",
-    "http://localhost",
-    "https://sgucnpmfoodfast-production.up.railway.app"
-];
 const addCorsOnProxyResp = {
     userResHeaderDecorator: (headers: any, req: any) => {
         const origin = req.headers.origin;
-        if (allowedOrigins.includes(origin)) {
+        if (corsOrigins.includes(origin)) {
             headers["Access-Control-Allow-Origin"] = origin;
         }
         headers["Access-Control-Allow-Credentials"] = "true";
@@ -136,15 +138,6 @@ const paymentServiceProxy = proxy(config.paymentServiceUrl, {
 // proxy middleware for Product Service (thêm bỏ conditional headers)
 const productServiceProxy = proxy(config.productServiceUrl, {
     proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api/, ""),
-    timeout: 300000, // 5 minutes
-    proxyErrorHandler: function(err, res, next) {
-        console.error('[API Gateway] Error proxying to product-service:', err.message);
-        res.status(503).json({
-            success: false,
-            message: 'Product service is temporarily unavailable',
-            error: process.env.NODE_ENV === 'development' ? err.message : undefined
-        });
-    },
     ...dropConditionalHeaders,
     ...addCorsOnProxyResp
 });
@@ -152,15 +145,6 @@ const productServiceProxy = proxy(config.productServiceUrl, {
 // proxy middleware for Restaurant Service (với user info forwarding cho protected routes)
 const restaurantServiceProxy = proxy(config.restaurantServiceUrl, {
     proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api/, ""),
-    timeout: 300000, // 5 minutes
-    proxyErrorHandler: function(err, res, next) {
-        console.error('[API Gateway] Error proxying to restaurant-service:', err.message);
-        res.status(503).json({
-            success: false,
-            message: 'Restaurant service is temporarily unavailable',
-            error: process.env.NODE_ENV === 'development' ? err.message : undefined
-        });
-    },
     ...forwardUserInfo,
     ...dropConditionalHeaders,
     ...addCorsOnProxyResp

@@ -1,0 +1,57 @@
+✅ ĐÃ CẤU HÌNH XONG - DEPLOY VERCEL
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 BƯỚC 1: CẤU HÌNH RAILWAY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Railway Dashboard → API Gateway Service → Variables
+
+Thêm biến:
+ALLOWED_ORIGINS=https://your-app.vercel.app
+
+(Thay your-app.vercel.app bằng domain thực tế sau khi deploy Vercel)
+
+Sau đó: Redeploy API Gateway
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 BƯỚC 2: DEPLOY LÊN VERCEL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Vào https://vercel.com/new
+2. Import repository
+3. Chọn folder: frontend/cnpm-fooddelivery
+4. Set Environment Variables:
+
+VITE_API_BASE_URL=https://api-gateway-service-production-04a1.up.railway.app/api
+VITE_MAPBOX_ACCESS_TOKEN=pk.eyJ1IjoibmdvdHVhbmFuaCIsImEiOiJjbWdtaTQ3dXYwdGh2Mm9wcWwxd3g3dGV1In0.7_DXCJmqmBNQQuXSF5w3Ow
+
+5. Click Deploy
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 BƯỚC 3: CẬP NHẬT CORS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Sau khi deploy Vercel xong, copy domain (vd: https://cnpm-xyz.vercel.app)
+
+Quay lại Railway → API Gateway → Variables
+Cập nhật:
+ALLOWED_ORIGINS=https://cnpm-xyz.vercel.app
+
+Redeploy API Gateway
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ XONG!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Mở app Vercel và test:
+- DevTools Console: kiểm tra API_BASE_URL
+- DevTools Network: kiểm tra API calls → Status 200
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📚 CHI TIẾT TRONG FILE: VERCEL_DEPLOY.txt
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
