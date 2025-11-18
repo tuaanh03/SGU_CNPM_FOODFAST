@@ -209,11 +209,24 @@ server.use("/api/addresses", userServiceProxy);
 // order service routes (có xác thực từ Gateway)
 server.use("/api/order", orderLimiter, authenticateToken, orderServiceProxy);
 
-// payment service routes - VNPay return URL (không cần /api prefix)
+// ==================== PAYMENT SERVICE ROUTES ====================
+
+// VNPay callback routes - KHÔNG CẦN AUTHENTICATION (VNPay server gọi vào)
+// VNPay IPN (Instant Payment Notification) - Server-to-server callback
+server.use("/api/payments/vnpay_ipn", paymentServiceProxy);
+
+// VNPay Return URL - User redirect từ VNPay về
 server.use("/vnpay_return", paymentServiceProxy);
 
-// payment service routes - API routes (với /api prefix, có xác thực)
+// Payment service API routes - CẦN AUTHENTICATION (Frontend gọi)
 server.use("/api/payment", authenticateToken, paymentServiceProxy);
+
+console.log('✅ Payment routes configured:');
+console.log('  - /api/payments/vnpay_ipn → Payment Service (NO AUTH - VNPay callback)');
+console.log('  - /vnpay_return → Payment Service (NO AUTH - User redirect)');
+console.log('  - /api/payment/* → Payment Service (WITH AUTH)');
+
+// ================================================================
 
 // product service routes (không cần xác thực cho GET, POST/PUT/DELETE cần xác thực)
 server.use("/api/products", productServiceProxy);

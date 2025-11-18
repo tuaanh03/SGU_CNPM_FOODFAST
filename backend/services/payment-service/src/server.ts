@@ -94,6 +94,15 @@ server.use("/", paymentRoute);
 // Gateway sẽ remove /api và gửi /payment/xxx đến đây
 server.use("/payment", paymentRoute);
 
+// VNPay IPN được gọi qua /api/payments/vnpay_ipn từ Gateway
+// Gateway sẽ remove /api và gửi /payments/vnpay_ipn đến đây
+server.use("/payments", paymentRoute);
+
+console.log('✅ Payment Service routes configured:');
+console.log('  - / → Direct VNPay callbacks');
+console.log('  - /payment → API Gateway routes (WITH AUTH)');
+console.log('  - /payments → API Gateway VNPay IPN route (NO AUTH)');
+
 // Health Check Route
 server.get("/", (req: Request, res: Response) => {
   res.status(200).json({
