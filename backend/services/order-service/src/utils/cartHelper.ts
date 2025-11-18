@@ -1,5 +1,11 @@
 import axios, { AxiosError } from 'axios';
 
+// API Gateway URL - tự động chọn theo môi trường
+const API_GATEWAY_URL = process.env.API_GATEWAY_URL || 'http://api-gateway:3000';
+
+console.log('🔧 Cart Helper Config:');
+console.log('  - API_GATEWAY_URL:', API_GATEWAY_URL);
+
 interface CartItem {
   productId: string;
   quantity: number;
@@ -34,7 +40,7 @@ export async function fetchUserCart(token: string, storeId: string): Promise<Car
   try {
     // Gọi qua API Gateway để có headers x-user-id, x-user-email
     const response = await axios.get<CartResponse>(
-      `http://api-gateway:3000/api/cart/${storeId}`,
+      `${API_GATEWAY_URL}/api/cart/${storeId}`,
       {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -53,6 +59,7 @@ export async function fetchUserCart(token: string, storeId: string): Promise<Car
   } catch (error) {
     if (axios.isAxiosError(error)) {
       const axiosError = error as AxiosError<{ message?: string }>;
+      console.error('❌ Cart Service error:', axiosError.response?.data || axiosError.message);
       throw new Error(`Cart Service error: ${axiosError.response?.data?.message || axiosError.message}`);
     }
     throw error;
@@ -67,13 +74,14 @@ export async function fetchUserCart(token: string, storeId: string): Promise<Car
 export async function clearUserCart(token: string, storeId: string): Promise<void> {
   try {
     // Gọi qua API Gateway
-    await axios.delete(`http://api-gateway:3000/api/cart/${storeId}`, {
+    await axios.delete(`${API_GATEWAY_URL}/api/cart/${storeId}`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
     });
+    console.log('✅ Cart cleared successfully for store:', storeId);
   } catch (error) {
-    console.error('Error clearing cart:', error);
+    console.error('⚠️ Error clearing cart:', error);
     // Không throw error vì đây chỉ là cleanup, không ảnh hưởng đến order
   }
 }
