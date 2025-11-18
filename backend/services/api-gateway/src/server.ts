@@ -22,7 +22,8 @@ const defaultCorsOrigins = [
     "http://localhost:8081",
     "http://localhost",
     "https://sgucnpmfoodfast-production.up.railway.app",
-    "https://sgu-cnpm-foodfast.vercel.app"
+    "https://sgu-cnpm-foodfast.vercel.app",
+    "https://restaurant-merchant.vercel.app"
 ];
 
 const corsOrigins = process.env.ALLOWED_ORIGINS
