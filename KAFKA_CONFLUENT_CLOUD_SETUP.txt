@@ -1,0 +1,243 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚀 CẤU HÌNH KAFKA CHO CONFLUENT CLOUD
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 📝 BƯỚC 1: TẠO TOPICS TRÊN CONFLUENT CLOUD
+
+Vào: https://confluent.cloud/
+→ Environments → Clusters → Topics → Add topic
+
+Tạo 7 topics sau:
+
+□ order.create (3 partitions, 7 days retention)
+□ order.expired (3 partitions, 7 days retention)
+□ order.retry.payment (3 partitions, 7 days retention)
+□ order.confirmed (3 partitions, 7 days retention)
+□ payment.event (3 partitions, 7 days retention)
+□ product.sync (3 partitions, 7 days retention)
+□ inventory.reserve.result (3 partitions, 7 days retention)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🔑 BƯỚC 2: TẠO API KEY & SECRET
+
+Vào: Cluster Settings → API Keys → Add Key
+
+Chọn: Global access (hoặc topic-specific nếu cần bảo mật cao)
+
+Lưu lại:
+- API Key: xxxxxxxxxxxx
+- API Secret: yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy
+
+⚠️ QUAN TRỌNG: Lưu Secret ngay, không thể xem lại!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 📡 BƯỚC 3: LẤY BOOTSTRAP SERVERS
+
+Vào: Cluster Settings → Cluster Overview
+
+Lấy Bootstrap Server URL:
+Ví dụ: pkc-xxxxx.us-east-1.aws.confluent.cloud:9092
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## ⚙️ BƯỚC 4: CẤU HÌNH BIẾN MÔI TRƯỜNG
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### **DOCKER-COMPOSE (Local Development)**
+
+Giữ nguyên kafka local:
+```yaml
+KAFKA_BROKERS=kafka:9092
+```
+
+Hoặc test với Confluent Cloud:
+```yaml
+KAFKA_BROKERS=pkc-xxxxx.us-east-1.aws.confluent.cloud:9092
+KAFKA_USERNAME=<API_KEY>
+KAFKA_PASSWORD=<API_SECRET>
+KAFKA_SECURITY_PROTOCOL=SASL_SSL
+KAFKA_SASL_MECHANISM=PLAIN
+```
+
+### **RAILWAY (Production)**
+
+Set biến môi trường cho MỌI service:
+
+**Order Service:**
+```
+KAFKA_BROKERS=pkc-xxxxx.us-east-1.aws.confluent.cloud:9092
+KAFKA_USERNAME=<API_KEY>
+KAFKA_PASSWORD=<API_SECRET>
+KAFKA_SECURITY_PROTOCOL=SASL_SSL
+KAFKA_SASL_MECHANISM=PLAIN
+```
+
+**Payment Service:**
+```
+KAFKA_BROKERS=pkc-xxxxx.us-east-1.aws.confluent.cloud:9092
+KAFKA_USERNAME=<API_KEY>
+KAFKA_PASSWORD=<API_SECRET>
+KAFKA_SECURITY_PROTOCOL=SASL_SSL
+KAFKA_SASL_MECHANISM=PLAIN
+```
+
+**Product Service:**
+```
+KAFKA_BROKERS=pkc-xxxxx.us-east-1.aws.confluent.cloud:9092
+KAFKA_USERNAME=<API_KEY>
+KAFKA_PASSWORD=<API_SECRET>
+KAFKA_SECURITY_PROTOCOL=SASL_SSL
+KAFKA_SASL_MECHANISM=PLAIN
+```
+
+**Notification Service:**
+```
+KAFKA_BROKERS=pkc-xxxxx.us-east-1.aws.confluent.cloud:9092
+KAFKA_USERNAME=<API_KEY>
+KAFKA_PASSWORD=<API_SECRET>
+KAFKA_SECURITY_PROTOCOL=SASL_SSL
+KAFKA_SASL_MECHANISM=PLAIN
+```
+
+**Restaurant Service:**
+```
+KAFKA_BROKERS=pkc-xxxxx.us-east-1.aws.confluent.cloud:9092
+KAFKA_USERNAME=<API_KEY>
+KAFKA_PASSWORD=<API_SECRET>
+KAFKA_SECURITY_PROTOCOL=SASL_SSL
+KAFKA_SASL_MECHANISM=PLAIN
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🔧 BƯỚC 5: CẬP NHẬT CODE KAFKA.TS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**Hiện tại code đang dùng:**
+```typescript
+const kafka = new Kafka({
+  clientId: "payment-service",
+  brokers: ["kafka:9092"],
+  retry: { ... }
+});
+```
+
+**Cần sửa thành:**
+```typescript
+const kafkaBrokers = process.env.KAFKA_BROKERS?.split(',') || ['kafka:9092'];
+const kafkaUsername = process.env.KAFKA_USERNAME;
+const kafkaPassword = process.env.KAFKA_PASSWORD;
+
+const kafka = new Kafka({
+  clientId: "payment-service",
+  brokers: kafkaBrokers,
+  ssl: process.env.KAFKA_SECURITY_PROTOCOL === 'SASL_SSL',
+  sasl: kafkaUsername && kafkaPassword ? {
+    mechanism: 'plain',
+    username: kafkaUsername,
+    password: kafkaPassword
+  } : undefined,
+  retry: {
+    initialRetryTime: 100,
+    maxRetryTime: 30000,
+    retries: 10,
+    factor: 0.2,
+  },
+});
+```
+
+⚠️ CẦN SỬA TRONG 5 FILES:
+1. backend/services/order-service/src/utils/kafka.ts
+2. backend/services/payment-service/src/utils/kafka.ts
+3. backend/services/product-service/src/utils/kafka.ts
+4. backend/services/notification-service/src/utils/kafka.ts
+5. backend/services/restaurant-service/src/utils/kafka.ts
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## ✅ BƯỚC 6: TEST & VERIFY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Test local với Confluent Cloud:
+
+1. Set biến môi trường:
+```bash
+export KAFKA_BROKERS=pkc-xxxxx.us-east-1.aws.confluent.cloud:9092
+export KAFKA_USERNAME=<API_KEY>
+export KAFKA_PASSWORD=<API_SECRET>
+export KAFKA_SECURITY_PROTOCOL=SASL_SSL
+export KAFKA_SASL_MECHANISM=PLAIN
+```
+
+2. Chạy một service:
+```bash
+cd backend/services/payment-service
+npm run dev
+```
+
+3. Kiểm tra log:
+- "✅ Kafka producer connected"
+- "✅ Kafka consumer connected"
+
+### Verify trên Confluent Cloud:
+
+Vào: Topics → Chọn topic → Messages
+
+Kiểm tra:
+- Có message mới xuất hiện
+- Consumer groups hoạt động
+- Lag = 0 (consumer đã xử lý hết message)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 💰 CHI PHÍ CONFLUENT CLOUD
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**Free Tier:**
+- 1 Basic cluster
+- Unlimited topics
+- $400 credit (4 tháng sử dụng)
+
+**Basic Cluster:**
+- ~$1-2/day với traffic thấp
+- Phù hợp cho development/staging
+
+**Lưu ý:**
+- Set retention 7 days để tiết kiệm storage
+- Monitor usage để tránh vượt free tier
+- Delete topics không dùng
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🐛 TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Lỗi: "Authentication failed"
+→ Kiểm tra API Key & Secret đúng
+→ Kiểm tra KAFKA_USERNAME và KAFKA_PASSWORD
+
+### Lỗi: "Connection timeout"
+→ Kiểm tra KAFKA_BROKERS URL đúng
+→ Kiểm tra firewall/network (Railway cần allow outbound)
+
+### Lỗi: "Topic not found"
+→ Tạo topic trên Confluent Cloud
+→ Kiểm tra tên topic khớp với code
+
+### Lỗi: "SSL handshake failed"
+→ Set KAFKA_SECURITY_PROTOCOL=SASL_SSL
+→ Kiểm tra ssl: true trong config
+
+### Consumer không nhận message:
+→ Kiểm tra consumer group name
+→ Kiểm tra topic subscription
+→ Reset offset nếu cần: consumer.seek()
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 📚 TÀI LIỆU THAM KHẢO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Confluent Cloud Docs:
+https://docs.confluent.io/cloud/current/overview.html
+
+KafkaJS với Confluent Cloud:
+https://github.com/tulios/kafkajs#sasl
+
+Railway Environment Variables:
+https://docs.railway.app/develop/variables
+
