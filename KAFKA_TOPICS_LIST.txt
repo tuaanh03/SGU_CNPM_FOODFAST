@@ -1,0 +1,120 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 DANH SÁCH KAFKA TOPICS TRONG PROJECT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 🎯 TẤT CẢ TOPICS CẦN TẠO TRÊN CONFLUENT CLOUD
+
+1. order.create
+2. order.expired
+3. order.retry.payment
+4. order.confirmed
+5. payment.event
+6. product.sync
+7. inventory.reserve.result
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 📊 CHI TIẾT TOPICS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### 1. order.create
+**Producer**: Order Service
+**Consumers**: Payment Service, Product Service
+**Mục đích**: Thông báo khi order mới được tạo
+**Data**: orderId, userId, amount, items, restaurantId
+
+### 2. order.expired
+**Producer**: Order Service
+**Consumers**: Payment Service
+**Mục đích**: Thông báo khi order hết hạn thanh toán
+**Data**: orderId, userId, expiredAt
+
+### 3. order.retry.payment
+**Producer**: Order Service
+**Consumers**: Payment Service
+**Mục đích**: Yêu cầu tạo lại payment URL cho order
+**Data**: orderId, userId, amount
+
+### 4. order.confirmed
+**Producer**: Order Service
+**Consumers**: Restaurant Service
+**Mục đích**: Thông báo order đã thanh toán thành công
+**Data**: orderId, userId, items, restaurantId, deliveryInfo
+
+### 5. payment.event
+**Producer**: Payment Service
+**Consumers**: Order Service, Notification Service
+**Mục đích**: Thông báo kết quả thanh toán (success/failed/cancelled)
+**Data**: orderId, userId, email, amount, paymentStatus, paymentIntentId
+
+### 6. product.sync
+**Producer**: Product Service
+**Consumers**: Order Service
+**Mục đích**: Đồng bộ thông tin sản phẩm
+**Data**: productId, name, price, restaurantId, status
+
+### 7. inventory.reserve.result
+**Producer**: Product Service
+**Consumers**: Order Service
+**Mục đích**: Kết quả reserve inventory
+**Data**: orderId, items, reserved, failedItems
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🔄 LUỒNG MESSAGE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+User tạo order:
+  → Order Service produces: order.create
+  → Payment Service consumes → Tạo PaymentIntent
+  → Product Service consumes → Reserve inventory
+
+Product Service:
+  → Produces: inventory.reserve.result
+  → Order Service consumes → Update order status
+
+User thanh toán VNPay:
+  → VNPay IPN → Payment Service
+  → Payment Service produces: payment.event
+  → Order Service consumes → Update order status
+  → Notification Service consumes → Gửi email
+
+Order thanh toán thành công:
+  → Order Service produces: order.confirmed
+  → Restaurant Service consumes → Chuẩn bị món
+
+Order hết hạn:
+  → Order Service produces: order.expired
+  → Payment Service consumes → Cancel payment
+
+Retry payment:
+  → Order Service produces: order.retry.payment
+  → Payment Service consumes → Tạo payment URL mới
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## ⚙��� CẤU HÌNH ĐỀ XUẤT CHO CONFLUENT CLOUD
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Partitions: 3 (cho mỗi topic)
+Replication Factor: 3 (nếu cluster có ≥3 brokers)
+Retention Time: 7 days (168 hours)
+Cleanup Policy: delete
+
+**Lý do:**
+- 3 partitions: Đủ cho parallel processing, scale tốt
+- 7 days retention: Đủ để debug và replay nếu cần
+- Delete policy: Tự động xóa message cũ, tiết kiệm storage
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🔐 CONSUMER GROUPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+payment-service-group (Payment Service)
+order-service-group (Order Service)
+notification-service-group (Notification Service)
+restaurant-service-group (Restaurant Service)
+product-service-group (Product Service)
+
+**Lưu ý**: Mỗi service có consumer group riêng để:
+- Mỗi service nhận đầy đủ message
+- Không bị conflict khi scale multiple instances
+- Dễ monitor và debug
+

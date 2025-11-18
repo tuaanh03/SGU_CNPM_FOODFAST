@@ -7,9 +7,25 @@ import {
   kafkaConsumerErrorCounter,
 } from "../lib/kafkaMetrics";
 
+// Kafka Configuration - Hỗ trợ cả local và Confluent Cloud
+const kafkaBrokers = process.env.KAFKA_BROKERS?.split(',') || ['kafka:9092'];
+const kafkaUsername = process.env.KAFKA_USERNAME;
+const kafkaPassword = process.env.KAFKA_PASSWORD;
+const useSASL = process.env.KAFKA_SECURITY_PROTOCOL === 'SASL_SSL';
+
+console.log('🔧 Kafka Config (Notification Service):');
+console.log('  - Brokers:', kafkaBrokers);
+console.log('  - SASL:', useSASL ? 'Enabled (Confluent Cloud)' : 'Disabled (Local)');
+
 const kafka = new Kafka({
   clientId: "notification-service",
-  brokers: ["kafka:9092"],
+  brokers: kafkaBrokers,
+  ssl: useSASL,
+  sasl: useSASL && kafkaUsername && kafkaPassword ? {
+    mechanism: 'plain',
+    username: kafkaUsername,
+    password: kafkaPassword
+  } : undefined,
   retry: {
     initialRetryTime: 100,
     maxRetryTime: 30000,
