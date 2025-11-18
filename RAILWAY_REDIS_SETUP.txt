@@ -1,0 +1,245 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔴 HƯỚNG DẪN CẤU HÌNH REDIS TRÊN RAILWAY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 📋 VẤN ĐỀ ĐÃ SỬA
+
+Lỗi: "NOAUTH Authentication required"
+Nguyên nhân: Redis trên Railway yêu cầu password, nhưng code chưa cấu hình
+
+✅ ĐÃ SỬA:
+1. Thêm REDIS_PASSWORD vào .env
+2. Cải thiện redis.ts để xử lý password đúng cách
+3. Fix redisSessionManager.ts với async/await và error handling
+4. Enable keyspace notifications tự động
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🚀 BƯỚC 1: TẠO REDIS TRÊN RAILWAY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Vào Railway Dashboard
+2. Chọn project của bạn
+3. Click "+ New" → "Database" → "Add Redis"
+4. Đợi Redis khởi tạo (1-2 phút)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🔑 BƯỚC 2: LẤY THÔNG TIN KẾT NỐI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Vào Redis service → "Connect" tab
+
+Railway sẽ cung cấp các biến:
+- REDIS_PRIVATE_URL
+- REDIS_PUBLIC_URL
+- REDISHOST
+- REDISPORT
+- REDISUSER (thường là "default")
+- REDISPASSWORD
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## ⚙️ BƯỚC 3: CẤU HÌNH BIẾN MÔI TRƯỜNG
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### CÁCH 1: Dùng riêng từng biến (KHUYẾN NGHỊ)
+
+Vào Order Service trên Railway → Variables tab
+
+Thêm các biến:
+```
+REDIS_HOST=${{Redis.REDISHOST}}
+REDIS_PORT=${{Redis.REDISPORT}}
+REDIS_PASSWORD=${{Redis.REDISPASSWORD}}
+REDIS_DB=0
+ORDER_SESSION_DURATION_MINUTES=5
+```
+
+**Lưu ý:**
+- Railway sẽ tự động reference từ Redis service
+- Format: ${{ServiceName.VARIABLE_NAME}}
+- Nếu Redis service tên là "Redis", dùng ${{Redis.xxx}}
+- Nếu tên khác (vd: "redis-main"), dùng ${{redis-main.xxx}}
+
+### CÁCH 2: Dùng REDIS_URL (Thay thế)
+
+Nếu muốn đơn giản hơn, có thể dùng REDIS_URL:
+```
+REDIS_URL=${{Redis.REDIS_PRIVATE_URL}}
+```
+
+Nhưng cách này cần sửa code redis.ts để parse URL.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🔒 BƯỚC 4: CẤU HÌNH REDIS KEYSPACE NOTIFICATIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**Railway Redis mặc định KHÔNG bật keyspace notifications!**
+
+Code đã tự động enable bằng lệnh:
+```
+CONFIG SET notify-keyspace-events Ex
+```
+
+Nếu Railway Redis không cho phép CONFIG SET, cần:
+
+1. Liên hệ Railway Support để enable
+2. Hoặc dùng Railway Redis Config (nếu có)
+3. Hoặc deploy Redis riêng với config tùy chỉnh
+
+⚠️ NẾU KHÔNG ENABLE:
+- Order expiration events sẽ KHÔNG hoạt động
+- Orders hết hạn sẽ KHÔNG tự động cancel
+- Phải manual cleanup hoặc dùng cron job
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## ✅ BƯỚC 5: VERIFY CẤU HÌNH
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Deploy lại Order Service
+2. Kiểm tra logs:
+
+**Thành công:**
+```
+🔧 Redis Config:
+  - Host: redis.railway.internal
+  - Port: 6379
+  - Password: ***SET***
+  - DB: 0
+✅ Redis connected successfully
+✅ Redis ready for commands
+✅ Main Redis client is ready
+✅ Redis keyspace notifications enabled (Ex)
+✅ Redis subscriber client ready
+✅ Subscribed to Redis expired events on channel: __keyevent@0__:expired
+🎧 Redis expiration listener initialized successfully
+```
+
+**Nếu có warning:**
+```
+⚠️ Could not set notify-keyspace-events (may need manual config)
+```
+→ Cần contact Railway support hoặc dùng workaround
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🐛 TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Lỗi: "NOAUTH Authentication required"
+✅ ĐÃ SỬA: Set REDIS_PASSWORD trên Railway
+
+### Lỗi: "Connection timeout"
+→ Kiểm tra REDIS_HOST đúng (dùng private URL)
+→ Đảm bảo Order Service và Redis cùng project
+
+### Lỗi: "CONFIG SET failed"
+→ Railway Redis không cho phép CONFIG SET
+→ Dùng workaround: Bỏ qua expiration listener (không lý tưởng)
+→ Hoặc deploy Redis riêng với Upstash/Redis Cloud
+
+### Warning: "Could not set notify-keyspace-events"
+→ Order expiration sẽ KHÔNG hoạt động
+→ Cần alternative solution:
+  1. Dùng cron job để cleanup orders hết hạn
+  2. Dùng Upstash Redis (có keyspace notifications)
+  3. Implement polling mechanism
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🔄 CẤU HÌNH CHO DOCKER-COMPOSE (LOCAL)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+File .env (local):
+```
+REDIS_HOST=redis
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DB=0
+ORDER_SESSION_DURATION_MINUTES=5
+```
+
+**Lưu ý:**
+- Không cần password khi chạy local với Docker
+- Code đã tự động xử lý: password rỗng → undefined
+- Docker compose Redis mặc định không có auth
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 💡 ALTERNATIVE: DÙNG UPSTASH REDIS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Nếu Railway Redis không hỗ trợ keyspace notifications:
+
+1. Đăng ký Upstash: https://upstash.com
+2. Tạo Redis database (Free tier: 10,000 commands/day)
+3. Enable "Eviction" trong Settings
+4. Lấy connection info:
+   - UPSTASH_REDIS_REST_URL
+   - UPSTASH_REDIS_REST_TOKEN
+
+5. Update Railway variables:
+```
+REDIS_HOST=<upstash-host>.upstash.io
+REDIS_PORT=6379
+REDIS_PASSWORD=<upstash-password>
+REDIS_DB=0
+```
+
+**Ưu điểm Upstash:**
+- ✅ Hỗ trợ keyspace notifications
+- ✅ Free tier generous
+- ✅ Global edge network (low latency)
+- ✅ Auto-scaling
+
+**Nhược điểm:**
+- ❌ Latency cao hơn Railway Redis (nếu khác region)
+- ❌ Giới hạn commands (10k/day free tier)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 📊 MONITORING REDIS
+━━━━━━━━━━━━━━━━━━━━���━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Kiểm tra Redis có hoạt động:
+
+1. Vào Railway → Redis service → Metrics
+2. Xem:
+   - Memory usage
+   - Commands/sec
+   - Connected clients
+
+Hoặc dùng Redis CLI (local):
+```bash
+redis-cli -h <REDIS_HOST> -p <REDIS_PORT> -a <REDIS_PASSWORD>
+> INFO
+> KEYS order:session:*
+> GET order:session:<orderId>
+> CONFIG GET notify-keyspace-events
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 📝 CHECKLIST DEPLOY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+□ Tạo Redis service trên Railway
+□ Lấy REDIS_HOST, REDIS_PORT, REDIS_PASSWORD
+□ Set biến môi trường trên Order Service Railway
+□ Deploy lại Order Service
+□ Kiểm tra logs: "Redis connected successfully"
+□ Kiểm tra logs: "Redis subscriber client ready"
+□ Kiểm tra logs: "Subscribed to Redis expired events"
+□ Test tạo order → Đợi 5 phút → Kiểm tra order bị cancel
+□ Verify keyspace notifications hoạt động
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🎯 TÓM TẮT NHANH
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**Railway Order Service cần 5 biến:**
+1. REDIS_HOST=${{Redis.REDISHOST}}
+2. REDIS_PORT=${{Redis.REDISPORT}}
+3. REDIS_PASSWORD=${{Redis.REDISPASSWORD}}
+4. REDIS_DB=0
+5. ORDER_SESSION_DURATION_MINUTES=5
+
+**Code đã tự động:**
+- ✅ Xử lý password (có/không có)
+- ✅ Enable keyspace notifications
+- ✅ Async initialization với error handling
+- ✅ Tương thích cả Docker và Railway
+

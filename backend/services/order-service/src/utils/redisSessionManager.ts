@@ -153,30 +153,59 @@ export async function handleExpiredOrderSession(expiredKey: string): Promise<voi
  * Khởi tạo listener cho Redis expired events
  * Phải gọi hàm này khi start server
  */
-export function initializeRedisExpirationListener(): void {
-    // Tạo subscriber client riêng cho pub/sub
-    const subscriberClient = redisClient.duplicate();
+export async function initializeRedisExpirationListener(): Promise<void> {
+    try {
+        // Đảm bảo main client đã ready
+        await redisClient.ping();
+        console.log('✅ Main Redis client is ready');
 
-    // Subscribe vào channel expired events
-    // Pattern: __keyevent@{db}__:expired
-    const db = parseInt(process.env.REDIS_DB || '0');
-    const expiredChannel = `__keyevent@${db}__:expired`;
-
-    subscriberClient.subscribe(expiredChannel, (err) => {
-        if (err) {
-            console.error('❌ Failed to subscribe to Redis expired events:', err);
-            return;
+        // Enable keyspace notifications cho expired events
+        // Cần thiết cho Railway Redis hoặc Redis không có config sẵn
+        try {
+            await redisClient.config('SET', 'notify-keyspace-events', 'Ex');
+            console.log('✅ Redis keyspace notifications enabled (Ex)');
+        } catch (configError: any) {
+            console.warn('⚠️ Could not set notify-keyspace-events (may need manual config):', configError.message);
         }
+
+        // Tạo subscriber client riêng cho pub/sub
+        const subscriberClient = redisClient.duplicate();
+
+        // Wait for subscriber to be ready
+        await new Promise<void>((resolve, reject) => {
+            subscriberClient.on('ready', () => {
+                console.log('✅ Redis subscriber client ready');
+                resolve();
+            });
+            subscriberClient.on('error', (err) => {
+                console.error('❌ Redis subscriber error:', err.message);
+                reject(err);
+            });
+            // Timeout after 10s
+            setTimeout(() => reject(new Error('Redis subscriber timeout')), 10000);
+        });
+
+        // Subscribe vào channel expired events
+        // Pattern: __keyevent@{db}__:expired
+        const db = parseInt(process.env.REDIS_DB || '0');
+        const expiredChannel = `__keyevent@${db}__:expired`;
+
+        await subscriberClient.subscribe(expiredChannel);
         console.log(`✅ Subscribed to Redis expired events on channel: ${expiredChannel}`);
-    });
 
-    // Handle expired events
-    subscriberClient.on('message', async (channel, message) => {
-        // message chính là key đã expired
-        if (message.startsWith(REDIS_KEY_PREFIX)) {
-            await handleExpiredOrderSession(message);
-        }
-    });
+        // Handle expired events
+        subscriberClient.on('message', async (channel, message) => {
+            // message chính là key đã expired
+            if (message.startsWith(REDIS_KEY_PREFIX)) {
+                await handleExpiredOrderSession(message);
+            }
+        });
 
-    console.log('🎧 Redis expiration listener initialized');
+        console.log('🎧 Redis expiration listener initialized successfully');
+    } catch (error: any) {
+        console.error('❌ Failed to initialize Redis expiration listener:', error.message);
+        console.error('⚠️ Order expiration events will NOT work!');
+        // Don't throw - let the service continue without expiration listener
+    }
+}
 }
