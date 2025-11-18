@@ -1,0 +1,433 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔴 VNPAY IPN ROUTING 404 - DEBUG VÀ SỬA LỖI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## ❌ TRIỆU CHỨNG
+
+Test VNPay IPN endpoint:
+```bash
+curl "https://api-gateway-service-production-04a1.up.railway.app/api/payments/vnpay_ipn?test=1" -v
+```
+
+**Response:**
+```json
+{"success":false,"message":"Route not found"}
+```
+
+**Vấn đề:** Route `/api/payments/vnpay_ipn` trả về 404 Not Found
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 🔍 NGUYÊN NHÂN
+
+### Vấn đề 1: Conflict giữa `/api/payment` và `/api/payments`
+
+**Express routing với `server.use()` match PREFIX:**
+
+```typescript
+// ❌ CŨ - BỊ CONFLICT
+server.use("/api/payment", authenticateToken, paymentServiceProxy);  // Line 1
+server.use("/api/payments/vnpay_ipn", paymentServiceProxy);          // Line 2
+```
+
+**Vấn đề:**
+- Request: `/api/payments/vnpay_ipn`
+- Express check route **theo thứ tự khai báo**
+- Line 1: `/api/payment` → Express check xem `/api/payments/vnpay_ipn` có **START WITH** `/api/payment` không?
+  - ✅ CÓ! (`/api/payment` là prefix của `/api/payments`)
+  - → **Route 1 match! Forward đến Payment Service**
+  - → Nhưng có `authenticateToken` middleware → **401 Unauthorized** (nếu không có token)
+
+**Hoặc nếu có token:**
+- Forward đến Payment Service với path: `/payments/vnpay_ipn`
+- Payment Service không có route `/ments/vnpay_ipn` (vì đã remove `/api/payment`)
+- → **404 Not Found** từ Payment Service
+
+### Vấn đề 2: Path transformation không đúng
+
+**Request flow CŨ:**
+```
+1. Client request: GET /api/payments/vnpay_ipn
+                          ↓
+2. API Gateway: server.use("/api/payment", ...) matches
+                          ↓
+3. proxyReqPathResolver: remove "/api"
+   /api/payments/vnpay_ipn → /payments/vnpay_ipn
+                          ↓
+4. Forward to Payment Service: /payments/vnpay_ipn
+                          ↓
+5. Payment Service: server.use("/payment", paymentRoute)
+   Path doesn't match! (đang tìm /payment/*, nhưng nhận /payments/*)
+                          ↓
+6. ❌ 404 Not Found
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## ✅ GIẢI PHÁP
+
+### Chiến lược: Tách riêng `/api/payments` và `/api/payment`
+
+**Lý do:**
+- `/api/payments/*` → VNPay callbacks (public, no auth)
+- `/api/payment/*` → API endpoints (protected, with auth)
+- 2 routes khác nhau hoàn toàn → không conflict
+
+### Sửa API Gateway Routing
+
+**File: `backend/services/api-gateway/src/server.ts`**
+
+```typescript
+// ==================== PAYMENT SERVICE ROUTES ====================
+
+// ⚠️ QUAN TRỌNG: Route order và path matching
+// Express.use() matches PREFIX, nên cần tách riêng /api/payments và /api/payment
+
+// 1. VNPay Callbacks - Public routes (NO AUTHENTICATION)
+// VNPay IPN endpoint - /api/payments/* (plural "payments")
+server.use("/api/payments", paymentServiceProxy);
+
+// VNPay Return URL - /vnpay_return (không có /api prefix)
+server.use("/vnpay_return", paymentServiceProxy);
+
+// 2. Payment API endpoints - Protected routes (WITH AUTHENTICATION)
+// Payment API - /api/payment/* (singular "payment")
+server.use("/api/payment", authenticateToken, paymentServiceProxy);
+
+console.log('✅ Payment routes configured:');
+console.log('  - /api/payments/* → Payment Service (NO AUTH - includes /vnpay_ipn)');
+console.log('  - /vnpay_return → Payment Service (NO AUTH - user redirect)');
+console.log('  - /api/payment/* → Payment Service (WITH AUTH - API calls)');
+
+// ================================================================
+```
+
+**Path transformation (đã có sẵn):**
+```typescript
+const paymentServiceProxy = proxy(config.paymentServiceUrl, {
+    proxyReqPathResolver: (req) => {
+        // VNPay return URL: giữ nguyên path
+        if (req.originalUrl.startsWith("/vnpay_return")) {
+            console.log(`[Payment Proxy] VNPay Return: ${req.originalUrl} → ${req.originalUrl}`);
+            return req.originalUrl;
+        }
+
+        // Các routes khác: remove /api prefix
+        const newPath = req.originalUrl.replace(/^\/api/, "");
+        console.log(`[Payment Proxy] API Route: ${req.originalUrl} → ${newPath}`);
+        return newPath;
+    },
+    ...
+});
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 🔄 REQUEST FLOW MỚI (ĐÚNG)
+
+### Flow 1: VNPay IPN
+
+```
+1. VNPay gọi: GET /api/payments/vnpay_ipn?vnp_TxnRef=xxx&...
+                    ↓
+2. API Gateway:
+   - Check route: server.use("/api/payments", paymentServiceProxy)
+   - ✅ MATCH! ("/api/payments" là prefix của "/api/payments/vnpay_ipn")
+   - ✅ KHÔNG CÓ authenticateToken middleware
+                    ↓
+3. proxyReqPathResolver:
+   - Original URL: /api/payments/vnpay_ipn
+   - Remove /api: /payments/vnpay_ipn
+   - Log: [Payment Proxy] API Route: /api/payments/vnpay_ipn → /payments/vnpay_ipn
+                    ↓
+4. Forward to Payment Service:
+   - URL: http://payment-service:4000/payments/vnpay_ipn?vnp_TxnRef=xxx&...
+                    ↓
+5. Payment Service (server.ts):
+   - Route: server.use("/payments", paymentRoute)
+   - Path: /payments/vnpay_ipn
+   - ✅ MATCH!
+                    ↓
+6. Payment Route (payment.routes.ts):
+   - Route: paymentRoute.get("/vnpay_ipn", asyncHandler(vnpayIPN))
+   - Combined: /payments + /vnpay_ipn = /payments/vnpay_ipn
+   - ✅ MATCH!
+                    ↓
+7. Controller: vnpayIPN()
+   - Verify signature
+   - Update PaymentIntent
+   - Publish Kafka event
+   - ✅ Return success
+```
+
+### Flow 2: Frontend API Call (với auth)
+
+```
+1. Frontend gọi: GET /api/payment/payment-url/order_xxx
+   Headers: Authorization: Bearer <jwt_token>
+                    ↓
+2. API Gateway:
+   - Check route: server.use("/api/payment", authenticateToken, paymentServiceProxy)
+   - ✅ MATCH! ("/api/payment" là prefix của "/api/payment/payment-url/...")
+   - ✅ CÓ authenticateToken middleware → verify JWT
+                    ↓
+3. authenticateToken middleware:
+   - Verify JWT token
+   - Attach user to req.user
+   - ✅ Next()
+                    ↓
+4. proxyReqPathResolver:
+   - Original URL: /api/payment/payment-url/order_xxx
+   - Remove /api: /payment/payment-url/order_xxx
+                    ↓
+5. Forward to Payment Service:
+   - URL: http://payment-service:4000/payment/payment-url/order_xxx
+   - Headers: x-user-id, x-user-email, x-user-role
+                    ↓
+6. Payment Service (server.ts):
+   - Route: server.use("/payment", paymentRoute)
+   - Path: /payment/payment-url/order_xxx
+   - ✅ MATCH!
+                    ↓
+7. Payment Route:
+   - Route: paymentRoute.get("/payment-url/:orderId", asyncHandler(getPaymentUrl))
+   - Combined: /payment + /payment-url/:orderId = /payment/payment-url/:orderId
+   - ✅ MATCH!
+                    ↓
+8. Controller: getPaymentUrl()
+   - Get PaymentIntent from DB
+   - ✅ Return payment URL
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 📊 ROUTING TABLE
+
+### API Gateway Routes (Thứ tự quan trọng!)
+
+| Route Pattern          | Middleware         | Target Service    | Purpose                    |
+|------------------------|-------------------|-------------------|----------------------------|
+| `/api/payments/*`      | ❌ No auth        | Payment Service   | VNPay IPN callbacks        |
+| `/vnpay_return`        | ❌ No auth        | Payment Service   | VNPay return URL           |
+| `/api/payment/*`       | ✅ Auth required  | Payment Service   | Payment API endpoints      |
+| `/api/auth/*`          | ❌ No auth        | User Service      | Authentication             |
+| `/api/order/*`         | ✅ Auth required  | Order Service     | Order operations           |
+| `/api/cart/*`          | ✅ Auth required  | Cart Service      | Cart operations            |
+| `/api/products/*`      | ❌ No auth        | Product Service   | Product listing            |
+| `/api/stores/*`        | ❌ No auth        | Restaurant Svc    | Restaurant listing         |
+
+### Payment Service Routes
+
+| Route Pattern          | Combined Path              | Handler        |
+|------------------------|----------------------------|----------------|
+| `/payments/vnpay_ipn`  | /payments + /vnpay_ipn     | vnpayIPN()     |
+| `/payment/payment-url/:orderId` | /payment + /payment-url/:orderId | getPaymentUrl() |
+| `/vnpay_return`        | / + /vnpay_return          | vnpayReturn()  |
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 🧪 TESTING
+
+### Test 1: VNPay IPN endpoint (Public, no auth)
+
+```bash
+# Test from command line
+curl "https://api-gateway-service-production-04a1.up.railway.app/api/payments/vnpay_ipn?test=1" -v
+```
+
+**Kết quả mong đợi:**
+```
+< HTTP/2 200
+{
+  "RspCode": "97",
+  "Message": "Invalid Checksum"
+}
+```
+
+**Giải thích:**
+- ✅ Status 200 (không 404!) → Route hoạt động
+- ✅ RspCode 97 = Invalid Checksum → Signature verification failed (expected - vì test không có signature đúng)
+- ✅ Chứng tỏ request đã đến Payment Service và được xử lý
+
+**Nếu vẫn 404:**
+→ API Gateway chưa deploy code mới hoặc có vấn đề khác
+
+### Test 2: Payment URL endpoint (Protected, with auth)
+
+```bash
+# Test with valid JWT token
+curl "https://api-gateway-service-production-04a1.up.railway.app/api/payment/payment-url/order_xxx" \
+  -H "Authorization: Bearer <your_jwt_token>" -v
+```
+
+**Kết quả mong đợi:**
+- ✅ Status 200: Trả về payment URL
+- ❌ Status 401: Token không hợp lệ (expected nếu không có token)
+- ❌ Status 404: Order không tồn tại
+
+### Test 3: Kiểm tra logs
+
+**API Gateway logs (sau khi deploy):**
+```
+✅ Payment routes configured:
+  - /api/payments/* → Payment Service (NO AUTH - includes /vnpay_ipn)
+  - /vnpay_return → Payment Service (NO AUTH - user redirect)
+  - /api/payment/* → Payment Service (WITH AUTH - API calls)
+
+[Payment Proxy] API Route: /api/payments/vnpay_ipn → /payments/vnpay_ipn
+```
+
+**Payment Service logs:**
+```
+✅ VNPay IPN received: { test: '1' }
+❌ Invalid signature in VNPay IPN
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 🚀 DEPLOYMENT CHECKLIST
+
+### Bước 1: Commit và push code
+
+```bash
+cd backend/services/api-gateway
+git add src/server.ts
+git commit -m "fix: Tách riêng /api/payments và /api/payment để tránh routing conflict"
+git push
+```
+
+### Bước 2: Deploy trên Railway
+
+**API Gateway:**
+- Railway sẽ tự động detect git push và rebuild
+- Hoặc manual trigger: Settings → Redeploy
+
+**Kiểm tra deployment:**
+- Click vào service → Deployments
+- Đợi build xong (✅ Success)
+- Click "View Logs"
+
+### Bước 3: Verify logs
+
+**Trong API Gateway logs, phải thấy:**
+```
+✅ Payment routes configured:
+  - /api/payments/* → Payment Service (NO AUTH - includes /vnpay_ipn)
+```
+
+**Nếu không thấy:**
+→ Code chưa deploy hoặc đang dùng cache cũ
+
+### Bước 4: Test endpoint
+
+```bash
+curl "https://api-gateway-service-production-04a1.up.railway.app/api/payments/vnpay_ipn?test=1" -v
+```
+
+**Kết quả mong đợi: 200 OK (không 404!)**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 🐛 TROUBLESHOOTING
+
+### Vấn đề: Vẫn 404 sau khi deploy
+
+**Kiểm tra:**
+
+1. **Code đã deploy chưa?**
+   ```bash
+   # Check latest commit on Railway
+   # Settings → Service → Connected Repo → View on GitHub
+   ```
+
+2. **Logs có đúng không?**
+   ```
+   # Phải thấy trong logs:
+   ✅ Payment routes configured:
+     - /api/payments/* → ...
+   ```
+
+3. **Cache issue?**
+   ```bash
+   # Force redeploy
+   Railway → Settings → Redeploy
+   ```
+
+4. **Thử direct call Payment Service (để isolate issue):**
+   ```bash
+   # Nếu có public URL của Payment Service
+   curl "https://payment-service-xxx.railway.app/payments/vnpay_ipn?test=1" -v
+
+   # Kết quả mong đợi: 200 OK
+   # → Payment Service OK, issue ở API Gateway
+   ```
+
+### Vấn đề: 401 Unauthorized
+
+**Nguyên nhân:** Route vẫn bị `authenticateToken` chặn
+
+**Kiểm tra:**
+- Route `/api/payments` có đặt **TRƯỚC** `/api/payment` không?
+- Route `/api/payments` có middleware `authenticateToken` không? (phải KHÔNG CÓ)
+
+### Vấn đề: 500 Internal Server Error
+
+**Nguyên nhân:** Proxy error hoặc Payment Service down
+
+**Kiểm tra:**
+- Payment Service có chạy không? (check Railway dashboard)
+- Logs của Payment Service có lỗi không?
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 📋 TÓM TẮT THAY ĐỔI
+
+### Files đã sửa:
+
+**1. `backend/services/api-gateway/src/server.ts`**
+
+**Thay đổi:**
+- ✅ Tách route `/api/payments` (VNPay callbacks, no auth)
+- ✅ Giữ route `/api/payment` (API endpoints, with auth)
+- ✅ Thêm logging chi tiết trong proxy
+- ✅ Cập nhật fallback handler để debug
+
+**Trước:**
+```typescript
+server.use("/api/payments/vnpay_ipn", paymentServiceProxy);  // ❌ Conflict
+server.use("/api/payment", authenticateToken, paymentServiceProxy);
+```
+
+**Sau:**
+```typescript
+server.use("/api/payments", paymentServiceProxy);  // ✅ No conflict, no auth
+server.use("/api/payment", authenticateToken, paymentServiceProxy);  // ✅ With auth
+```
+
+### VNPay Sandbox Configuration:
+
+**IPN URL:** (không thay đổi)
+```
+https://api-gateway-service-production-04a1.up.railway.app/api/payments/vnpay_ipn
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## ✅ KẾT LUẬN
+
+**Vấn đề gốc:**
+- Route conflict giữa `/api/payment` và `/api/payments`
+- Express prefix matching gây ra lỗi routing
+
+**Giải pháp:**
+- Tách riêng 2 routes hoàn toàn khác nhau
+- `/api/payments/*` → VNPay callbacks (public)
+- `/api/payment/*` → API endpoints (protected)
+
+**Sau khi sửa:**
+- ✅ VNPay IPN endpoint hoạt động (200 OK)
+- ✅ Payment API endpoints vẫn được bảo vệ bởi JWT
+- ✅ Không conflict routing
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+

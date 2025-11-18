@@ -130,8 +130,16 @@ const orderServiceProxy = proxy(config.orderServiceUrl, {
 // proxy middleware for Payment Service (với user info forwarding)
 const paymentServiceProxy = proxy(config.paymentServiceUrl, {
     proxyReqPathResolver: (req) => {
-        if (req.originalUrl.startsWith("/vnpay_return")) return req.originalUrl;
-        return req.originalUrl.replace(/^\/api/, "");
+        // VNPay return URL: giữ nguyên path (không có /api prefix)
+        if (req.originalUrl.startsWith("/vnpay_return")) {
+            console.log(`[Payment Proxy] VNPay Return: ${req.originalUrl} → ${req.originalUrl}`);
+            return req.originalUrl;
+        }
+
+        // Các routes khác: remove /api prefix
+        const newPath = req.originalUrl.replace(/^\/api/, "");
+        console.log(`[Payment Proxy] API Route: ${req.originalUrl} → ${newPath}`);
+        return newPath;
     },
     ...forwardUserInfo,
     ...addCorsOnProxyResp
@@ -211,20 +219,24 @@ server.use("/api/order", orderLimiter, authenticateToken, orderServiceProxy);
 
 // ==================== PAYMENT SERVICE ROUTES ====================
 
-// VNPay callback routes - KHÔNG CẦN AUTHENTICATION (VNPay server gọi vào)
-// VNPay IPN (Instant Payment Notification) - Server-to-server callback
-server.use("/api/payments/vnpay_ipn", paymentServiceProxy);
+// ⚠️ QUAN TRỌNG: Route order và path matching
+// Express.use() matches PREFIX, nên cần tách riêng /api/payments và /api/payment
 
-// VNPay Return URL - User redirect từ VNPay về
+// 1. VNPay Callbacks - Public routes (NO AUTHENTICATION)
+// VNPay IPN endpoint - /api/payments/* (plural "payments")
+server.use("/api/payments", paymentServiceProxy);
+
+// VNPay Return URL - /vnpay_return (không có /api prefix)
 server.use("/vnpay_return", paymentServiceProxy);
 
-// Payment service API routes - CẦN AUTHENTICATION (Frontend gọi)
+// 2. Payment API endpoints - Protected routes (WITH AUTHENTICATION)
+// Payment API - /api/payment/* (singular "payment")
 server.use("/api/payment", authenticateToken, paymentServiceProxy);
 
 console.log('✅ Payment routes configured:');
-console.log('  - /api/payments/vnpay_ipn → Payment Service (NO AUTH - VNPay callback)');
-console.log('  - /vnpay_return → Payment Service (NO AUTH - User redirect)');
-console.log('  - /api/payment/* → Payment Service (WITH AUTH)');
+console.log('  - /api/payments/* → Payment Service (NO AUTH - includes /vnpay_ipn)');
+console.log('  - /vnpay_return → Payment Service (NO AUTH - user redirect)');
+console.log('  - /api/payment/* → Payment Service (WITH AUTH - API calls)');
 
 // ================================================================
 
@@ -251,9 +263,15 @@ server.get("/payment-result", (req: Request, res: Response) => {
     res.json({ success: true, message: "Payment result page", query: req.query });
 });
 
-// fallback
+// fallback - log chi tiết để debug
 server.use((req: Request, res: Response) => {
-    res.status(404).json({ error: "Route not found" });
+    console.log(`[404] Route not found: ${req.method} ${req.originalUrl}`);
+    res.status(404).json({
+        success: false,
+        message: "Route not found",
+        path: req.originalUrl,
+        method: req.method
+    });
 });
 
 server.listen(PORT, () => {
