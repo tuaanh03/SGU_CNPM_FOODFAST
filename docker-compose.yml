@@ -351,9 +351,13 @@ services:
     build:
       context: ./frontend/restaurant-merchant
       dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /api
     container_name: restaurant-merchant
+    environment:
+      - VITE_API_BASE_URL_INTERNAL=http://api-gateway:3000/api/
     ports:
-      - "8080:80"
+      - "8080:8080"
     networks:
       - network
     depends_on:
