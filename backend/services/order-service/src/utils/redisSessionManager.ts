@@ -208,4 +208,3 @@ export async function initializeRedisExpirationListener(): Promise<void> {
         // Don't throw - let the service continue without expiration listener
     }
 }
-}
