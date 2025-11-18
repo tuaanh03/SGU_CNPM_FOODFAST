@@ -6,7 +6,25 @@ env.config();
 const VNPAY_TMN_CODE = process.env.VNPAY_TMN_CODE as string;
 const VNPAY_HASH_SECRET = process.env.VNPAY_HASH_SECRET as string;
 const VNPAY_API_URL = process.env.VNPAY_API_URL as string;
-const VNPAY_RETURN_URL = process.env.VNPAY_RETURN_URL as string;
+
+// Lấy RETURN_URL từ biến môi trường
+// Nếu không có, fallback về frontend URL + path
+const getReturnUrl = (): string => {
+    if (process.env.VNPAY_RETURN_URL) {
+        return process.env.VNPAY_RETURN_URL;
+    }
+
+    // Fallback: dùng FRONTEND_URL nếu có
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    return `${frontendUrl}/payment-result`;
+};
+
+const VNPAY_RETURN_URL = getReturnUrl();
+
+console.log('✅ VNPay Config:');
+console.log('  - TMN_CODE:', VNPAY_TMN_CODE);
+console.log('  - API_URL:', VNPAY_API_URL);
+console.log('  - RETURN_URL:', VNPAY_RETURN_URL);
 
 // Initialize VNPay instance
 export const vnpay = new VNPay({
@@ -39,9 +57,11 @@ export async function processPayment(
             vnp_Locale: VnpLocale.VN,
         });
 
+        console.log(`✅ Created payment URL for order ${orderId}, txnRef: ${txnRef}`);
+
         return { success: true, paymentIntentId: txnRef, paymentUrl };
     } catch (error: any) {
-        console.error(`Payment failed for order ${orderId}:`, error.message);
+        console.error(`❌ Payment failed for order ${orderId}:`, error.message);
         return { success: false, error: error.message };
     }
 }

@@ -1,0 +1,166 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔧 CẤU HÌNH VNPAY RETURN URL & IPN URL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 📋 TÓM TẮT
+
+**RETURN URL**: User redirect sau khi thanh toán → Frontend
+**IPN URL**: Server-to-server notification → API Gateway → Payment Service
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 1️⃣ DOCKER-COMPOSE (Local Development)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### **Bước 1: Chạy ngrok**
+```bash
+ngrok http 3000
+```
+
+Lấy URL ngrok (ví dụ: https://abc-xyz.ngrok-free.dev)
+
+### **Bước 2: Cập nhật .env trong payment-service**
+```env
+VNPAY_RETURN_URL=https://abc-xyz.ngrok-free.dev/payment-result
+VNPAY_IPN_URL=https://abc-xyz.ngrok-free.dev/api/payments/vnpay_ipn
+FRONTEND_URL=http://localhost:3000
+```
+
+### **Bước 3: Cấu hình VNPay Sandbox Portal**
+- Vào: https://sandbox.vnpayment.vn/merchantv2/
+- Login với tài khoản merchant
+- Vào: **Cấu hình** → **URL IPN**
+- Nhập: `https://abc-xyz.ngrok-free.dev/api/payments/vnpay_ipn`
+- Lưu lại
+
+### **Luồng hoạt động:**
+```
+User thanh toán VNPay
+  ↓
+VNPay redirect → https://abc-xyz.ngrok-free.dev/payment-result
+  ↓
+Frontend hiển thị kết quả
+
+VNPay gửi IPN → https://abc-xyz.ngrok-free.dev/api/payments/vnpay_ipn
+  ↓
+Nginx proxy → http://api-gateway:3000/api/payments/vnpay_ipn
+  ↓
+API Gateway proxy → http://payment-service:4000/vnpay_ipn
+  ↓
+Payment service xử lý → Update DB → Kafka event
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 2️⃣ RAILWAY/VERCEL PRODUCTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### **Frontend (Vercel)**
+Domain: `https://sgu-cnpm-foodfast.vercel.app`
+
+### **API Gateway (Railway)**
+Domain: `https://api-gateway-service-production-04a1.up.railway.app`
+
+### **Cấu hình biến môi trường trên Railway (Payment Service)**
+```env
+VNPAY_RETURN_URL=https://sgu-cnpm-foodfast.vercel.app/payment-result
+VNPAY_IPN_URL=https://api-gateway-service-production-04a1.up.railway.app/api/payments/vnpay_ipn
+FRONTEND_URL=https://sgu-cnpm-foodfast.vercel.app
+```
+
+### **⚠️ QUAN TRỌNG: Cấu hình VNPay Sandbox Portal**
+- Vào: https://sandbox.vnpayment.vn/merchantv2/
+- Login với tài khoản merchant
+- Vào: **Cấu hình** → **URL IPN**
+- Nhập: `https://api-gateway-service-production-04a1.up.railway.app/api/payments/vnpay_ipn`
+- **Lưu lại**
+
+### **Luồng hoạt động:**
+```
+User thanh toán VNPay
+  ↓
+VNPay redirect → https://sgu-cnpm-foodfast.vercel.app/payment-result
+  ↓
+Frontend Vercel hiển thị kết quả
+
+VNPay gửi IPN → https://api-gateway-service-production-04a1.up.railway.app/api/payments/vnpay_ipn
+  ↓
+API Gateway → http://payment-service.railway.internal:4000/vnpay_ipn
+  ↓
+Payment service xử lý → Update DB → Kafka event
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 3️⃣ CÂU HỎI THƯỜNG GẶP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### **Q: IPN URL có cần cấu hình trong VNPay Portal không?**
+A: **CÓ**, bắt buộc phải config trong VNPay Merchant Portal.
+   Thư viện vnpay không cho phép truyền IPN URL qua API.
+
+### **Q: Return URL có cần config trong Portal không?**
+A: **KHÔNG**, Return URL được truyền qua API khi tạo payment URL.
+
+### **Q: Khi chuyển từ ngrok sang production có cần làm gì?**
+A: **CÓ**, phải:
+   1. Cập nhật biến môi trường trên Railway
+   2. Cập nhật IPN URL trong VNPay Portal
+   3. Redeploy payment service
+
+### **Q: Làm sao kiểm tra IPN có hoạt động không?**
+A: Kiểm tra log của payment service sau khi thanh toán:
+   - Log "VNPay IPN received:" → IPN đã nhận
+   - Log "✓ VNPay IPN signature verified" → Signature đúng
+   - Log "✓ Published payment success event" → Xử lý thành công
+
+### **Q: IPN bị lỗi signature, sai ở đâu?**
+A: Kiểm tra:
+   1. VNPAY_HASH_SECRET đúng chưa
+   2. IPN URL trong Portal có đúng không
+   3. URL có bị redirect (www vs non-www, http vs https)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 4️⃣ CHECKLIST DEPLOY PRODUCTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Railway (Payment Service):
+□ Set VNPAY_RETURN_URL=https://sgu-cnpm-foodfast.vercel.app/payment-result
+□ Set VNPAY_IPN_URL=https://api-gateway-service-production-04a1.up.railway.app/api/payments/vnpay_ipn
+□ Set FRONTEND_URL=https://sgu-cnpm-foodfast.vercel.app
+□ Redeploy payment service
+
+VNPay Sandbox Portal:
+□ Login https://sandbox.vnpayment.vn/merchantv2/
+□ Vào Cấu hình → URL IPN
+□ Nhập: https://api-gateway-service-production-04a1.up.railway.app/api/payments/vnpay_ipn
+□ Lưu lại
+
+Test:
+□ Tạo đơn hàng mới
+□ Thanh toán qua VNPay
+□ Kiểm tra redirect về Vercel frontend
+□ Kiểm tra log payment service nhận IPN
+□ Kiểm tra order status được update
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 5️⃣ TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### **Lỗi: Payment thành công nhưng order không update**
+→ Kiểm tra IPN URL có đúng trong VNPay Portal
+→ Kiểm tra log payment service có nhận IPN không
+
+### **Lỗi: Return về frontend nhưng không có order ID**
+→ Kiểm tra VNPAY_RETURN_URL có đúng format
+→ Kiểm tra frontend có route /payment-result
+
+### **Lỗi: IPN signature invalid**
+→ Kiểm tra VNPAY_HASH_SECRET
+→ Kiểm tra IPN URL không bị redirect (301/302)
+
+### **Lỗi: Frontend không nhận được kết quả thanh toán**
+→ Kiểm tra FRONTEND_URL có đúng
+→ Kiểm tra frontend có xử lý route /payment-result
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ HOÀN TẤT CẤU HÌNH
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
