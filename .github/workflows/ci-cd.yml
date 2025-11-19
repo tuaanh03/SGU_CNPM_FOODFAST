@@ -116,7 +116,7 @@ jobs:
 #        uses: docker/build-push-action@v5
 #        with:
 #          context: ./backend/services/${{ matrix.service }}
-#          file: ./backend/services/${{ matrix.service }}/Dockerfile
+#          file: ./backend/services/${{ matrix.service }}/dockerfile
 #          push: true
 #          tags: ${{ steps.meta.outputs.tags }}
 #          labels: ${{ steps.meta.outputs.labels }}
@@ -153,10 +153,10 @@ jobs:
     #         username: ${{ secrets.DOCKERHUB_USERNAME }}
     #         password: ${{ secrets.DOCKERHUB_TOKEN }}
     #
-    #     - name: Create Dockerfile for frontend
+    #     - name: Create dockerfile for frontend
     #       working-directory: ./frontend/cnpm-fooddelivery
     #       run: |
-    #         cat > Dockerfile << 'EOF'
+    #         cat > dockerfile << 'EOF'
     #         FROM nginx:alpine
     #         COPY dist /usr/share/nginx/html
     #         EXPOSE 80
@@ -184,7 +184,7 @@ jobs:
   #       run: |
   #         echo "✅ Build và push thành công tất cả backend services lên Azure Container Registry!"
   #         echo "🚀 Backend services: api-gateway, user-service, order-service, product-service, payment-service, notification-service, restaurant-service, cart-service"
-  #         echo "📝 Frontend sẽ được thêm sau khi có Dockerfile"
+  #         echo "📝 Frontend sẽ được thêm sau khi có dockerfile"
 
   #     - name: Notify failure
   #       if: ${{ needs.build-push-backend.result == 'failure' }}
