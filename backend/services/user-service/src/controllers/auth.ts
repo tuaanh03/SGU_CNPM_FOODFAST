@@ -3,6 +3,12 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import prisma from "../lib/prisma";
 import crypto from "crypto";
+import {
+  loginAttemptsCounter,
+  registrationsCounter,
+  tokenVerificationsCounter,
+  activeSessionsGauge
+} from '../lib/metrics';
 
 // --------------------- Đăng ký customer ---------------------
 export const registerCustomer = async (req: Request, res: Response) => {
@@ -12,6 +18,7 @@ export const registerCustomer = async (req: Request, res: Response) => {
         // Kiểm tra email đã tồn tại
         const existingUser = await prisma.user.findUnique({ where: { email } });
         if (existingUser) {
+            registrationsCounter.inc({ role: 'CUSTOMER' });
             return res.status(400).json({
                 success: false,
                 message: "Email đã được sử dụng",
@@ -40,6 +47,7 @@ export const registerCustomer = async (req: Request, res: Response) => {
                 createdAt: true,
             },
         });
+        registrationsCounter.inc({ role: 'CUSTOMER' });
 
         // Tạo JWT token với jti để hỗ trợ logout
         const jti = crypto.randomUUID();
@@ -75,6 +83,7 @@ export const registerAdmin = async (req: Request, res: Response) => {
         // Kiểm tra email đã tồn tại
         const existingUser = await prisma.user.findUnique({ where: { email } });
         if (existingUser) {
+            registrationsCounter.inc({ role: 'STORE_ADMIN' });
             return res.status(400).json({
                 success: false,
                 message: "Email đã được sử dụng",
@@ -103,6 +112,7 @@ export const registerAdmin = async (req: Request, res: Response) => {
                 createdAt: true,
             },
         });
+        registrationsCounter.inc({ role: 'STORE_ADMIN' });
 
         // Tạo JWT token với jti để hỗ trợ logout
         const jti = crypto.randomUUID();
@@ -138,6 +148,7 @@ export const registerSystemAdmin = async (req: Request, res: Response) => {
         // Kiểm tra email đã tồn tại
         const existingUser = await prisma.user.findUnique({ where: { email } });
         if (existingUser) {
+            registrationsCounter.inc({ role: 'SYSTEM_ADMIN' });
             return res.status(400).json({
                 success: false,
                 message: "Email đã được sử dụng",
@@ -166,6 +177,7 @@ export const registerSystemAdmin = async (req: Request, res: Response) => {
                 createdAt: true,
             },
         });
+        registrationsCounter.inc({ role: 'SYSTEM_ADMIN' });
 
         // Tạo JWT token với jti để hỗ trợ logout
         const jti = crypto.randomUUID();
@@ -204,6 +216,7 @@ export const loginCustomer = async (req: Request, res: Response) => {
         });
 
         if (!user) {
+            loginAttemptsCounter.inc({ role: 'CUSTOMER', status: 'failed' });
             return res.status(400).json({
                 success: false,
                 message: "Email hoặc mật khẩu không đúng",
@@ -212,6 +225,7 @@ export const loginCustomer = async (req: Request, res: Response) => {
 
         // Kiểm tra role - chỉ cho phép CUSTOMER đăng nhập
         if (user.role !== "CUSTOMER") {
+            loginAttemptsCounter.inc({ role: 'CUSTOMER', status: 'failed' });
             return res.status(403).json({
                 success: false,
                 message: "Tài khoản không tồn tại trong hệ thống khách hàng",
@@ -220,6 +234,7 @@ export const loginCustomer = async (req: Request, res: Response) => {
 
         // Kiểm tra account status
         if (user.status !== "ACTIVE") {
+            loginAttemptsCounter.inc({ role: 'CUSTOMER', status: 'failed' });
             return res.status(403).json({
                 success: false,
                 message: "Tài khoản đã bị khóa hoặc vô hiệu hóa",
@@ -229,11 +244,14 @@ export const loginCustomer = async (req: Request, res: Response) => {
         // Kiểm tra password
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) {
+            loginAttemptsCounter.inc({ role: 'CUSTOMER', status: 'failed' });
             return res.status(400).json({
                 success: false,
                 message: "Email hoặc mật khẩu không đúng",
             });
         }
+        loginAttemptsCounter.inc({ role: 'CUSTOMER', status: 'success' });
+        activeSessionsGauge.inc();
 
         // Tạo JWT token với jti để hỗ trợ logout
         const jti = crypto.randomUUID();
@@ -277,6 +295,7 @@ export const loginAdmin = async (req: Request, res: Response) => {
         });
 
         if (!user) {
+            loginAttemptsCounter.inc({ role: 'STORE_ADMIN', status: 'failed' });
             return res.status(400).json({
                 success: false,
                 message: "Email hoặc mật khẩu không đúng",
@@ -285,6 +304,7 @@ export const loginAdmin = async (req: Request, res: Response) => {
 
         // Kiểm tra role - chỉ cho phép STORE_ADMIN đăng nhập
         if (user.role !== "STORE_ADMIN") {
+            loginAttemptsCounter.inc({ role: 'STORE_ADMIN', status: 'failed' });
             return res.status(403).json({
                 success: false,
                 message: "Tài khoản không tồn tại trong hệ thống quản trị",
@@ -293,6 +313,7 @@ export const loginAdmin = async (req: Request, res: Response) => {
 
         // Kiểm tra account status
         if (user.status !== "ACTIVE") {
+            loginAttemptsCounter.inc({ role: 'STORE_ADMIN', status: 'failed' });
             return res.status(403).json({
                 success: false,
                 message: "Tài khoản đã bị khóa hoặc vô hiệu hóa",
@@ -302,11 +323,14 @@ export const loginAdmin = async (req: Request, res: Response) => {
         // Kiểm tra password
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) {
+            loginAttemptsCounter.inc({ role: 'STORE_ADMIN', status: 'failed' });
             return res.status(400).json({
                 success: false,
                 message: "Email hoặc mật khẩu không đúng",
             });
         }
+        loginAttemptsCounter.inc({ role: 'STORE_ADMIN', status: 'success' });
+        activeSessionsGauge.inc();
 
         // Tạo JWT token với jti để hỗ trợ logout
         const jti = crypto.randomUUID();
@@ -350,6 +374,7 @@ export const loginSystemAdmin = async (req: Request, res: Response) => {
         });
 
         if (!user) {
+            loginAttemptsCounter.inc({ role: 'SYSTEM_ADMIN', status: 'failed' });
             return res.status(400).json({
                 success: false,
                 message: "Email hoặc mật khẩu không đúng",
@@ -358,6 +383,7 @@ export const loginSystemAdmin = async (req: Request, res: Response) => {
 
         // Kiểm tra role - chỉ cho phép SYSTEM_ADMIN đăng nhập
         if (user.role !== "SYSTEM_ADMIN") {
+            loginAttemptsCounter.inc({ role: 'SYSTEM_ADMIN', status: 'failed' });
             return res.status(403).json({
                 success: false,
                 message: "Tài khoản không tồn tại trong hệ thống quản trị",
@@ -366,6 +392,7 @@ export const loginSystemAdmin = async (req: Request, res: Response) => {
 
         // Kiểm tra account status
         if (user.status !== "ACTIVE") {
+            loginAttemptsCounter.inc({ role: 'SYSTEM_ADMIN', status: 'failed' });
             return res.status(403).json({
                 success: false,
                 message: "Tài khoản đã bị khóa hoặc vô hiệu hóa",
@@ -375,11 +402,14 @@ export const loginSystemAdmin = async (req: Request, res: Response) => {
         // Kiểm tra password
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) {
+            loginAttemptsCounter.inc({ role: 'SYSTEM_ADMIN', status: 'failed' });
             return res.status(400).json({
                 success: false,
                 message: "Email hoặc mật khẩu không đúng",
             });
         }
+        loginAttemptsCounter.inc({ role: 'SYSTEM_ADMIN', status: 'success' });
+        activeSessionsGauge.inc();
 
         // Tạo JWT token với jti để hỗ trợ logout
         const jti = crypto.randomUUID();
@@ -529,7 +559,7 @@ export const logout = async (req: Request, res: Response) => {
                 }
             });
         }
-
+        activeSessionsGauge.dec();
         return res.status(200).json({
             success: true,
             message: "Đăng xuất thành công",
@@ -548,8 +578,8 @@ export const logout = async (req: Request, res: Response) => {
 export const verifyToken = async (req: Request, res: Response) => {
     try {
         const { token } = req.body;
-
         if (!token) {
+            tokenVerificationsCounter.inc({ status: 'failed' });
             return res.status(400).json({
                 success: false,
                 message: "Thiếu token"
@@ -605,6 +635,7 @@ export const verifyToken = async (req: Request, res: Response) => {
         }
 
         // Token hợp lệ
+        tokenVerificationsCounter.inc({ status: 'success' });
         return res.status(200).json({
             success: true,
             data: {
@@ -614,6 +645,7 @@ export const verifyToken = async (req: Request, res: Response) => {
             }
         });
     } catch (err: any) {
+        tokenVerificationsCounter.inc({ status: 'failed' });
         const message = err?.name === "TokenExpiredError" ? "Token đã hết hạn" : "Token không hợp lệ";
         return res.status(401).json({ success: false, message });
     }
