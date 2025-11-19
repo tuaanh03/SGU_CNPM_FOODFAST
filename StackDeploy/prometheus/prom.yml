@@ -1,0 +1,42 @@
+global:
+  scrape_interval: 10s
+#  scrape_timeout: 10s
+#  evaluation_interval: 10s
+
+scrape_configs:
+  - job_name: 'user-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['user-service-production-500d.up.railway.app']
+
+  - job_name: 'order-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['order-service-production-0c7c.up.railway.app']
+
+  #  - job_name: 'notification-service'
+  #    metrics_path: '/actuator/prometheus'
+  #    static_configs:
+  #      - targets: ['notification-service:5000']
+
+  - job_name: 'product-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['product-service-production-1fc4.up.railway.app']
+
+  - job_name: 'cart-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['cart-service-production-7711.up.railway.app']
+
+  - job_name: 'payment-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['payment-service-production-6dc7.up.railway.app']
+
+  - job_name: 'restaurant-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['restaurant-service-production-4dea.up.railway.app']
+
+
