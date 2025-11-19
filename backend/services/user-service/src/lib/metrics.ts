@@ -38,5 +38,31 @@ export const activeUsers = new promClient.Gauge({
   registers: [register],
 });
 
-export default register;
+export const loginAttemptsCounter = new promClient.Counter({
+  name: 'user_service_login_attempts_total',
+  help: 'Total number of login attempts',
+  labelNames: ['role', 'status'], // status: success | failed
+  registers: [register],
+});
 
+export const registrationsCounter = new promClient.Counter({
+  name: 'user_service_registrations_total',
+  help: 'Total number of user registrations',
+  labelNames: ['role'],
+  registers: [register],
+});
+
+export const tokenVerificationsCounter = new promClient.Counter({
+  name: 'user_service_token_verifications_total',
+  help: 'Total number of token verifications',
+  labelNames: ['status'], // status: success | failed
+  registers: [register],
+});
+
+export const activeSessionsGauge = new promClient.Gauge({
+  name: 'user_service_active_sessions_gauge',
+  help: 'Number of currently active sessions',
+  registers: [register],
+});
+
+export default register;
