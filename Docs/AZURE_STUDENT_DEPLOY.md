@@ -452,7 +452,7 @@ npx prisma migrate deploy
    - Trong Dockerfile hoặc entrypoint script, thêm lệnh trước khi khởi chạy app:
 
 ```dockerfile
-# Dockerfile (entrypoint snippet)
+# dockerfile (entrypoint snippet)
 # ...existing code...
 CMD npx prisma migrate deploy && node dist/server.js
 ```
