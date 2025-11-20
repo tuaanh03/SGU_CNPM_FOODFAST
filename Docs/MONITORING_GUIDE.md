@@ -1187,8 +1187,41 @@ datasources:
 
 ---
 
-**Tài liệu liên quan:**
-- [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md) - Tổng quan dự án
-- [K6_LOAD_TESTING_GUIDE.md](./K6_LOAD_TESTING_GUIDE.md) - Hướng dẫn load testing
-- [TESTING_GUIDE.md](./TESTING_GUIDE.md) - Hướng dẫn testing
+## Thu thập metrics cho Azure PostgreSQL
 
+Nếu sử dụng database PostgreSQL được deploy trên Azure, bạn có thể thu thập metrics bằng Prometheus và postgres_exporter như sau:
+
+### 1. Triển khai postgres_exporter
+- Chạy postgres_exporter trên một VM, container hoặc server có thể truy cập Azure PostgreSQL.
+- Cấu hình biến môi trường kết nối đến Azure PostgreSQL:
+  ```
+  DATA_SOURCE_NAME=postgresql://username:password@your-azure-db.postgres.database.azure.com:5432/dbname?sslmode=require
+  ```
+
+### 2. Cấu hình Prometheus
+- Thêm job scrape vào prometheus.yml:
+  ```yaml
+  - job_name: 'azure-postgres'
+    static_configs:
+      - targets: ['<postgres_exporter_host>:9187']
+  ```
+- Đảm bảo Prometheus có thể truy cập được postgres_exporter.
+
+### 3. Metrics phổ biến
+- pg_stat_activity_count
+- pg_database_size_bytes
+- pg_stat_user_tables_seq_scan
+- pg_stat_user_tables_n_tup_ins
+- pg_stat_user_tables_n_tup_upd
+- pg_stat_user_tables_n_tup_del
+
+### 4. Lưu ý bảo mật
+- Sử dụng SSL/TLS khi kết nối đến Azure PostgreSQL.
+- Không expose exporter ra internet công cộng, chỉ cho phép Prometheus truy cập.
+
+### 5. Grafana Dashboard
+- Import dashboard mẫu cho PostgreSQL để trực quan hóa các metrics.
+
+---
+
+> **Lưu ý:** Nếu bạn deploy database trên Azure, KHÔNG sử dụng Docker Compose cho database. Chỉ cần chạy postgres_exporter trên một máy chủ hoặc container có thể truy cập Azure PostgreSQL, cấu hình DATA_SOURCE_NAME trỏ tới Azure PostgreSQL, và cấu hình Prometheus scrape từ địa chỉ exporter (ví dụ: VM_IP:9187).
