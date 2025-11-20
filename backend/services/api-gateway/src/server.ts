@@ -9,6 +9,17 @@ import { config } from "./config/index";
 import express, { Request, Response , NextFunction, RequestHandler } from "express";
 import { authLimiter, orderLimiter } from "./utils/limiters";
 import { authenticateToken } from "./middleware/auth";
+import metricsRegister, {
+  httpRequestCounter,
+  httpRequestDuration,
+  httpRequestSize,
+  httpResponseSize,
+  proxyRequestCounter,
+  proxyDuration,
+  proxyErrorCounter,
+  rateLimitHitsCounter,
+  activeConnectionsGauge
+} from './metrics';
 
 env.config();
 
@@ -74,6 +85,47 @@ server.use(morgan(':json'));
 server.use(compression());
 server.use(bodyParser.json());
 
+// ==================== METRICS MIDDLEWARE ====================
+
+// Track HTTP metrics for all requests
+server.use((req: Request, res: Response, next: NextFunction) => {
+  const start = Date.now();
+
+  // Track request size
+  const reqSize = parseInt(req.get('content-length') || '0', 10);
+  const route = req.route?.path || req.path;
+
+  if (reqSize > 0) {
+    httpRequestSize.observe({ method: req.method, route }, reqSize);
+  }
+
+  // Increment active connections
+  activeConnectionsGauge.inc();
+
+  // On response finish
+  res.on('finish', () => {
+    const duration = (Date.now() - start) / 1000; // Convert to seconds
+    const statusCode = res.statusCode.toString();
+
+    // Record metrics
+    httpRequestCounter.inc({ method: req.method, route, status_code: statusCode });
+    httpRequestDuration.observe({ method: req.method, route, status_code: statusCode }, duration);
+
+    // Track response size
+    const resSize = parseInt(res.get('content-length') || '0', 10);
+    if (resSize > 0) {
+      httpResponseSize.observe({ method: req.method, route }, resSize);
+    }
+
+    // Decrement active connections
+    activeConnectionsGauge.dec();
+  });
+
+  next();
+});
+
+// ==================== END METRICS MIDDLEWARE ====================
+
 /** Helper: decorator chung để gắn CORS header vào response từ proxy */
 const addCorsOnProxyResp = {
     userResHeaderDecorator: (headers: any, req: any) => {
@@ -114,17 +166,51 @@ const forwardUserInfo = {
     }
 };
 
+// Helper: Track proxy metrics
+const trackProxyMetrics = (serviceName: string) => ({
+  proxyReqOptDecorator: (proxyReqOpts: any, srcReq: any) => {
+    // Start timer for proxy duration
+    const start = Date.now();
+    (srcReq as any).__proxyStart = start;
+    (srcReq as any).__proxyService = serviceName;
+    return proxyReqOpts;
+  },
+  userResDecorator: (proxyRes: any, proxyResData: any, userReq: any) => {
+    // Calculate proxy duration
+    const duration = (Date.now() - (userReq as any).__proxyStart) / 1000;
+    const service = (userReq as any).__proxyService || serviceName;
+
+    // Record metrics
+    proxyDuration.observe({ service }, duration);
+
+    if (proxyRes.statusCode >= 200 && proxyRes.statusCode < 400) {
+      proxyRequestCounter.inc({ service, status: 'success' });
+    } else {
+      proxyRequestCounter.inc({ service, status: 'error' });
+    }
+
+    return proxyResData;
+  },
+  proxyErrorHandler: (err: any, res: any, next: any) => {
+    const service = serviceName;
+    proxyErrorCounter.inc({ service, error_type: err.code || 'unknown' });
+    next(err);
+  }
+});
+
 // proxy middleware for User Service (handles both /auth and /payment-methods)
 const userServiceProxy = proxy(config.userServiceUrl, {
     proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api/, ""),
-    ...addCorsOnProxyResp
+    ...addCorsOnProxyResp,
+    ...trackProxyMetrics('user-service')
 });
 
 // proxy middleware for Order Service (với user info forwarding)
 const orderServiceProxy = proxy(config.orderServiceUrl, {
     proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api/, ""),
     ...forwardUserInfo,
-    ...addCorsOnProxyResp
+    ...addCorsOnProxyResp,
+    ...trackProxyMetrics('order-service')
 });
 
 // proxy middleware for Payment Service (với user info forwarding)
@@ -142,14 +228,16 @@ const paymentServiceProxy = proxy(config.paymentServiceUrl, {
         return newPath;
     },
     ...forwardUserInfo,
-    ...addCorsOnProxyResp
+    ...addCorsOnProxyResp,
+    ...trackProxyMetrics('payment-service')
 });
 
 // proxy middleware for Product Service (thêm bỏ conditional headers)
 const productServiceProxy = proxy(config.productServiceUrl, {
     proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api/, ""),
     ...dropConditionalHeaders,
-    ...addCorsOnProxyResp
+    ...addCorsOnProxyResp,
+    ...trackProxyMetrics('product-service')
 });
 
 // proxy middleware for Restaurant Service (với user info forwarding cho protected routes)
@@ -157,20 +245,23 @@ const restaurantServiceProxy = proxy(config.restaurantServiceUrl, {
     proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api/, ""),
     ...forwardUserInfo,
     ...dropConditionalHeaders,
-    ...addCorsOnProxyResp
+    ...addCorsOnProxyResp,
+    ...trackProxyMetrics('restaurant-service')
 });
 
 // proxy middleware for Cart Service (với user info forwarding)
 const cartServiceProxy = proxy(config.cartServiceUrl, {
     proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api/, ""),
     ...forwardUserInfo,
-    ...addCorsOnProxyResp
+    ...addCorsOnProxyResp,
+    ...trackProxyMetrics('cart-service')
 });
 
 // proxy middleware for Location Service (public routes)
 const locationServiceProxy = proxy(config.locationServiceUrl, {
     proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api/, ""),
-    ...addCorsOnProxyResp
+    ...addCorsOnProxyResp,
+    ...trackProxyMetrics('location-service')
 });
 
 // ====== AGGREGATION ENDPOINT ======
@@ -261,6 +352,17 @@ server.get("/", (_req: Request, res: Response) => {
 // frontend route demo
 server.get("/payment-result", (req: Request, res: Response) => {
     res.json({ success: true, message: "Payment result page", query: req.query });
+});
+
+// Metrics endpoint for Prometheus
+server.get('/metrics', async (_req: Request, res: Response) => {
+  res.set('Content-Type', metricsRegister.contentType);
+  res.end(await metricsRegister.metrics());
+});
+
+// Health endpoint
+server.get('/health', (_req: Request, res: Response) => {
+  res.json({ status: 'ok', service: 'api-gateway', timestamp: new Date().toISOString() });
 });
 
 // fallback - log chi tiết để debug
