@@ -39,5 +39,27 @@ export const categoryCounter = new promClient.Counter({
   registers: [register],
 });
 
+// Business Metrics
+export const productsOperationsCounter = new promClient.Counter({
+  name: 'product_service_products_operations_total',
+  help: 'Total number of product operations',
+  labelNames: ['action', 'store_id'], // action: created | updated | deleted
+  registers: [register],
+});
+
+export const availableProductsGauge = new promClient.Gauge({
+  name: 'product_service_available_products_gauge',
+  help: 'Number of available products',
+  labelNames: ['store_id'],
+  registers: [register],
+});
+
+export const categoriesOperationsCounter = new promClient.Counter({
+  name: 'product_service_categories_operations_total',
+  help: 'Total number of category operations',
+  labelNames: ['action'], // action: created | updated | deleted
+  registers: [register],
+});
+
 export default register;
 

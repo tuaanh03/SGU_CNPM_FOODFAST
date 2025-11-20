@@ -40,5 +40,58 @@ export const paymentAmountHistogram = new promClient.Histogram({
   registers: [register],
 });
 
+// Business Metrics
+export const paymentIntentsCounter = new promClient.Counter({
+  name: 'payment_service_payment_intents_total',
+  help: 'Total number of payment intents',
+  labelNames: ['status'], // status: REQUIRES_PAYMENT | PROCESSING | SUCCEEDED | FAILED
+  registers: [register],
+});
+
+export const paymentAttemptsCounter = new promClient.Counter({
+  name: 'payment_service_payment_attempts_total',
+  help: 'Total number of payment attempts',
+  labelNames: ['status'], // status: success | failed
+  registers: [register],
+});
+
+export const paymentValueHistogram = new promClient.Histogram({
+  name: 'payment_service_payment_amount_histogram',
+  help: 'Distribution of payment amounts',
+  buckets: [50000, 100000, 200000, 500000, 1000000, 2000000, 5000000], // VND
+  registers: [register],
+});
+
+export const paymentProcessingDuration = new promClient.Histogram({
+  name: 'payment_service_payment_processing_duration_seconds',
+  help: 'Payment processing duration by gateway',
+  labelNames: ['gateway'], // gateway: vnpay | stripe
+  buckets: [0.5, 1, 2, 5, 10, 30],
+  registers: [register],
+});
+
+// VNPay Integration Metrics
+export const vnpayApiCallsCounter = new promClient.Counter({
+  name: 'payment_service_vnpay_api_calls_total',
+  help: 'Total number of VNPay API calls',
+  labelNames: ['endpoint', 'status'], // status: success | error
+  registers: [register],
+});
+
+export const vnpayResponsesCounter = new promClient.Counter({
+  name: 'payment_service_vnpay_responses_total',
+  help: 'Total number of VNPay responses by code',
+  labelNames: ['response_code'],
+  registers: [register],
+});
+
+export const vnpayCallbackDuration = new promClient.Histogram({
+  name: 'payment_service_vnpay_callback_duration_seconds',
+  help: 'VNPay callback processing duration',
+  labelNames: ['type'], // type: return | ipn
+  buckets: [0.1, 0.5, 1, 2, 5],
+  registers: [register],
+});
+
 export default register;
 

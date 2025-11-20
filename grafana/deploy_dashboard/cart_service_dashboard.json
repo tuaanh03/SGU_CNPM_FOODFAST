@@ -1,0 +1,128 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 0,
+  "links": [],
+  "panels": [
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Cart Service - Overall",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "id": 1,
+      "targets": [ { "expr": "sum(rate(cart_service_http_requests_total[5m]))", "refId": "A" } ],
+      "title": "Request Rate (RPS)",
+      "type": "timeseries",
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "id": 2,
+      "targets": [
+        { "expr": "100 * sum(rate(cart_service_http_requests_total{status_code=~\"4..\"}[5m])) / sum(rate(cart_service_http_requests_total[5m]))", "legendFormat": "4xx", "refId": "A" },
+        { "expr": "100 * sum(rate(cart_service_http_requests_total{status_code=~\"5..\"}[5m])) / sum(rate(cart_service_http_requests_total[5m]))", "legendFormat": "5xx", "refId": "B" }
+      ],
+      "title": "Error Rate",
+      "type": "timeseries",
+      "fieldConfig": { "defaults": { "unit": "percent" } }
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "id": 3,
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(cart_service_http_request_duration_seconds_bucket[5m]))) * 1000", "legendFormat": "p95", "refId": "A" }
+      ],
+      "title": "Response Time (p95)",
+      "type": "timeseries",
+      "fieldConfig": { "defaults": { "unit": "ms" } }
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "id": 4,
+      "targets": [ { "expr": "cart_service_active_carts_gauge", "refId": "A" } ],
+      "title": "Active Carts",
+      "type": "gauge"
+    },
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "id": 101,
+      "title": "Cart Analytics",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "id": 5,
+      "targets": [ { "expr": "sum(rate(cart_service_cart_operations_total[5m])) by (operation)", "refId": "A" } ],
+      "title": "Cart Operations Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "id": 6,
+      "targets": [ { "expr": "histogram_quantile(0.50, sum by (le) (rate(cart_service_cart_value_histogram_bucket[5m])))", "refId": "A" } ],
+      "title": "Average Cart Value (VND)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "id": 7,
+      "targets": [ { "expr": "histogram_quantile(0.50, sum by (le) (rate(cart_service_items_per_cart_histogram_bucket[5m])))", "refId": "A" } ],
+      "title": "Average Items per Cart",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+      "id": 8,
+      "targets": [ { "expr": "sum(rate(cart_service_cart_value_histogram_bucket[5m])) by (restaurant_id, le)", "refId": "A" } ],
+      "title": "Cart Value Distribution",
+      "type": "heatmap"
+    },
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 34 },
+      "id": 102,
+      "title": "System Metrics",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 35 },
+      "id": 9,
+      "targets": [ { "expr": "cart_service_process_resident_memory_bytes", "refId": "A" } ],
+      "title": "Memory Usage",
+      "type": "timeseries",
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 35 },
+      "id": 10,
+      "targets": [ { "expr": "rate(cart_service_process_cpu_seconds_total[5m])", "refId": "A" } ],
+      "title": "CPU Usage",
+      "type": "timeseries",
+      "fieldConfig": { "defaults": { "unit": "percentunit" } }
+    }
+  ],
+  "schemaVersion": 42,
+  "tags": [ "cart-service", "monitoring" ],
+  "templating": { "list": [] },
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Cart Service Dashboard",
+  "uid": "cart_service_dashboard",
+  "version": 1
+}
+

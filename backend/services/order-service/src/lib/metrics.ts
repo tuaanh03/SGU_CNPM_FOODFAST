@@ -39,5 +39,47 @@ export const orderProcessingDuration = new promClient.Histogram({
   registers: [register],
 });
 
+// Business Metrics
+export const ordersCreatedCounter = new promClient.Counter({
+  name: 'order_service_orders_created_total',
+  help: 'Total number of orders created',
+  labelNames: ['status', 'action'], // action: created | confirmed | cancelled | expired
+  registers: [register],
+});
+
+export const orderProcessingDurationByStatus = new promClient.Histogram({
+  name: 'order_service_processing_duration_by_status_seconds',
+  help: 'Order processing duration by status',
+  labelNames: ['status'],
+  buckets: [0.5, 1, 2, 5, 10, 30, 60],
+  registers: [register],
+});
+
+export const orderValueHistogram = new promClient.Histogram({
+  name: 'order_service_order_value_histogram',
+  help: 'Distribution of order values',
+  buckets: [50000, 100000, 200000, 500000, 1000000, 2000000], // VND
+  registers: [register],
+});
+
+export const activeSessionsGauge = new promClient.Gauge({
+  name: 'order_service_active_sessions_gauge',
+  help: 'Number of active order sessions',
+  registers: [register],
+});
+
+export const sessionExpirationsCounter = new promClient.Counter({
+  name: 'order_service_session_expirations_total',
+  help: 'Total number of session expirations',
+  registers: [register],
+});
+
+export const sessionOperationsCounter = new promClient.Counter({
+  name: 'order_service_session_operations_total',
+  help: 'Total number of session operations',
+  labelNames: ['operation'], // operation: create | extend | expire
+  registers: [register],
+});
+
 export default register;
 

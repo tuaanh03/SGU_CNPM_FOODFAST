@@ -1,6 +1,12 @@
 import redisClient from '../lib/redis';
 import prisma from '../lib/prisma';
 import { publishOrderExpirationEvent } from './kafka';
+import {
+    sessionExpirationsCounter,
+    sessionOperationsCounter,
+    ordersCreatedCounter,
+    activeSessionsGauge
+} from '../lib/metrics';
 
 /**
  * Redis Order Session Manager
@@ -85,6 +91,9 @@ export async function deleteOrderSession(orderId: string): Promise<void> {
     const key = `${REDIS_KEY_PREFIX}${orderId}`;
     await redisClient.del(key);
     console.log(`🗑️  Deleted Redis session for order ${orderId}`);
+
+    // Note: sessionOperationsCounter.inc({ operation: 'expire' })
+    // is called in kafka.ts handlePaymentEvent
 }
 
 /**
@@ -124,6 +133,10 @@ export async function handleExpiredOrderSession(expiredKey: string): Promise<voi
                 where: { id: orderId },
                 data: { status: 'cancelled' }
             });
+
+            // Track metrics
+            sessionExpirationsCounter.inc();
+            ordersCreatedCounter.inc({ status: 'cancelled', action: 'expired' });
 
             console.log(`✅ Updated order ${orderId} status to CANCELLED (expired)`);
 
@@ -208,3 +221,34 @@ export async function initializeRedisExpirationListener(): Promise<void> {
         // Don't throw - let the service continue without expiration listener
     }
 }
+
+/**
+ * Update active sessions metric
+ * Đếm số lượng session keys hiện có trong Redis
+ */
+export async function updateActiveSessionsMetric(): Promise<void> {
+    try {
+        const pattern = `${REDIS_KEY_PREFIX}*`;
+        const keys = await redisClient.keys(pattern);
+        const activeCount = keys.length;
+
+        activeSessionsGauge.set(activeCount);
+        console.log(`📊 Active sessions: ${activeCount}`);
+    } catch (error) {
+        console.error('Error updating active sessions metric:', error);
+    }
+}
+
+/**
+ * Start periodic active sessions metric update
+ * Update every 30 seconds
+ */
+export function startActiveSessionsMetricUpdate(): void {
+    // Update immediately
+    updateActiveSessionsMetric();
+
+    // Then update every 30 seconds
+    setInterval(updateActiveSessionsMetric, 30000);
+    console.log('✅ Started active sessions metric updater (30s interval)');
+}
+

@@ -1,14 +1,12 @@
 import { Kafka, Partitioners } from "kafkajs";
 import prisma from "../lib/prisma";
 import { deleteOrderSession } from "./redisSessionManager";
+// Business metrics only - no Kafka/Redis metrics
 import {
-  kafkaProducerMessageCounter,
-  kafkaProducerLatency,
-  kafkaProducerErrorCounter,
-  kafkaConsumerMessageCounter,
-  kafkaConsumerProcessingDuration,
-  kafkaConsumerErrorCounter,
-} from "../lib/kafkaMetrics";
+  ordersCreatedCounter,
+  orderProcessingDurationByStatus,
+  sessionOperationsCounter
+} from "../lib/metrics";
 
 // Kafka Configuration - Hỗ trợ cả local và Confluent Cloud
 const kafkaBrokers = process.env.KAFKA_BROKERS?.split(',') || ['kafka:9092'];
@@ -44,7 +42,6 @@ let isProducerConnected = false;
 
 export async function publishEvent(messages: string) {
   const topic = "order.create";
-  const end = kafkaProducerLatency.startTimer({ topic });
 
   try {
     if (!isProducerConnected) {
@@ -55,20 +52,13 @@ export async function publishEvent(messages: string) {
       topic,
       messages: [{ key: `message-${Date.now()}`, value: messages }],
     });
-
-    kafkaProducerMessageCounter.inc({ topic, status: 'success' });
-    end();
   } catch (error) {
-    kafkaProducerErrorCounter.inc({ topic, error_type: (error as Error).name || 'unknown' });
-    kafkaProducerMessageCounter.inc({ topic, status: 'error' });
-    end();
     throw error;
   }
 }
 
 export async function publishOrderExpirationEvent(payload: any) {
   const topic = "order.expired";
-  const end = kafkaProducerLatency.startTimer({ topic });
 
   try {
     if (!isProducerConnected) {
@@ -84,20 +74,13 @@ export async function publishOrderExpirationEvent(payload: any) {
         },
       ],
     });
-
-    kafkaProducerMessageCounter.inc({ topic, status: 'success' });
-    end();
   } catch (error) {
-    kafkaProducerErrorCounter.inc({ topic, error_type: (error as Error).name || 'unknown' });
-    kafkaProducerMessageCounter.inc({ topic, status: 'error' });
-    end();
     throw error;
   }
 }
 
 export async function publishRetryPaymentEvent(payload: any) {
   const topic = "order.retry.payment";
-  const end = kafkaProducerLatency.startTimer({ topic });
 
   try {
     if (!isProducerConnected) {
@@ -113,20 +96,13 @@ export async function publishRetryPaymentEvent(payload: any) {
         },
       ],
     });
-
-    kafkaProducerMessageCounter.inc({ topic, status: 'success' });
-    end();
   } catch (error) {
-    kafkaProducerErrorCounter.inc({ topic, error_type: (error as Error).name || 'unknown' });
-    kafkaProducerMessageCounter.inc({ topic, status: 'error' });
-    end();
     throw error;
   }
 }
 
 export async function publishOrderConfirmedEvent(payload: any) {
   const topic = "order.confirmed";
-  const end = kafkaProducerLatency.startTimer({ topic });
 
   try {
     if (!isProducerConnected) {
@@ -142,13 +118,7 @@ export async function publishOrderConfirmedEvent(payload: any) {
         },
       ],
     });
-
-    kafkaProducerMessageCounter.inc({ topic, status: 'success' });
-    end();
   } catch (error) {
-    kafkaProducerErrorCounter.inc({ topic, error_type: (error as Error).name || 'unknown' });
-    kafkaProducerMessageCounter.inc({ topic, status: 'error' });
-    end();
     throw error;
   }
 }
@@ -169,8 +139,6 @@ export async function runConsumer() {
     // Process messages
     await consumer.run({
       eachMessage: async ({ topic, message }) => {
-        const end = kafkaConsumerProcessingDuration.startTimer({ topic });
-
         try {
           const event = message.value?.toString() as string;
           const data = JSON.parse(event);
@@ -184,14 +152,8 @@ export async function runConsumer() {
           } else if (topic === "product.sync") {
             await handleProductSync(data);
           }
-
-          kafkaConsumerMessageCounter.inc({ topic, status: 'success' });
-          end();
         } catch (error) {
           console.error(`Error processing ${topic} event:`, error);
-          kafkaConsumerErrorCounter.inc({ topic, error_type: (error as Error).name || 'unknown' });
-          kafkaConsumerMessageCounter.inc({ topic, status: 'error' });
-          end();
         }
       },
     });
@@ -207,19 +169,26 @@ export async function handlePaymentEvent(data: any) {
     data.paymentStatus === "pending" ||
     data.paymentStatus === "cancelled"
   ) {
+    const processingTimer = orderProcessingDurationByStatus.startTimer({ status: data.paymentStatus });
+
     try {
       let orderStatus: "pending" | "success" | "cancelled";
+      let action: string;
 
       if (data.paymentStatus === "success") {
         orderStatus = "success";
+        action = "confirmed";
       } else if (data.paymentStatus === "cancelled") {
         orderStatus = "cancelled";
+        action = "cancelled";
         console.log(`⚠️ Order ${data.orderId} cancelled - payment cancelled by user`);
       } else if (data.paymentStatus === "failed") {
         orderStatus = "cancelled";
+        action = "cancelled";
         console.log(`❌ Order ${data.orderId} cancelled - payment failed`);
       } else {
         orderStatus = "pending";
+        action = "created";
       }
 
       await prisma.order.update({
@@ -227,10 +196,15 @@ export async function handlePaymentEvent(data: any) {
         data: { status: orderStatus },
       });
 
+      // Track order status update
+      ordersCreatedCounter.inc({ status: orderStatus, action });
+      processingTimer();
+
       console.log(`Order ${data.orderId} status updated to: ${orderStatus}`);
 
       if (orderStatus === "success" || orderStatus === "cancelled") {
         await deleteOrderSession(data.orderId);
+        sessionOperationsCounter.inc({ operation: 'expire' });
         console.log(`✅ Deleted Redis session for order ${data.orderId} after status: ${orderStatus}`);
       }
 
@@ -277,6 +251,7 @@ export async function handlePaymentEvent(data: any) {
       }
     } catch (error) {
       console.error("Error updating order status:", error);
+      processingTimer();
     }
   }
 }

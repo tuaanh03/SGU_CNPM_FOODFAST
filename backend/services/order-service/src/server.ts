@@ -3,7 +3,7 @@ import env from "dotenv";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
 import { runConsumer } from "./utils/kafka";
-import { initializeRedisExpirationListener } from "./utils/redisSessionManager";
+import { initializeRedisExpirationListener, startActiveSessionsMetricUpdate } from "./utils/redisSessionManager";
 import { orderRoute } from "./routes/order.routes";
 import express, { NextFunction, Request, Response } from "express";
 
@@ -21,6 +21,9 @@ const server = express();
 
     // Khởi tạo Redis expiration listener để tự động hủy orders hết hạn
     await initializeRedisExpirationListener();
+
+    // Start active sessions metric updater
+    startActiveSessionsMetricUpdate();
 
     console.log('✅ All async initializations complete');
 })().catch((error) => {
