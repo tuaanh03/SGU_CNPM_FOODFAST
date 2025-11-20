@@ -8,6 +8,11 @@ export const authLimiter = rateLimit({
   message: { error: "Too many requests to /auth, please try again later." },
   standardHeaders: true,
   legacyHeaders: false,
+  // Disable validation checks - we trust Railway proxy
+  validate: {
+    trustProxy: false,
+    xForwardedForHeader: false
+  },
   handler: (req, res) => {
     // Track rate limit blocked
     rateLimitHitsCounter.inc({ endpoint: '/api/auth', action: 'blocked' });
@@ -27,6 +32,11 @@ export const orderLimiter = rateLimit({
   message: { error: "Too many requests to /order, please slow down." },
   standardHeaders: true,
   legacyHeaders: false,
+  // Disable validation checks - we trust Railway proxy
+  validate: {
+    trustProxy: false,
+    xForwardedForHeader: false
+  },
   handler: (req, res) => {
     // Track rate limit blocked
     rateLimitHitsCounter.inc({ endpoint: '/api/order', action: 'blocked' });

@@ -203,20 +203,6 @@ user_service_token_verifications_total{status}
 user_service_active_sessions_gauge
 ```
 
-**Database Metrics:**
-```
-# Database queries
-user_service_db_queries_total{operation, table}
-operation: select | insert | update | delete
-
-# Query duration
-user_service_db_query_duration_seconds{operation, table}
-
-# Connection pool
-user_service_db_connections{state}
-state: idle | active | waiting
-```
-
 #### Dashboards
 
 **Authentication Dashboard:**
@@ -226,10 +212,12 @@ state: idle | active | waiting
 - Active sessions over time
 
 **Database Dashboard:**
-- Query rate by operation
-- Query latency
-- Connection pool usage
-- Slow queries (> 500ms)
+> **Lưu ý:** Database monitoring không được triển khai trong hệ thống hiện tại do chi phí và độ phức tạp cao. Thay vào đó, tập trung vào monitoring application-level metrics (HTTP requests, errors, latency) để phát hiện vấn đề database gián tiếp.
+> 
+> Nếu cần monitoring database trong tương lai, có thể sử dụng:
+> - Azure Database Monitoring (built-in cho Azure PostgreSQL)
+> - postgres_exporter với Prometheus (yêu cầu thêm infrastructure)
+> - Application-level metrics như query duration, connection pool status
 
 #### Alerts
 
@@ -242,15 +230,6 @@ state: idle | active | waiting
     severity: warning
   annotations:
     summary: "High failed login rate - possible attack"
-
-# Database connection pool exhausted
-- alert: DBConnectionPoolExhausted
-  expr: user_service_db_connections{state="waiting"} > 0
-  for: 1m
-  labels:
-    severity: critical
-  annotations:
-    summary: "Database connection pool exhausted"
 ```
 
 #### Log patterns
@@ -259,11 +238,8 @@ state: idle | active | waiting
 # Failed logins
 {service="user-service"} | json | message=~".*login failed.*"
 
-# Database errors
-{service="user-service"} | json | level="error" | message=~".*database.*"
-
-# Slow queries
-{service="user-service"} | json | message=~".*slow query.*"
+# Authentication errors
+{service="user-service"} | json | level="error" | message=~".*auth.*"
 ```
 
 ---
@@ -970,9 +946,10 @@ drone_service_drone_battery_level_histogram
 - Memory usage by service
 - Disk I/O
 - Network I/O
-- Database connections
 - Redis connections
 - Kafka consumer lag
+
+> **Lưu ý:** Database connections không được monitor do giới hạn chi phí. Sử dụng application-level metrics để phát hiện vấn đề database gián tiếp.
 
 ### 3. Business Metrics Dashboard
 
@@ -1134,9 +1111,10 @@ Tất cả services sử dụng JSON structured logging:
 | **Payment Success Rate** | > 97% | < 90% |
 | **Order Success Rate** | > 95% | < 85% |
 | **Email Delivery Rate** | > 98% | < 90% |
-| **Database Query Latency (p95)** | < 100ms | > 500ms |
 | **Redis Operation Latency (p95)** | < 10ms | > 100ms |
 | **Kafka Consumer Lag** | < 10 | > 100 |
+
+> **Lưu ý:** Database query latency không được monitor trực tiếp. Vấn đề database sẽ được phát hiện qua API latency tăng cao.
 
 ---
 
@@ -1187,41 +1165,186 @@ datasources:
 
 ---
 
-## Thu thập metrics cho Azure PostgreSQL
+## 📊 Grafana Dashboard Tổng quan
 
-Nếu sử dụng database PostgreSQL được deploy trên Azure, bạn có thể thu thập metrics bằng Prometheus và postgres_exporter như sau:
+Hệ thống sử dụng 2 Grafana Dashboards:
+1. **General Service Dashboard** - Dashboard chung cho tất cả microservices
+2. **API Gateway Dashboard** - Dashboard chuyên biệt cho API Gateway
 
-### 1. Triển khai postgres_exporter
-- Chạy postgres_exporter trên một VM, container hoặc server có thể truy cập Azure PostgreSQL.
-- Cấu hình biến môi trường kết nối đến Azure PostgreSQL:
-  ```
-  DATA_SOURCE_NAME=postgresql://username:password@your-azure-db.postgres.database.azure.com:5432/dbname?sslmode=require
-  ```
+### General Service Dashboard
 
-### 2. Cấu hình Prometheus
-- Thêm job scrape vào prometheus.yml:
-  ```yaml
-  - job_name: 'azure-postgres'
-    static_configs:
-      - targets: ['<postgres_exporter_host>:9187']
-  ```
-- Đảm bảo Prometheus có thể truy cập được postgres_exporter.
+Dashboard này áp dụng cho tất cả services (user, order, payment, cart, product, restaurant, location, drone, notification).
 
-### 3. Metrics phổ biến
-- pg_stat_activity_count
-- pg_database_size_bytes
-- pg_stat_user_tables_seq_scan
-- pg_stat_user_tables_n_tup_ins
-- pg_stat_user_tables_n_tup_upd
-- pg_stat_user_tables_n_tup_del
+**Dashboard Panels:**
 
-### 4. Lưu ý bảo mật
-- Sử dụng SSL/TLS khi kết nối đến Azure PostgreSQL.
-- Không expose exporter ra internet công cộng, chỉ cho phép Prometheus truy cập.
+**1. Request Duration (p95) - Độ trễ phần trăm thứ 95**
+- **Query:** `histogram_quantile(0.95, sum by (le) (rate(${service}_http_request_duration_seconds_bucket[5m]))) * 1000`
+- **Mô tả:** Hiển thị thời gian xử lý request ở mức 95th percentile (ms)
+- **Mục đích:** Giám sát hiệu suất API, phát hiện request chậm
+- **Target:** < 500ms cho p95
 
-### 5. Grafana Dashboard
-- Import dashboard mẫu cho PostgreSQL để trực quan hóa các metrics.
+**2. Memory Usage - Bộ nhớ thực tế đang sử dụng**
+- **Query:** `${service}_process_resident_memory_bytes`
+- **Mô tả:** Hiển thị memory thực tế service đang sử dụng (bytes)
+- **Visualization:** Gauge với ngưỡng cảnh báo
+  - Green: 0-70%
+  - Orange: 70-85%
+  - Red: > 85%
+- **Mục đích:** Phát hiện memory leak hoặc usage cao bất thường
+
+**3. CPU Usage - Tổng xử lý CPU**
+- **Query:** `${service}_process_cpu_seconds_total`
+- **Mô tả:** Tổng thời gian CPU đã sử dụng (user + system)
+- **Visualization:** Time series chart
+- **Mục đích:** Theo dõi mức sử dụng CPU theo thời gian
+
+**4. Service Status - Trạng thái hoạt động**
+- **Query:** `up{instance=~".*${service}.*production.*railway\\.app"}`
+- **Mô tả:** Service đang up (1) hay down (0)
+- **Visualization:** Gauge
+- **Mục đích:** Giám sát uptime của service
+
+**5. Request Count Table - Tổng số request đã xử lý**
+- **Query:** `${service}_http_request_duration_seconds_count`
+- **Mô tả:** Bảng thống kê request theo method, route, status code
+- **Visualization:** Table
+- **Mục đích:** Phân tích chi tiết request distribution
+
+**6. Request Rate - Số request mỗi phút**
+- **Query:** `sum(rate(${service}_http_requests_total[5m])) * 60`
+- **Mô tả:** Số lượng request/phút
+- **Visualization:** Bar chart
+- **Mục đích:** Theo dõi traffic pattern, phát hiện spike
+
+**7. Error Rate - Tỉ lệ phần trăm lỗi**
+- **Query:** `100 * sum(rate(${service}_http_requests_total{status_code=~"4..|5.."}[5m])) / sum(rate(${service}_http_requests_total[5m]))`
+- **Mô tả:** Tỉ lệ % request lỗi (4xx, 5xx)
+- **Visualization:** Time series với màu đỏ cảnh báo
+- **Thresholds:**
+  - Green: 0%
+  - Yellow: ≥ 1%
+  - Orange: ≥ 5%
+  - Red: ≥ 10%
+- **Mục đích:** Giám sát tỉ lệ lỗi, phát hiện vấn đề sớm
+- **Target:** < 1%
+
+### API Gateway Dashboard
+
+Dashboard chuyên biệt cho API Gateway với metrics về proxy, rate limiting và service health.
+
+**File:** `grafana/deploy_dashboard/api_gateway_dashboard.json`
+
+#### Section 1: Overall Health
+
+**Panel 1: Request Rate (RPS)**
+- **Query:** `sum(rate(api_gateway_http_requests_total[5m]))`
+- **Unit:** requests per second
+- **Visualization:** Line chart với gradient fill
+- **Target:** > 500 RPS (production load)
+
+**Panel 2: Error Rate (4xx & 5xx)**
+- **Queries:**
+  - 4xx: `100 * sum(rate(api_gateway_http_requests_total{status_code=~"4.."}[5m])) / sum(rate(api_gateway_http_requests_total[5m]))`
+  - 5xx: `100 * sum(rate(api_gateway_http_requests_total{status_code=~"5.."}[5m])) / sum(rate(api_gateway_http_requests_total[5m]))`
+- **Unit:** percent
+- **Visualization:** Time series với area fill màu đỏ khi cao
+- **Target:** < 1% total errors
+
+**Panel 3: Response Time (p50, p95, p99)**
+- **Queries:**
+  - p50: `histogram_quantile(0.50, sum by (le) (rate(api_gateway_http_request_duration_seconds_bucket[5m]))) * 1000`
+  - p95: `histogram_quantile(0.95, sum by (le) (rate(api_gateway_http_request_duration_seconds_bucket[5m]))) * 1000`
+  - p99: `histogram_quantile(0.99, sum by (le) (rate(api_gateway_http_request_duration_seconds_bucket[5m]))) * 1000`
+- **Unit:** milliseconds
+- **Target:** p95 < 500ms, p99 < 1s
+
+**Panel 4: Active Connections**
+- **Query:** `api_gateway_active_connections`
+- **Visualization:** Gauge
+- **Thresholds:**
+  - Green: 0-50
+  - Yellow: 50-100
+  - Red: > 100
+
+#### Section 2: Service Proxy Metrics
+
+**Panel 5: Proxy Requests by Service**
+- **Query:** `sum by (service) (rate(api_gateway_proxy_requests_total[5m]))`
+- **Visualization:** Stacked bar chart
+- **Mục đích:** Xem service nào nhận traffic nhiều nhất
+
+**Panel 6: Proxy Latency by Service (p95)**
+- **Query:** `histogram_quantile(0.95, sum by (service, le) (rate(api_gateway_proxy_duration_seconds_bucket[5m]))) * 1000`
+- **Unit:** milliseconds
+- **Visualization:** Multi-line chart
+- **Mục đích:** Phát hiện service có latency cao
+
+**Panel 7: Proxy Errors by Service**
+- **Query:** `sum by (service) (rate(api_gateway_proxy_errors_total[5m]))`
+- **Visualization:** Line chart
+- **Mục đích:** Phát hiện service đang gặp lỗi
+
+**Panel 8: Service Availability**
+- **Query:** `sum by (service, status) (rate(api_gateway_proxy_requests_total[5m])) / ignoring(status) group_left sum by (service) (rate(api_gateway_proxy_requests_total[5m]))`
+- **Visualization:** Table
+- **Mục đích:** Hiển thị availability % của từng backend service
+
+#### Section 3: Rate Limiting
+
+**Panel 9: Rate Limit Hits Over Time**
+- **Query:** `sum by (endpoint, action) (rate(api_gateway_rate_limit_hits_total[5m]))`
+- **Visualization:** Stacked area chart
+- **Color coding:**
+  - Green: allowed requests
+  - Red: blocked requests
+- **Mục đích:** Giám sát rate limiting effectiveness
+
+#### Section 4: System Metrics
+
+**Panel 10: Memory Usage**
+- **Query:** `api_gateway_process_resident_memory_bytes`
+- **Unit:** bytes
+- **Visualization:** Line chart
+- **Target:** Stable memory, no continuous growth
+
+**Panel 11: CPU Usage**
+- **Query:** `rate(api_gateway_process_cpu_seconds_total[5m])`
+- **Unit:** percent (0-1)
+- **Visualization:** Line chart
+- **Target:** < 0.7 (70% CPU)
+
+### Dashboard Variables
+
+Dashboard sử dụng template variables để linh động:
+
+**1. `$service` - Service selector**
+- Tự động phát hiện tất cả services có expose metrics
+- Query: `metrics(.*_http_requests_total)`
+- Regex: `^(.+)_http_requests_total$`
+- Cho phép chọn service để xem chi tiết
+
+**2. `$status` - HTTP Status filter**
+- Filter theo HTTP status code
+- Query: `label_values(user_service_http_requests_total{status_code="$status"},code)`
+- Hỗ trợ multi-select
+
+**3. `$instance` - Instance selector**
+- Chọn instance cụ thể của service
+- Derived từ `$service`
+
+### Cách sử dụng Dashboard
+
+1. **Chọn Service:** Dropdown `service` để chọn service cần giám sát
+2. **Chọn Time Range:** Grafana time picker (default: last 5 minutes)
+3. **Filter Status:** Multi-select status codes cần theo dõi
+4. **Refresh:** Auto-refresh hoặc manual refresh
+
+### Dashboard Alerts
+
+Có thể cấu hình alerts trực tiếp trong Grafana:
+- **High Latency:** p95 > 2s
+- **High Error Rate:** Error rate > 5%
+- **High Memory:** Memory usage > 85%
+- **Service Down:** up == 0
 
 ---
-
-> **Lưu ý:** Nếu bạn deploy database trên Azure, KHÔNG sử dụng Docker Compose cho database. Chỉ cần chạy postgres_exporter trên một máy chủ hoặc container có thể truy cập Azure PostgreSQL, cấu hình DATA_SOURCE_NAME trỏ tới Azure PostgreSQL, và cấu hình Prometheus scrape từ địa chỉ exporter (ví dụ: VM_IP:9187).
