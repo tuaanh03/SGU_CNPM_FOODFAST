@@ -141,38 +141,50 @@ const addCorsOnProxyResp = {
 };
 
 /** Helper: xoá conditional headers (tránh 304) khi forward */
-const dropConditionalHeaders = {
-    proxyReqOptDecorator: (proxyReqOpts: any) => {
-        if (proxyReqOpts.headers) {
-            delete proxyReqOpts.headers["if-none-match"];
-            delete proxyReqOpts.headers["If-None-Match"];
-            delete proxyReqOpts.headers["if-modified-since"];
-            delete proxyReqOpts.headers["If-Modified-Since"];
-        }
-        return proxyReqOpts;
+const dropConditionalHeaders = (proxyReqOpts: any) => {
+    if (proxyReqOpts.headers) {
+        delete proxyReqOpts.headers["if-none-match"];
+        delete proxyReqOpts.headers["If-None-Match"];
+        delete proxyReqOpts.headers["if-modified-since"];
+        delete proxyReqOpts.headers["If-Modified-Since"];
     }
+    return proxyReqOpts;
 };
 
 /** Helper: Forward thông tin user đã xác thực từ Gateway đến service */
-const forwardUserInfo = {
-    proxyReqOptDecorator: (proxyReqOpts: any, srcReq: any) => {
-        if (srcReq.user) {
-            proxyReqOpts.headers = proxyReqOpts.headers || {};
-            proxyReqOpts.headers['x-user-id'] = srcReq.user.userId;
-            proxyReqOpts.headers['x-user-email'] = srcReq.user.email;
-            proxyReqOpts.headers['x-user-role'] = srcReq.user.role;
-        }
-        return proxyReqOpts;
+const forwardUserInfo = (proxyReqOpts: any, srcReq: any) => {
+    if (srcReq.user) {
+        proxyReqOpts.headers = proxyReqOpts.headers || {};
+        proxyReqOpts.headers['x-user-id'] = srcReq.user.userId;
+        proxyReqOpts.headers['x-user-email'] = srcReq.user.email;
+        proxyReqOpts.headers['x-user-role'] = srcReq.user.role;
     }
+    return proxyReqOpts;
 };
 
-// Helper: Track proxy metrics
-const trackProxyMetrics = (serviceName: string) => ({
-  proxyReqOptDecorator: (proxyReqOpts: any, srcReq: any) => {
-    // Start timer for proxy duration
+/** Helper: Start timer for proxy metrics */
+const startProxyTimer = (srcReq: any, serviceName: string) => {
     const start = Date.now();
     (srcReq as any).__proxyStart = start;
     (srcReq as any).__proxyService = serviceName;
+};
+
+// Helper: Track proxy metrics
+const trackProxyMetrics = (serviceName: string, options?: { forwardUser?: boolean, dropConditional?: boolean }) => ({
+  proxyReqOptDecorator: (proxyReqOpts: any, srcReq: any) => {
+    // Start timer for proxy duration
+    startProxyTimer(srcReq, serviceName);
+
+    // Forward user info if needed
+    if (options?.forwardUser) {
+      forwardUserInfo(proxyReqOpts, srcReq);
+    }
+
+    // Drop conditional headers if needed
+    if (options?.dropConditional) {
+      dropConditionalHeaders(proxyReqOpts);
+    }
+
     return proxyReqOpts;
   },
   userResDecorator: (proxyRes: any, proxyResData: any, userReq: any) => {
@@ -208,9 +220,8 @@ const userServiceProxy = proxy(config.userServiceUrl, {
 // proxy middleware for Order Service (với user info forwarding)
 const orderServiceProxy = proxy(config.orderServiceUrl, {
     proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api/, ""),
-    ...forwardUserInfo,
     ...addCorsOnProxyResp,
-    ...trackProxyMetrics('order-service')
+    ...trackProxyMetrics('order-service', { forwardUser: true })
 });
 
 // proxy middleware for Payment Service (với user info forwarding)
@@ -227,34 +238,29 @@ const paymentServiceProxy = proxy(config.paymentServiceUrl, {
         console.log(`[Payment Proxy] API Route: ${req.originalUrl} → ${newPath}`);
         return newPath;
     },
-    ...forwardUserInfo,
     ...addCorsOnProxyResp,
-    ...trackProxyMetrics('payment-service')
+    ...trackProxyMetrics('payment-service', { forwardUser: true })
 });
 
 // proxy middleware for Product Service (thêm bỏ conditional headers)
 const productServiceProxy = proxy(config.productServiceUrl, {
     proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api/, ""),
-    ...dropConditionalHeaders,
     ...addCorsOnProxyResp,
-    ...trackProxyMetrics('product-service')
+    ...trackProxyMetrics('product-service', { dropConditional: true })
 });
 
 // proxy middleware for Restaurant Service (với user info forwarding cho protected routes)
 const restaurantServiceProxy = proxy(config.restaurantServiceUrl, {
     proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api/, ""),
-    ...forwardUserInfo,
-    ...dropConditionalHeaders,
     ...addCorsOnProxyResp,
-    ...trackProxyMetrics('restaurant-service')
+    ...trackProxyMetrics('restaurant-service', { forwardUser: true, dropConditional: true })
 });
 
 // proxy middleware for Cart Service (với user info forwarding)
 const cartServiceProxy = proxy(config.cartServiceUrl, {
     proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api/, ""),
-    ...forwardUserInfo,
     ...addCorsOnProxyResp,
-    ...trackProxyMetrics('cart-service')
+    ...trackProxyMetrics('cart-service', { forwardUser: true })
 });
 
 // proxy middleware for Location Service (public routes)
