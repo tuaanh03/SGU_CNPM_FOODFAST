@@ -40,3 +40,7 @@ scrape_configs:
       - targets: ['restaurant-service-production-4dea.up.railway.app']
 
 
+  - job_name: 'azure-postgres'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['postgres-metrics-collector-production-4024.up.railway.app']
