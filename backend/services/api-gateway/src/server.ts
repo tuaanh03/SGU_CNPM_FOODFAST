@@ -26,6 +26,11 @@ env.config();
 const server = express();
 const PORT = config.port;
 
+// Trust proxy - Required for Railway deployment
+// This allows Express to trust X-Forwarded-* headers from Railway's proxy
+// Important for: rate limiting, getting real client IP, HTTPS detection
+server.set('trust proxy', true);
+
 /** CORS origins - support Vercel and other deployments */
 const defaultCorsOrigins = [
     "http://localhost:5173",
