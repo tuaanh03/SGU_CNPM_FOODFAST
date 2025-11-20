@@ -1,0 +1,150 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 0,
+  "links": [],
+  "panels": [
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Order Service - Overall",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "id": 1,
+      "targets": [ { "expr": "sum(rate(order_service_http_requests_total[5m]))", "refId": "A" } ],
+      "title": "Request Rate (RPS)",
+      "type": "timeseries",
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "id": 2,
+      "targets": [
+        { "expr": "100 * sum(rate(order_service_http_requests_total{status_code=~\"4..\"}[5m])) / sum(rate(order_service_http_requests_total[5m]))", "legendFormat": "4xx", "refId": "A" },
+        { "expr": "100 * sum(rate(order_service_http_requests_total{status_code=~\"5..\"}[5m])) / sum(rate(order_service_http_requests_total[5m]))", "legendFormat": "5xx", "refId": "B" }
+      ],
+      "title": "Error Rate",
+      "type": "timeseries",
+      "fieldConfig": { "defaults": { "unit": "percent" } }
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "id": 3,
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(order_service_http_request_duration_seconds_bucket[5m]))) * 1000", "legendFormat": "p95", "refId": "A" }
+      ],
+      "title": "Response Time (p95)",
+      "type": "timeseries",
+      "fieldConfig": { "defaults": { "unit": "ms" } }
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "id": 4,
+      "targets": [ { "expr": "order_service_active_sessions_gauge", "refId": "A" } ],
+      "title": "Active Sessions",
+      "type": "gauge"
+    },
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "id": 101,
+      "title": "Order Management",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "id": 5,
+      "targets": [ { "expr": "sum(rate(order_service_orders_created_total[1h])) by (status)", "refId": "A" } ],
+      "title": "Orders Created by Status (per hour)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "id": 6,
+      "targets": [ { "expr": "sum(order_service_orders_created_total) by (status)", "refId": "A" } ],
+      "title": "Order Status Distribution",
+      "type": "piechart"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "id": 7,
+      "targets": [ { "expr": "histogram_quantile(0.50, sum by (le, status) (rate(order_service_processing_duration_by_status_seconds_bucket[5m])))", "refId": "A" } ],
+      "title": "Average Processing Time by Status",
+      "type": "bar-chart"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+      "id": 8,
+      "targets": [ { "expr": "histogram_quantile(0.50, sum by (le) (rate(order_service_order_value_histogram_bucket[5m])))", "refId": "A" } ],
+      "title": "Average Order Value (VND)",
+      "type": "stat"
+    },
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 34 },
+      "id": 102,
+      "title": "Session Management",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 35 },
+      "id": 9,
+      "targets": [ { "expr": "rate(order_service_session_expirations_total[5m])", "refId": "A" } ],
+      "title": "Session Expiration Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 35 },
+      "id": 10,
+      "targets": [ { "expr": "sum(rate(order_service_session_operations_total[5m])) by (operation)", "refId": "A" } ],
+      "title": "Session Operations",
+      "type": "timeseries"
+    },
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 41 },
+      "id": 103,
+      "title": "System Metrics",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 42 },
+      "id": 11,
+      "targets": [ { "expr": "order_service_process_resident_memory_bytes", "refId": "A" } ],
+      "title": "Memory Usage",
+      "type": "timeseries",
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 42 },
+      "id": 12,
+      "targets": [ { "expr": "rate(order_service_process_cpu_seconds_total[5m])", "refId": "A" } ],
+      "title": "CPU Usage",
+      "type": "timeseries",
+      "fieldConfig": { "defaults": { "unit": "percentunit" } }
+    }
+  ],
+  "schemaVersion": 42,
+  "tags": [ "order-service", "monitoring" ],
+  "templating": { "list": [] },
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Order Service Dashboard",
+  "uid": "order_service_dashboard",
+  "version": 1
+}
+

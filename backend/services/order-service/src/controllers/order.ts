@@ -6,6 +6,14 @@ import { validateCartItems } from "../utils/menuValidator";
 import { fetchUserCart, clearUserCart } from "../utils/cartHelper";
 import { createOrderSession } from "../utils/redisSessionManager";
 
+// Import metrics
+import {
+    ordersCreatedCounter,
+    orderProcessingDurationByStatus,
+    orderValueHistogram,
+    sessionOperationsCounter
+} from "../lib/metrics";
+
 interface AuthenticatedRequest extends Request {
     user?: { id: string };
     body: any;
@@ -67,10 +75,13 @@ async function calculateOrderAmount(items: any[]): Promise<{ totalPrice: number;
 }
 
 export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
+    const processingTimer = orderProcessingDurationByStatus.startTimer({ status: 'pending' });
+
     try {
         const userId = req.user?.id;
 
         if (!userId) {
+            processingTimer();
             res.status(401).json({
                 success: false,
                 message: "Unauthorized: No user ID found"
@@ -81,6 +92,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
         const parsedBody = OrderSchema.safeParse(req.body);
 
         if (!parsedBody.success) {
+            processingTimer();
             res.status(400).json({
                 success: false,
                 message: parsedBody.error.errors.map((err: any) => err.message).join(", "),
@@ -122,6 +134,12 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
                     items: true
                 }
             });
+
+            // Track metrics
+            ordersCreatedCounter.inc({ status: 'pending', action: 'created' });
+            orderValueHistogram.observe(totalPrice);
+            sessionOperationsCounter.inc({ operation: 'create' });
+            processingTimer();
 
             // Tạo session trong Redis với TTL
             const session = await createOrderSession(
@@ -173,6 +191,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
             });
 
         } catch (error: any) {
+            processingTimer();
             res.status(400).json({
                 success: false,
                 message: error.message || "Lỗi khi validate sản phẩm"
@@ -182,6 +201,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
 
     } catch (error) {
         console.error("Error creating order:", error);
+        processingTimer();
         res.status(500).json({
             success: false,
             message: "Lỗi hệ thống khi tạo đơn hàng",
@@ -425,20 +445,14 @@ export const getUserOrders = async (
     }
 };
 
-/**
- * Tạo order từ giỏ hàng (Workflow chính - Order to Payment)
- * 1. Lấy cart từ Redis (Cart Service)
- * 2. Validate qua MenuItemRead (Read Model)
- * 3. Tạo Order với status PENDING
- * 4. Publish event order.create cho Payment Service (bất đồng bộ)
- * 5. Payment Service sẽ tạo PaymentIntent + PaymentAttempt + VNPay URL
- * 6. Clear cart sau khi order được tạo
- */
 export const createOrderFromCart = async (req: AuthenticatedRequest, res: Response) => {
+    const processingTimer = orderProcessingDurationByStatus.startTimer({ status: 'pending' });
+
     try {
         const userId = req.user?.id;
 
         if (!userId) {
+            processingTimer();
             res.status(401).json({
                 success: false,
                 message: "Unauthorized: No user ID found"
@@ -449,6 +463,7 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
         const { storeId, deliveryAddress, contactPhone, note } = req.body;
 
         if (!storeId) {
+            processingTimer();
             res.status(400).json({
                 success: false,
                 message: "storeId is required"
@@ -461,6 +476,7 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
         const token = authHeader?.replace('Bearer ', '');
 
         if (!token) {
+            processingTimer();
             res.status(401).json({
                 success: false,
                 message: "No authorization token provided"
@@ -473,6 +489,7 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
         try {
             cartItems = await fetchUserCart(token, storeId);
         } catch (error: any) {
+            processingTimer();
             res.status(400).json({
                 success: false,
                 message: error.message || "Không thể lấy giỏ hàng"
@@ -481,6 +498,7 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
         }
 
         if (!cartItems || cartItems.length === 0) {
+            processingTimer();
             res.status(400).json({
                 success: false,
                 message: "Giỏ hàng trống"
@@ -492,6 +510,7 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
         const validationResult = await validateCartItems(cartItems);
 
         if (!validationResult.isValid) {
+            processingTimer();
             res.status(400).json({
                 success: false,
                 message: "Giỏ hàng có lỗi",
@@ -539,6 +558,12 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
                 items: true
             }
         });
+
+        // Track metrics
+        ordersCreatedCounter.inc({ status: 'pending', action: 'created' });
+        orderValueHistogram.observe(validationResult.totalPrice);
+        sessionOperationsCounter.inc({ operation: 'create' });
+        processingTimer();
 
         // Tạo session trong Redis với TTL
         const session = await createOrderSession(
@@ -593,6 +618,7 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
 
     } catch (error: any) {
         console.error("Create order from cart error:", error);
+        processingTimer();
         res.status(500).json({
             success: false,
             message: error.message || "Lỗi khi tạo đơn hàng từ giỏ hàng"

@@ -1,0 +1,140 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 0,
+  "links": [],
+  "panels": [
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "User Service - Overall",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "id": 1,
+      "targets": [ { "expr": "sum(rate(user_service_http_requests_total[5m]))", "refId": "A" } ],
+      "title": "Request Rate (RPS)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "id": 2,
+      "targets": [
+        { "expr": "100 * sum(rate(user_service_http_requests_total{status_code=~\"4..\"}[5m])) / sum(rate(user_service_http_requests_total[5m]))", "legendFormat": "4xx", "refId": "A" },
+        { "expr": "100 * sum(rate(user_service_http_requests_total{status_code=~\"5..\"}[5m])) / sum(rate(user_service_http_requests_total[5m]))", "legendFormat": "5xx", "refId": "B" }
+      ],
+      "title": "Error Rate (4xx/5xx)",
+      "type": "timeseries",
+      "fieldConfig": { "defaults": { "unit": "percent" } }
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "id": 3,
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by (le) (rate(user_service_http_request_duration_seconds_bucket[5m]))) * 1000", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(user_service_http_request_duration_seconds_bucket[5m]))) * 1000", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(user_service_http_request_duration_seconds_bucket[5m]))) * 1000", "legendFormat": "p99", "refId": "C" }
+      ],
+      "title": "Response Time (p50/p95/p99 ms)",
+      "type": "timeseries",
+      "fieldConfig": { "defaults": { "unit": "ms" } }
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 9 },
+      "id": 4,
+      "targets": [ { "expr": "user_service_active_sessions_gauge", "refId": "A" } ],
+      "title": "Active Sessions",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
+      "id": 5,
+      "targets": [ { "expr": "sum(rate(user_service_login_attempts_total[5m])) by (status)", "refId": "A" } ],
+      "title": "Login Attempts (by status)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
+      "id": 6,
+      "targets": [ { "expr": "sum(rate(user_service_registrations_total{role=~\"${role}\"}[5m])) by (role)", "refId": "A" } ],
+      "title": "Registrations (by role)",
+      "type": "bar-chart"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 25 },
+      "id": 7,
+      "targets": [ { "expr": "sum(rate(user_service_token_verifications_total[5m])) by (status)", "refId": "A" } ],
+      "title": "Token Verifications",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 25 },
+      "id": 8,
+      "targets": [ { "expr": "user_service_process_resident_memory_bytes", "refId": "A" } ],
+      "title": "Memory Usage",
+      "type": "timeseries",
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "grafana_prometheus" },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 31 },
+      "id": 9,
+      "targets": [ { "expr": "sum(rate(user_service_http_requests_total[5m])) by (method, route, status_code)", "refId": "A" } ],
+      "title": "Request Count (by method/route/status)",
+      "type": "table"
+    }
+  ],
+  "schemaVersion": 42,
+  "tags": [ "user-service", "monitoring" ],
+  "templating": {
+    "list": [
+      {
+        "current": { "text": "user_service", "value": "user_service" },
+        "label": "service",
+        "name": "service",
+        "query": "metrics(.*_http_requests_total)",
+        "regex": "^(.+)_http_requests_total$",
+        "type": "query",
+        "multi": false
+      },
+      {
+        "current": { "text": "All", "value": "$__all" },
+        "label": "HTTP Status",
+        "name": "status",
+        "query": "label_values(user_service_http_requests_total, status_code)",
+        "type": "query",
+        "includeAll": true,
+        "allValue": "$__all",
+        "multi": true
+      },
+      {
+        "current": { "text": "All", "value": "$__all" },
+        "label": "Role",
+        "name": "role",
+        "query": "label_values(user_service_registrations_total, role)",
+        "type": "query",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true
+      }
+    ]
+  },
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "User Service Dashboard",
+  "uid": "user_service_dashboard",
+  "version": 1
+}
+

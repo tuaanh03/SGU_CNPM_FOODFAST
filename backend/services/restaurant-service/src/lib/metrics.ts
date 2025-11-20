@@ -38,5 +38,33 @@ export const activeRestaurants = new promClient.Gauge({
   registers: [register],
 });
 
+// Business Metrics
+export const storesCounter = new promClient.Counter({
+  name: 'restaurant_service_stores_total',
+  help: 'Total number of store operations',
+  labelNames: ['action'], // action: created | updated | deleted
+  registers: [register],
+});
+
+export const activeStoresGauge = new promClient.Gauge({
+  name: 'restaurant_service_active_stores_gauge',
+  help: 'Number of currently active stores',
+  registers: [register],
+});
+
+export const ordersReceivedCounter = new promClient.Counter({
+  name: 'restaurant_service_orders_received_total',
+  help: 'Total number of orders received by stores',
+  labelNames: ['store_id'],
+  registers: [register],
+});
+
+export const orderTransitionsCounter = new promClient.Counter({
+  name: 'restaurant_service_order_transitions_total',
+  help: 'Total number of order status transitions',
+  labelNames: ['from_status', 'to_status'],
+  registers: [register],
+});
+
 export default register;
 
