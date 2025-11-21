@@ -14,6 +14,9 @@ import {
     sessionOperationsCounter
 } from "../lib/metrics";
 
+// API Gateway URL from environment variable
+const API_GATEWAY_URL = process.env.API_GATEWAY_URL || 'http://api-gateway:3000';
+
 interface AuthenticatedRequest extends Request {
     user?: { id: string };
     body: any;
@@ -31,7 +34,7 @@ async function calculateOrderAmount(items: any[]): Promise<{ totalPrice: number;
     for (const item of items) {
         try {
             // Call Product Service API qua API Gateway
-            const productResponse = await fetch(`http://api-gateway:3000/api/products/${item.productId}`);
+            const productResponse = await fetch(`${API_GATEWAY_URL}/api/products/${item.productId}`);
 
             if (!productResponse.ok) {
                 throw new Error(`Sản phẩm ${item.productId} không tồn tại`);
