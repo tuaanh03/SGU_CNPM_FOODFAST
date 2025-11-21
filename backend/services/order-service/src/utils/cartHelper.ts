@@ -1,5 +1,8 @@
 import axios, { AxiosError } from 'axios';
 
+// API Gateway URL from environment variable
+const API_GATEWAY_URL = process.env.API_GATEWAY_URL || 'http://api-gateway:3000';
+
 interface CartItem {
   productId: string;
   quantity: number;
@@ -34,7 +37,7 @@ export async function fetchUserCart(token: string, storeId: string): Promise<Car
   try {
     // Gọi qua API Gateway để có headers x-user-id, x-user-email
     const response = await axios.get<CartResponse>(
-      `http://api-gateway:3000/api/cart/${storeId}`,
+      `${API_GATEWAY_URL}/api/cart/${storeId}`,
       {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -67,7 +70,7 @@ export async function fetchUserCart(token: string, storeId: string): Promise<Car
 export async function clearUserCart(token: string, storeId: string): Promise<void> {
   try {
     // Gọi qua API Gateway
-    await axios.delete(`http://api-gateway:3000/api/cart/${storeId}`, {
+    await axios.delete(`${API_GATEWAY_URL}/api/cart/${storeId}`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
