@@ -1,169 +1,94 @@
-curl -v -H "Origin: https://sgucnpmfoodfast-production.up.railway.app" \                                                                                         ─╯
-https://api-gateway-service-production-04a1.up.railway.app/api/products
-
-Đây là log khi gõ lệnh trên 
-* Host api-gateway-service-production-04a1.up.railway.app:443 was resolved.
-* IPv6: (none)
-* IPv4: 66.33.22.118
-*   Trying 66.33.22.118:443...
-* Connected to api-gateway-service-production-04a1.up.railway.app (66.33.22.118) port 443
-* ALPN: curl offers h2,http/1.1
-* (304) (OUT), TLS handshake, Client hello (1):
-*  CAfile: /etc/ssl/cert.pem
-*  CApath: none
-* (304) (IN), TLS handshake, Server hello (2):
-* (304) (IN), TLS handshake, Unknown (8):
-* (304) (IN), TLS handshake, Certificate (11):
-* (304) (IN), TLS handshake, CERT verify (15):
-* (304) (IN), TLS handshake, Finished (20):
-* (304) (OUT), TLS handshake, Finished (20):
-* SSL connection using TLSv1.3 / AEAD-CHACHA20-POLY1305-SHA256 / [blank] / UNDEF
-* ALPN: server accepted h2
-* Server certificate:
-*  subject: CN=*.up.railway.app
-*  start date: Oct  6 16:07:50 2025 GMT
-*  expire date: Jan  4 16:07:49 2026 GMT
-*  subjectAltName: host "api-gateway-service-production-04a1.up.railway.app" matched cert's "*.up.railway.app"
-*  issuer: C=US; O=Let's Encrypt; CN=R13
-*  SSL certificate verify ok.
-* using HTTP/2
-* [HTTP/2] [1] OPENED stream for https://api-gateway-service-production-04a1.up.railway.app/api/products
-* [HTTP/2] [1] [:method: GET]
-* [HTTP/2] [1] [:scheme: https]
-* [HTTP/2] [1] [:authority: api-gateway-service-production-04a1.up.railway.app]
-* [HTTP/2] [1] [:path: /api/products]
-* [HTTP/2] [1] [user-agent: curl/8.7.1]
-* [HTTP/2] [1] [accept: */*]
-* [HTTP/2] [1] [origin: https://sgucnpmfoodfast-production.up.railway.app]
-> GET /api/products HTTP/2
-> Host: api-gateway-service-production-04a1.up.railway.app
-> User-Agent: curl/8.7.1
-> Accept: */*
-> Origin: https://sgucnpmfoodfast-production.up.railway.app
->
-* Request completely sent off
-  < HTTP/2 301
-  < access-control-allow-credentials: true
-  < access-control-allow-origin: https://sgucnpmfoodfast-production.up.railway.app
-  < cache-control: no-store
-  < content-security-policy: default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests
-  < content-type: text/html; charset=utf-8
-  < cross-origin-opener-policy: same-origin
-  < cross-origin-resource-policy: same-origin
-  < date: Mon, 17 Nov 2025 09:54:08 GMT
-  < location: https://product-serivce-production.up.railway.app/products
-  < origin-agent-cluster: ?1
-  < referrer-policy: no-referrer
-  < server: railway-edge
-  < strict-transport-security: max-age=31536000; includeSubDomains
-  < vary: Origin, Accept-Encoding
-  < x-content-type-options: nosniff
-  < x-dns-prefetch-control: off
-  < x-download-options: noopen
-  < x-frame-options: SAMEORIGIN
-  < x-permitted-cross-domain-policies: none
-  < x-railway-edge: railway/asia-southeast1-eqsg3a
-  < x-railway-edge: railway/us-west2
-  < x-railway-request-id: Nw3N0LoZSimt2nMWDcO5xA
-  < x-railway-request-id: h7eiIa8CRrmneleq2prcFg
-  < x-xss-protection: 0
-  < content-length: 93
-  <
-  <a href="https://product-serivce-production.up.railway.app/products">Moved Permanently</a>.
-
-* Connection #0 to host api-gateway-service-production-04a1.up.railway.app left intact
+Danh sách metrics (hiện có) và ý nghĩa
+payment_service_http_requests_total{method, route, status_code}
+Tổng số HTTP request tới payment-service, phân theo method/route/status.
+Dùng để tính RPS và tỉ lệ lỗi.
+payment_service_http_request_duration_seconds{method, route, status_code}_bucket (histogram)
+Thống kê độ trễ request, dùng để tính p50/p95/p99.
+payment_service_payments_total{provider, status}
+Tổng payment xử lý, label provider (vnpay/stripe), status (success|failed|cancelled...).
+Dùng để theo dõi throughput và success rate.
+payment_service_payment_amount (histogram) or payment_service_payment_amount_histogram
+Phân bố giá trị giao dịch (buckets): dùng để theo dõi volume, median/percentile giá trị.
+payment_service_payment_intents_total{status}
+Số PaymentIntent theo trạng thái (REQUIRES_PAYMENT, PROCESSING, SUCCEEDED, FAILED).
+Dùng để theo dõi funnel trạng thái thanh toán.
+payment_service_payment_attempts_total{status}
+Số PaymentAttempt (created/processing/succeeded/failed).
+payment_service_payment_processing_duration_seconds{gateway} (histogram)
+Thời gian xử lý payment theo gateway (vnpay, stripe).
+payment_service_vnpay_api_calls_total{endpoint, status}
+Số lần gọi API VNPay, endpoint (create_payment_url, return, ipn...), status (started|success|error).
+payment_service_vnpay_responses_total{response_code}
+Số response code từ VNPay (00,24,...). Dùng để phân tích lỗi theo mã.
+payment_service_vnpay_callback_duration_seconds{type}_bucket
+Thời gian xử lý callback VNPay, type = return | ipn.
 
 
-Đây là log khi build deploy trên railway
 
-[Region: us-west1]
-=========================
-Using Detected Dockerfile
-=========================
+Customer dashboard
+Grafana — layout dashboard (sections + panels) and PromQL mẫu
+A. Header / Summary row
+Panel: Service status (up)
+Query: up{job="payment-service"} or up{instance=~"$instance"}
+Visualization: SingleStat / Status
+Panel: Total RPS
+Query: sum(rate(payment_service_http_requests_total[1m]))
+Unit: req/s
+Panel: Error rate %
+Query: 100 * sum(rate(payment_service_http_requests_total{status_code=~"4..|5.."}[5m])) / sum(rate(payment_service_http_requests_total[5m]))
+Thresholds: yellow ≥1%, orange ≥5%, red ≥10%
+B. HTTP metrics (latency & volume)
+Request rate (by route)
+Query: sum by (route) (rate(payment_service_http_requests_total[5m]))
+Panel: stacked bar/series
+Latency p50/p95/p99 (overall)
+p95: histogram_quantile(0.95, sum by (le) (rate(payment_service_http_request_duration_seconds_bucket[5m])))
+Multiply by 1000 for ms.
+Request duration distribution (heatmap) — histogram.
+C. Payment business metrics (core)
+Payment Intents by status
+Query: sum(rate(payment_service_payment_intents_total[5m])) by (status)
+Panel: pie / stacked bar
+Active Payment Intents (gauge) — if you maintain gauge or compute:
+Query: sum(payment_service_payment_intents_total) by (status) (or use gauge if added)
+Payment attempts (created / success / failed)
+Query: sum(rate(payment_service_payment_attempts_total[5m])) by (status)
+Payment amount volume (sum / avg)
+Sum of payments over time (VND): sum(rate(payment_service_payment_amount_sum[5m])) — if histogram provides sum/count
+Or use histogram_quantile to show amount distribution:
+histogram_quantile(0.5, sum by (le) (rate(payment_service_payment_amount_bucket[5m]))) → median payment
+Average payment value (per minute)
+Query example if using histogram_sum/histogram_count: sum(rate(payment_service_payment_amount_sum[5m])) / sum(rate(payment_service_payment_amount_count[5m]))
+D. VNPay integration
+VNPay API calls over time (by endpoint + status)
+Query: sum(rate(payment_service_vnpay_api_calls_total[5m])) by (endpoint, status)
+VNPay response codes distribution
+Query: sum(rate(payment_service_vnpay_responses_total[5m])) by (response_code)
+Callback timing (return vs ipn)
+p95 IPN: histogram_quantile(0.95, sum by (le) (rate(payment_service_vnpay_callback_duration_seconds_bucket{type="ipn"}[5m]))) * 1000
+p95 Return: same with type="return"
+Mismatch detection (missing IPN)
+Query: (rate(payment_service_vnpay_api_calls_total{endpoint="return"}[10m]) - rate(payment_service_vnpay_api_calls_total{endpoint="ipn"}[10m])) → if significantly > 0, potential missing IPN.
 
-context: 8b0k-edxo
 
-internal
-load build definition from Dockerfile
-0ms
-
-internal
-load metadata for docker.io/library/nginx:alpine
-600ms
-
-internal
-load metadata for docker.io/library/node:20-alpine
-564ms
-
-auth
-library/node:pull token for registry-1.docker.io
-0ms
-
-auth
-library/nginx:pull token for registry-1.docker.io
-0ms
-
-internal
-load .dockerignore
-0ms
-
-builder
-FROM docker.io/library/node:20-alpine@sha256:6178e78b972f79c335df281f4b7674a2d85071aae2af020ffa39f0a770265435
-10ms
-
-internal
-load build context
-0ms
-
-stage-1
-FROM docker.io/library/nginx:alpine@sha256:b3c656d55d7ad751196f21b7fd2e8d4da9cb430e32f646adcf92441b72f82b14
-12ms
-
-stage-1
-COPY nginx.conf.template /etc/nginx/templates/nginx.conf.template cached
-0ms
-
-builder
-RUN npm install cached
-0ms
-
-builder
-COPY package*.json ./ cached
-0ms
-
-builder
-WORKDIR /app cached
-0ms
-
-stage-1
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-15ms
-
-builder
-COPY . .
-29ms
-
-stage-1
-RUN chmod +x /docker-entrypoint.sh
-211ms
-
-builder
-RUN rm -f nginx.conf
-127ms
-
-builder
-RUN npm run build
-9s
-✓ built in 3.47s
-
-stage-1
-COPY --from=builder /app/dist /usr/share/nginx/html
-26ms
-
-auth
-sharing credentials for production-us-west2.railway-registry.com
-0ms
-
-importing to docker
-512ms
-Build time: 24.98 seconds
+F. System metrics (node/process)
+Memory resident (bytes): payment_service_process_resident_memory_bytes
+CPU: rate(process_cpu_seconds_total[5m]) per instance
+Open fds / handles if exported
+Ví dụ panels + PromQL cụ thể (copy-paste ready)
+Panel: Total request rate (all instances)
+Query: sum(rate(payment_service_http_requests_total[1m]))
+Panel: Error rate %
+Query: 100 * sum(rate(payment_service_http_requests_total{status_code=~"4..|5.."}[5m])) / sum(rate(payment_service_http_requests_total[5m]))
+Panel: p95 latency (ms)
+Query: histogram_quantile(0.95, sum by (le) (rate(payment_service_http_request_duration_seconds_bucket[5m]))) * 1000
+Panel: Payment intents by status
+Query: sum(rate(payment_service_payment_intents_total[5m])) by (status)
+Panel: Payment attempts (success vs failed)
+Query: sum(rate(payment_service_payment_attempts_total[5m])) by (status)
+Panel: Payment amount median (VND)
+Query: histogram_quantile(0.50, sum by (le) (rate(payment_service_payment_amount_histogram_bucket[5m])))
+Panel: VNPay: create_payment_url errors
+Query: sum(rate(payment_service_vnpay_api_calls_total{endpoint="create_payment_url", status="error"}[5m]))
+Panel: VNPay IPN p95
+Query: histogram_quantile(0.95, sum by (le) (rate(payment_service_vnpay_callback_duration_seconds_bucket{type="ipn"}[5m]))) * 1000
