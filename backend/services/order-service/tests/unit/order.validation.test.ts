@@ -1,4 +1,5 @@
 import { OrderSchema } from '../../src/validations/order.validation';
+import { calculateOrderAmount } from '../../src/controllers/order';
 
 describe('Order Validation', () => {
     describe('OrderSchema', () => {
@@ -145,3 +146,59 @@ describe('Order Validation', () => {
     });
 });
 
+// ----------------- Tests for calculateOrderAmount -----------------
+describe('calculateOrderAmount', () => {
+    const originalFetch = global.fetch;
+
+    afterEach(() => {
+        // restore global.fetch
+        // @ts-ignore
+        global.fetch = originalFetch;
+        jest.resetAllMocks();
+    });
+
+    it('calculates totalPrice and returns validItems for valid products', async () => {
+        const items = [
+            { productId: 'p1', quantity: 2 },
+            { productId: 'p2', quantity: 1 }
+        ];
+
+        // Mock fetch responses for p1 and p2
+        const mockFetch = jest.fn()
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { id: 'p1', name: 'Prod1', price: 10000, isAvailable: true } }) })
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { id: 'p2', name: 'Prod2', price: 20000, isAvailable: true } }) });
+
+        // @ts-ignore
+        global.fetch = mockFetch;
+
+        const result = await calculateOrderAmount(items);
+
+        expect(result.totalPrice).toBe(10000 * 2 + 20000 * 1);
+        expect(result.validItems.length).toBe(2);
+        expect(result.validItems[0]).toMatchObject({ productId: 'p1', quantity: 2, productPrice: 10000 });
+    });
+
+    it('throws when product not found (fetch.ok = false)', async () => {
+        const items = [{ productId: 'p1', quantity: 1 }];
+        // @ts-ignore
+        global.fetch = jest.fn().mockResolvedValue({ ok: false });
+
+        await expect(calculateOrderAmount(items)).rejects.toThrow(/không tồn tại|not exist|does not exist/i);
+    });
+
+    it('throws when product is not available', async () => {
+        const items = [{ productId: 'p1', quantity: 1 }];
+        // @ts-ignore
+        global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { id: 'p1', name: 'Prod1', price: 10000, isAvailable: false } }) });
+
+        await expect(calculateOrderAmount(items)).rejects.toThrow(/không còn kinh doanh|not available/i);
+    });
+
+    it('throws when quantity is invalid (<= 0)', async () => {
+        const items = [{ productId: 'p1', quantity: 0 }];
+        // @ts-ignore
+        global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { id: 'p1', name: 'Prod1', price: 10000, isAvailable: true } }) });
+
+        await expect(calculateOrderAmount(items)).rejects.toThrow(/phải lớn hơn 0|greater than 0/i);
+    });
+});
