@@ -26,7 +26,7 @@ interface AuthenticatedRequest extends Request {
 //okorder
 
 // Helper function để tính tổng tiền từ Product Service
-async function calculateOrderAmount(items: any[]): Promise<{ totalPrice: number; validItems: any[] }> {
+export async function calculateOrderAmount(items: any[]): Promise<{ totalPrice: number; validItems: any[] }> {
     // Gọi Product Service để lấy thông tin và giá của từng sản phẩm
     let totalPrice = 0;
     const validItems = [];
