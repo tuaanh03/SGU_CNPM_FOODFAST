@@ -10,6 +10,15 @@ import {
   kafkaConsumerErrorCounter,
 } from "../lib/kafkaMetrics";
 
+// Import payment metrics
+import {
+  paymentIntentsCounter,
+  paymentAttemptsCounter,
+  paymentAmountHistogram,
+  paymentProcessingDuration,
+  vnpayApiCallsCounter,
+} from "../lib/metrics";
+
 // Kafka Configuration - Hỗ trợ cả local và Confluent Cloud
 const kafkaBrokers = process.env.KAFKA_BROKERS?.split(',') || ['kafka:9092'];
 const kafkaUsername = process.env.KAFKA_USERNAME;
@@ -73,6 +82,13 @@ async function createPaymentIntent(
 
     console.log(`PaymentIntent created: ${paymentIntent.id} for order ${orderId}`);
 
+    // record metric for payment intent creation
+    try {
+      paymentIntentsCounter.inc({ status: 'REQUIRES_PAYMENT' });
+    } catch (e) {
+      // ignore metric errors
+    }
+
     // Bước 2: Tạo PaymentAttempt đầu tiên
     const vnpTxnRef = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -92,9 +108,19 @@ async function createPaymentIntent(
       }
     });
 
+    // record metric for attempt created
+    try {
+      paymentAttemptsCounter.inc({ status: 'created' });
+    } catch (e) {}
+
     console.log(`PaymentAttempt created: ${paymentAttempt.id} for PaymentIntent ${paymentIntent.id}`);
 
     // Bước 3: Gọi API VNPay để tạo paymentUrl
+    const endProcessTimer = paymentProcessingDuration.startTimer({ gateway: 'vnpay' });
+    try {
+      vnpayApiCallsCounter.inc({ endpoint: 'create_payment_url', status: 'started' });
+    } catch (e) {}
+
     const vnpayResult = await processPayment(
       orderId,
       userId,
@@ -102,7 +128,12 @@ async function createPaymentIntent(
       description
     );
 
+    // record vnpay call result
     if (vnpayResult.success && vnpayResult.paymentUrl) {
+      try {
+        vnpayApiCallsCounter.inc({ endpoint: 'create_payment_url', status: 'success' });
+      } catch (e) {}
+
       // Cập nhật PaymentAttempt với status PROCESSING
       await prisma.paymentAttempt.update({
         where: { id: paymentAttempt.id },
@@ -123,7 +154,15 @@ async function createPaymentIntent(
         }
       });
 
+      // metrics for successful attempt
+      try {
+        paymentAttemptsCounter.inc({ status: 'success' });
+        paymentAmountHistogram.observe({ provider: 'vnpay', currency: 'VND' }, amount);
+      } catch (e) {}
+
       console.log(`VNPay payment URL created for order ${orderId}`);
+
+      endProcessTimer();
 
       return {
         success: true,
@@ -132,6 +171,10 @@ async function createPaymentIntent(
         paymentUrl: vnpayResult.paymentUrl
       };
     } else {
+      try {
+        vnpayApiCallsCounter.inc({ endpoint: 'create_payment_url', status: 'error' });
+      } catch (e) {}
+
       // Cập nhật PaymentAttempt và PaymentIntent thành FAILED
       await prisma.paymentAttempt.update({
         where: { id: paymentAttempt.id },
@@ -146,6 +189,13 @@ async function createPaymentIntent(
           status: "FAILED"
         }
       });
+
+      // metrics for failed attempt
+      try {
+        paymentAttemptsCounter.inc({ status: 'failed' });
+      } catch (e) {}
+
+      endProcessTimer();
 
       return {
         success: false,
@@ -334,6 +384,9 @@ async function retryPaymentIntent(
     });
 
     console.log(`✅ Created new PaymentAttempt: ${paymentAttempt.id} (retry) for PaymentIntent ${existingPaymentIntent.id}`);
+
+    // record metric for retry attempt
+    try { paymentAttemptsCounter.inc({ status: 'created_retry' }); } catch(e) {}
 
     // Tạo URL thanh toán VNPay mới
     const vnpayResult = await processPayment(
@@ -524,4 +577,3 @@ process.on("SIGINT", async () => {
   console.log("Kafka producer and consumer disconnected");
   process.exit();
 });
-

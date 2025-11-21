@@ -11,11 +11,25 @@ import {
     IpnSuccess,
 } from 'vnpay';
 
+// Import metrics
+import {
+  paymentCounter,
+  paymentAmountHistogram,
+  paymentIntentsCounter,
+  paymentAttemptsCounter,
+  vnpayApiCallsCounter,
+  vnpayResponsesCounter,
+  vnpayCallbackDuration,
+} from '../lib/metrics';
+
+
 /**
  * VNPay IPN (Instant Payment Notification) handler
  * Xử lý thông báo từ VNPay khi giao dịch hoàn tất
  */
 export const vnpayIPN = async (req: Request, res: Response) => {
+    // Start timer for IPN processing
+    const endTimer = vnpayCallbackDuration.startTimer({ type: 'ipn' });
     try {
         console.log("VNPay IPN received:", req.query);
 
@@ -24,8 +38,13 @@ export const vnpayIPN = async (req: Request, res: Response) => {
 
         if (!verify.isVerified) {
             console.error("Invalid signature in VNPay IPN");
+            // record API call failure
+            vnpayApiCallsCounter.inc({ endpoint: 'ipn', status: 'error' });
             return res.json(IpnFailChecksum);
         }
+
+        // record API call success
+        vnpayApiCallsCounter.inc({ endpoint: 'ipn', status: 'success' });
 
         console.log("✓ VNPay IPN signature verified successfully");
 
@@ -35,6 +54,14 @@ export const vnpayIPN = async (req: Request, res: Response) => {
         const orderInfo = verify.vnp_OrderInfo;
         const transactionNo = verify.vnp_TransactionNo;
         const rspCode = verify.vnp_ResponseCode;
+
+        // record response code metric
+        if (rspCode !== undefined && rspCode !== null) {
+          vnpayResponsesCounter.inc({ response_code: String(rspCode) });
+        }
+
+        // record payment amount distribution
+        paymentAmountHistogram.observe({ provider: 'vnpay', currency: 'VND' }, amount);
 
         console.log(`VNPay IPN - OrderId: ${orderId}, RspCode: ${rspCode}, Amount: ${amount}, TransactionNo: ${transactionNo}`);
 
@@ -59,6 +86,9 @@ export const vnpayIPN = async (req: Request, res: Response) => {
                 paymentStatus = "failed";
                 console.log(`❌ Payment failed for order ${extractedOrderId} with code ${rspCode}`);
             }
+
+            // Update attempt/payment metrics
+            paymentAttemptsCounter.inc({ status: paymentStatus === 'success' ? 'success' : 'failed' });
 
             // Cập nhật PaymentIntent trong database
             const paymentIntent = await prisma.paymentIntent.findUnique({
@@ -108,6 +138,15 @@ export const vnpayIPN = async (req: Request, res: Response) => {
 
                     console.log(`✓ Updated PaymentIntent ${paymentIntent.id} and PaymentAttempt to ${paymentStatus}`);
                 }
+
+                // increment payment intent metric
+                paymentIntentsCounter.inc({ status: intentStatus });
+
+            } else {
+                // If no paymentIntent found, increment a not-found metric
+                // (optional) using vnpayResponsesCounter with special code
+                vnpayResponsesCounter.inc({ response_code: 'ORDER_NOT_FOUND' });
+                console.warn(`PaymentIntent not found for order ${extractedOrderId}`);
             }
 
             // Publish event để cập nhật order status
@@ -128,11 +167,15 @@ export const vnpayIPN = async (req: Request, res: Response) => {
 
         } catch (error) {
             console.error("Error processing payment:", error);
+            vnpayApiCallsCounter.inc({ endpoint: 'ipn', status: 'error' });
             return res.json(IpnUnknownError);
         }
     } catch (error) {
         console.error("Error in VNPay IPN handler:", error);
+        vnpayApiCallsCounter.inc({ endpoint: 'ipn', status: 'error' });
         return res.json(IpnUnknownError);
+    } finally {
+        endTimer();
     }
 };
 
@@ -145,14 +188,20 @@ export const vnpayReturn = async (req: Request, res: Response) => {
 
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
 
+    // start timer for return processing
+    const endTimer = vnpayCallbackDuration.startTimer({ type: 'return' });
+
     try {
         // Verify return URL using vnpay library
         const verify = vnpay.verifyReturnUrl(req.query as any);
 
         if (!verify.isVerified) {
             console.error("Invalid signature in VNPay Return URL");
+            vnpayApiCallsCounter.inc({ endpoint: 'return', status: 'error' });
             return res.redirect(`${frontendUrl}/payment-result?status=failed&error=invalid_signature`);
         }
+
+        vnpayApiCallsCounter.inc({ endpoint: 'return', status: 'success' });
 
         console.log("✓ VNPay Return signature verified successfully");
 
@@ -171,13 +220,24 @@ export const vnpayReturn = async (req: Request, res: Response) => {
 
         console.log(`VNPay Return - OrderId: ${orderId}, TxnRef: ${vnp_TxnRef}, Status: ${paymentStatus}, Code: ${responseCode}`);
 
+        // record return response code
+        if (responseCode !== undefined && responseCode !== null) {
+          vnpayResponsesCounter.inc({ response_code: String(responseCode) });
+        }
+
+        // record amount distribution
+        paymentAmountHistogram.observe({ provider: 'vnpay', currency: 'VND' }, vnp_Amount);
+
         // Redirect user đến trang kết quả thanh toán của frontend
         const redirectUrl = `${frontendUrl}/payment-result?status=${paymentStatus}&orderId=${orderId}&ref=${vnp_TxnRef}&amount=${vnp_Amount}`;
         res.redirect(redirectUrl);
 
     } catch (error) {
         console.error("Error processing VNPay Return callback:", error);
+        vnpayApiCallsCounter.inc({ endpoint: 'return', status: 'error' });
         res.redirect(`${frontendUrl}/payment-result?status=error&message=processing_error`);
+    } finally {
+        endTimer();
     }
 };
 
@@ -217,6 +277,8 @@ export const getPaymentUrl = async (req: Request, res: Response) => {
         });
 
         if (!paymentIntent) {
+            // record not found
+            vnpayApiCallsCounter.inc({ endpoint: 'getPaymentUrl', status: 'error' });
             return res.status(404).json({
                 success: false,
                 message: "Không tìm thấy thông tin thanh toán cho đơn hàng này"
@@ -225,6 +287,9 @@ export const getPaymentUrl = async (req: Request, res: Response) => {
 
         // Kiểm tra nếu payment đã thành công
         if (paymentIntent.status === "SUCCEEDED") {
+            // record metric for completed payments
+            paymentCounter.inc({ provider: 'vnpay', status: 'success' });
+
             return res.status(200).json({
                 success: true,
                 status: "SUCCEEDED",
@@ -243,6 +308,10 @@ export const getPaymentUrl = async (req: Request, res: Response) => {
             if (paymentUrl) {
                 console.log(`✅ Found payment URL for order ${orderId}: ${paymentUrl}`);
 
+                // record attempt and amount
+                paymentAttemptsCounter.inc({ status: 'success' });
+                paymentAmountHistogram.observe({ provider: 'vnpay', currency: 'VND' }, latestAttempt.amount);
+
                 return res.status(200).json({
                     success: true,
                     status: paymentIntent.status,
@@ -255,6 +324,8 @@ export const getPaymentUrl = async (req: Request, res: Response) => {
         }
 
         // Nếu chưa có payment URL, có thể payment service đang xử lý
+        vnpayApiCallsCounter.inc({ endpoint: 'getPaymentUrl', status: 'pending' });
+
         return res.status(202).json({
             success: false,
             status: paymentIntent.status,
@@ -263,10 +334,10 @@ export const getPaymentUrl = async (req: Request, res: Response) => {
 
     } catch (error: any) {
         console.error("Error getting payment URL:", error);
+        vnpayApiCallsCounter.inc({ endpoint: 'getPaymentUrl', status: 'error' });
         return res.status(500).json({
             success: false,
             message: "Lỗi khi lấy thông tin thanh toán"
         });
     }
 };
-
