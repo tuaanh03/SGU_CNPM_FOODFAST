@@ -1,4 +1,4 @@
-import { Kafka, Partitioners } from "kafkajs";
+import { Kafka, Partitioners, EachMessagePayload } from "kafkajs";
 import prisma from "../lib/prisma";
 import {
     kafkaProducerMessageCounter,
@@ -8,6 +8,13 @@ import {
     kafkaConsumerProcessingDuration,
     kafkaConsumerErrorCounter,
 } from "../lib/kafkaMetrics";
+
+// Allow disabling Kafka via env (useful for tests / environments without Kafka)
+const isKafkaDisabled = process.env.DISABLE_KAFKA === 'true' || process.env.NODE_ENV === 'test';
+
+if (isKafkaDisabled) {
+    console.log('Kafka is disabled via DISABLE_KAFKA or test env; producer/consumer will not be initialized');
+}
 
 // Kafka Configuration - Hỗ trợ cả local và Confluent Cloud
 const kafkaBrokers = process.env.KAFKA_BROKERS?.split(',') || ['kafka:9092'];
@@ -19,33 +26,50 @@ console.log('🔧 Kafka Config (Product Service):');
 console.log('  - Brokers:', kafkaBrokers);
 console.log('  - SASL:', useSASL ? 'Enabled (Confluent Cloud)' : 'Disabled (Local)');
 
-const kafka = new Kafka({
-    clientId: "product-service",
-    brokers: kafkaBrokers,
-    ssl: useSASL,
-    sasl: useSASL && kafkaUsername && kafkaPassword ? {
-        mechanism: 'plain',
-        username: kafkaUsername,
-        password: kafkaPassword
-    } : undefined,
-    retry: {
-        initialRetryTime: 100,
-        maxRetryTime: 30000,
-        retries: 10,
-        factor: 0.2,
-    },
-});
-
-const producer = kafka.producer({
-    createPartitioner: Partitioners.DefaultPartitioner,
-});
+// If Kafka is disabled, create no-op placeholders
+let kafka: any = null;
+let producer: any = null;
+let consumer: any = null;
 let isProducerConnected = false;
+
+if (!isKafkaDisabled) {
+    kafka = new Kafka({
+        clientId: "product-service",
+        brokers: kafkaBrokers,
+        ssl: useSASL,
+        sasl: useSASL && kafkaUsername && kafkaPassword ? {
+            mechanism: 'plain',
+            username: kafkaUsername,
+            password: kafkaPassword
+        } : undefined,
+        retry: {
+            initialRetryTime: 100,
+            maxRetryTime: 30000,
+            retries: 10,
+            factor: 0.2,
+        },
+    });
+
+    producer = kafka.producer({
+        createPartitioner: Partitioners.DefaultPartitioner,
+    });
+
+    consumer = kafka.consumer({
+        groupId: "product-service-group",
+    });
+}
 
 // Publish product sync event to Order Service
 export async function publishProductSyncEvent(
     eventType: 'CREATED' | 'UPDATED' | 'DELETED',
     productData: any
 ) {
+    if (isKafkaDisabled) {
+        // No-op in test or when disabled; log for visibility
+        console.log('[Kafka disabled] publishProductSyncEvent', eventType, productData?.id);
+        return;
+    }
+
     const topic = "product.sync";
     const end = kafkaProducerLatency.startTimer({ topic });
 
@@ -87,6 +111,11 @@ export async function publishInventoryReserveResult(
     status: "RESERVED" | "REJECTED",
     message?: string
 ) {
+    if (isKafkaDisabled) {
+        console.log('[Kafka disabled] publishInventoryReserveResult', orderId, status);
+        return;
+    }
+
     const topic = "inventory.reserve.result";
     const end = kafkaProducerLatency.startTimer({ topic });
 
@@ -123,9 +152,7 @@ export async function publishInventoryReserveResult(
     }
 }
 
-const consumer = kafka.consumer({
-    groupId: "product-service-group",
-});
+// The consumer processing functions remain unchanged; they will not be invoked when initKafka is a no-op
 
 async function handleOrderCreate(orderData: any) {
     console.log("Processing order.create:", orderData);
@@ -228,12 +255,18 @@ async function handlePaymentEvent(paymentData: any) {
 }
 
 export async function initKafka() {
+    if (isKafkaDisabled) {
+        console.log('initKafka: Kafka is disabled; skipping consumer setup');
+        return;
+    }
+
     try {
         await consumer.connect();
         await consumer.subscribe({ topics: ["order.create", "payment.event"] });
 
         await consumer.run({
-            eachMessage: async ({ topic, partition, message }) => {
+            eachMessage: async (payload: EachMessagePayload) => {
+                const { topic, message } = payload;
                 const end = kafkaConsumerProcessingDuration.startTimer({ topic });
                 const value = message.value?.toString();
 
