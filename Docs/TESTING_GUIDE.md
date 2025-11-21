@@ -50,7 +50,7 @@
 
 #### Unit Tests
 
-**File: `tests/unit/auth.service.test.ts`**
+**File: `tests/unit/auth.test.ts`**
 
 ```typescript
 import { hashPassword, comparePassword, generateToken, verifyToken } from '../../src/utils/auth';
