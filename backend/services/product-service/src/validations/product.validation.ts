@@ -32,3 +32,4 @@ export const updateCategorySchema = z.object({
 export const uuidParamSchema = z.object({
   id: z.string().uuid("ID không hợp lệ")
 });
+

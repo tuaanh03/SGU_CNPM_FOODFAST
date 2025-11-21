@@ -86,6 +86,12 @@ export const createProduct = async (req: Request, res: Response) => {
       storeId
     } = req.body;
 
+    // Validate price: must be a number >= 0
+    const numericPrice = Number(price);
+    if (!Number.isFinite(numericPrice) || numericPrice < 0) {
+      return res.status(400).json({ success: false, message: 'Invalid price' });
+    }
+
     // Nếu là STORE_ADMIN, cần kiểm tra storeId có thuộc về user này không
     // (logic này có thể được mở rộng bằng cách gọi restaurant-service để verify)
     // Hiện tại chấp nhận storeId từ request body
@@ -127,7 +133,7 @@ export const createProduct = async (req: Request, res: Response) => {
       data: {
         sku,
         name,
-        price: parseInt(price),
+        price: Math.round(numericPrice),
         description,
         imageUrl,
         categoryId,
@@ -453,4 +459,3 @@ export const syncAllProducts = async (req: Request, res: Response) => {
     });
   }
 };
-
