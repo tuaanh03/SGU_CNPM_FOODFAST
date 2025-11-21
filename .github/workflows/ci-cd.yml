@@ -44,17 +44,7 @@ jobs:
         working-directory: ./backend/services/${{ matrix.service }}
         run: pnpm test
 
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: user-service-test-results
-          # Upload common test output locations; fallback to the service folder if none exist
-          path: |
-            ./backend/services/user-service/test-results
-            ./backend/services/user-service/jest-report
-            ./backend/services/user-service/coverage
-            ./backend/services/user-service
+
 
   # Job 2: Test Frontend
   test-frontend:
