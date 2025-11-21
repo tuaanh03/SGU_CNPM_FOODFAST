@@ -310,7 +310,8 @@ export const getPaymentUrl = async (req: Request, res: Response) => {
 
                 // record attempt and amount
                 paymentAttemptsCounter.inc({ status: 'success' });
-                paymentAmountHistogram.observe({ provider: 'vnpay', currency: 'VND' }, latestAttempt.amount);
+                // latestAttempt.amount is a Prisma Decimal — convert to number for metrics
+                paymentAmountHistogram.observe({ provider: 'vnpay', currency: 'VND' }, Number(latestAttempt.amount));
 
                 return res.status(200).json({
                     success: true,
@@ -318,7 +319,7 @@ export const getPaymentUrl = async (req: Request, res: Response) => {
                     paymentUrl,
                     paymentIntentId: paymentIntent.id,
                     paymentAttemptId: latestAttempt.id,
-                    amount: latestAttempt.amount
+                    amount: Number(latestAttempt.amount)
                 });
             }
         }

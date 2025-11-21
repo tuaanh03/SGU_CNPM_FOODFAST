@@ -122,6 +122,11 @@ server.use((req: Request, res: Response) => {
 
 const PORT = process.env.PORT || 3003;
 
-server.listen(PORT, () => {
-  console.log(`User service is running on port ${PORT}`);
-});
+// Only start the server when not running tests
+if (process.env.NODE_ENV !== 'test') {
+  server.listen(PORT, () => {
+    console.log(`User service is running on port ${PORT}`);
+  });
+}
+
+export default server;

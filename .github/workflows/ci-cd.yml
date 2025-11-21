@@ -17,8 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [order-service, payment-service]
-#        service: [ payment-service]
+        service: [order-service, payment-service, user-service]
+    #        service: [ payment-service]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -44,6 +44,8 @@ jobs:
         working-directory: ./backend/services/${{ matrix.service }}
         run: pnpm test
 
+
+
   # Job 2: Test Frontend
   test-frontend:
     runs-on: ubuntu-latest
@@ -62,67 +64,67 @@ jobs:
         working-directory: ./frontend/cnpm-fooddelivery
         run: npm install
 
-#      - name: Run lint
-#        working-directory: ./frontend/cnpm-fooddelivery
-#        run: npm run lint
+      #      - name: Run lint
+      #        working-directory: ./frontend/cnpm-fooddelivery
+      #        run: npm run lint
 
       - name: Build frontend
         working-directory: ./frontend/cnpm-fooddelivery
         run: npm run build
     # ---------------------------------------------------------------------------------------
-  # Job 3: Build và Push Docker Images cho Backend Services lên Azure Container Registry
-#  build-push-backend:
-#    needs: [test-backend]
-#    runs-on: ubuntu-latest
-#    if: github.ref == 'refs/heads/main'
-#    strategy:
-#      matrix:
-#        service:
-#          - api-gateway
-#          - user-service
-#          - order-service
-#          - product-service
-#          - payment-service
-#          - notification-service
-#          - restaurant-service
-#          - cart-service
-#
-#    steps:
-#      - name: Checkout code
-#        uses: actions/checkout@v4
-#
-#      - name: Set up Docker Buildx
-#        uses: docker/setup-buildx-action@v3
-#
-#      - name: Login to Azure Container Registry
-#        uses: docker/login-action@v3
-#        with:
-#          registry: ${{ env.AZURE_REGISTRY }}
-#          username: ${{ env.AZURE_REGISTRY_USERNAME }}
-#          password: ${{ env.AZURE_REGISTRY_PASSWORD }}
-#
-#      - name: Extract metadata
-#        id: meta
-#        uses: docker/metadata-action@v5
-#        with:
-#          images: ${{ env.AZURE_REGISTRY }}/foodfast-${{ matrix.service }}
-#          tags: |
-#            type=ref,event=branch
-#            type=ref,event=pr
-#            type=sha,prefix={{branch}}-
-#            type=raw,value=latest,enable={{is_default_branch}}
-#
-#      - name: Build and push Docker image
-#        uses: docker/build-push-action@v5
-#        with:
-#          context: ./backend/services/${{ matrix.service }}
-#          file: ./backend/services/${{ matrix.service }}/Dockerfile
-#          push: true
-#          tags: ${{ steps.meta.outputs.tags }}
-#          labels: ${{ steps.meta.outputs.labels }}
-#          cache-from: type=gha
-#          cache-to: type=gha,mode=max
- # ---------------------------------------------------------------------------------------
+    # Job 3: Build và Push Docker Images cho Backend Services lên Azure Container Registry
+    #  build-push-backend:
+    #    needs: [test-backend]
+    #    runs-on: ubuntu-latest
+    #    if: github.ref == 'refs/heads/main'
+    #    strategy:
+    #      matrix:
+    #        service:
+    #          - api-gateway
+    #          - user-service
+    #          - order-service
+    #          - product-service
+    #          - payment-service
+    #          - notification-service
+    #          - restaurant-service
+    #          - cart-service
+    #
+    #    steps:
+    #      - name: Checkout code
+    #        uses: actions/checkout@v4
+    #
+    #      - name: Set up Docker Buildx
+    #        uses: docker/setup-buildx-action@v3
+    #
+    #      - name: Login to Azure Container Registry
+    #        uses: docker/login-action@v3
+    #        with:
+    #          registry: ${{ env.AZURE_REGISTRY }}
+    #          username: ${{ env.AZURE_REGISTRY_USERNAME }}
+    #          password: ${{ env.AZURE_REGISTRY_PASSWORD }}
+    #
+    #      - name: Extract metadata
+    #        id: meta
+    #        uses: docker/metadata-action@v5
+    #        with:
+    #          images: ${{ env.AZURE_REGISTRY }}/foodfast-${{ matrix.service }}
+    #          tags: |
+    #            type=ref,event=branch
+    #            type=ref,event=pr
+    #            type=sha,prefix={{branch}}-
+    #            type=raw,value=latest,enable={{is_default_branch}}
+    #
+    #      - name: Build and push Docker image
+    #        uses: docker/build-push-action@v5
+    #        with:
+    #          context: ./backend/services/${{ matrix.service }}
+    #          file: ./backend/services/${{ matrix.service }}/Dockerfile
+    #          push: true
+    #          tags: ${{ steps.meta.outputs.tags }}
+    #          labels: ${{ steps.meta.outputs.labels }}
+    #          cache-from: type=gha
+    #          cache-to: type=gha,mode=max
+    # ---------------------------------------------------------------------------------------
     # Job 4: Build và Push Frontend (tạm thời disable - sẽ thêm sau)
     # build-push-frontend:
     #   needs: [test-frontend]
