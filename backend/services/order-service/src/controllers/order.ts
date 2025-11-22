@@ -326,12 +326,13 @@ export const getPaymentUrl = async (
             return;
         }
 
-        // Nếu order đã success, không cần payment URL nữa
-        if (order.status === "success") {
+        // Nếu order đã thanh toán thành công (confirmed, preparing, ...), không cần payment URL nữa
+        if (["confirmed", "preparing", "readyForPickup", "delivering", "completed"].includes(order.status)) {
             res.status(200).json({
                 success: true,
                 message: "Đơn hàng đã được thanh toán thành công",
                 paymentStatus: "success",
+                orderStatus: order.status,
             });
             return;
         }
@@ -673,20 +674,20 @@ export const retryPayment = async (req: AuthenticatedRequest, res: Response): Pr
             return;
         }
 
-        // Kiểm tra trạng thái order
-        if (order.status === "success") {
+        // Kiểm tra trạng thái order - không cho cancel nếu đã thanh toán thành công
+        if (["confirmed", "preparing", "readyForPickup", "delivering", "completed"].includes(order.status)) {
             res.status(400).json({
                 success: false,
-                message: "Đơn hàng đã được thanh toán thành công"
+                message: "Đơn hàng đã được thanh toán và đang được xử lý, không thể hủy"
             });
             return;
         }
 
-        // Kiểm tra nếu order không phải pending (có thể là failed hoặc bất kỳ status nào khác)
+        // Kiểm tra nếu order không phải pending (có thể là cancelled hoặc bất kỳ status nào khác)
         if (order.status !== "pending") {
             res.status(400).json({
                 success: false,
-                message: "Đơn hàng không ở trạng thái chờ thanh toán. Vui lòng tạo đơn hàng mới",
+                message: "Đơn hàng không ở trạng thái chờ thanh toán. Không thể hủy",
                 error: "ORDER_NOT_PENDING"
             });
             return;

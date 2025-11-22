@@ -314,8 +314,8 @@ export const getMyOrders = async (req: Request, res: Response) => {
 
 // New: transitionToPreparing helper used by kafka consumer to auto-start preparing
 export async function transitionToPreparing(restaurantOrderId: string) {
-    console.log(` transitioning order to PREPARING:`)
-    const updated = await prisma.restaurantOrder.update({
+  console.log(` transitioning order to PREPARING:`)
+  const updated = await prisma.restaurantOrder.update({
     where: { id: restaurantOrderId },
     data: {
       restaurantStatus: "PREPARING",
@@ -324,4 +324,19 @@ export async function transitionToPreparing(restaurantOrderId: string) {
   });
 
   console.log(`📦 Order ${updated.orderId} is now PREPARING`);
+
+  // Publish event to Kafka for socket-service to emit real-time
+  const { publishRestaurantOrderStatusEvent } = require('../utils/kafka');
+  try {
+    await publishRestaurantOrderStatusEvent({
+      eventType: "RESTAURANT_ORDER_STATUS_CHANGED",
+      orderId: updated.orderId,
+      storeId: updated.storeId,
+      restaurantStatus: "PREPARING",
+      timestamp: new Date().toISOString(),
+    });
+    console.log(`📤 Published PREPARING status for order ${updated.orderId}`);
+  } catch (err) {
+    console.error(`Error publishing status change for order ${updated.orderId}:`, err);
+  }
 }

@@ -6,7 +6,7 @@ import {
   getAllStores,
   getStoreById,
   checkStoreByOwnerId,
-  getMyOrders
+  getMyOrders,
 } from "../controllers/store";
 import { authenticateToken, requireStoreAdmin } from "../middleware/auth";
 
@@ -26,5 +26,4 @@ router.put("/my/store", authenticateToken, requireStoreAdmin, updateStore);
 
 // Lấy thông tin cửa hàng theo ID (public) - đặt sau các route tĩnh để tránh bị che khuất
 router.get("/:id", getStoreById);
-
 export default router;

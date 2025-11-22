@@ -268,6 +268,28 @@ services:
     depends_on:
       - kafka
 
+  # Socket service - Real-time communication
+  socket-service:
+    build:
+      context: ./backend/services/socket-service
+      dockerfile: Dockerfile
+    container_name: socket-service
+    ports:
+      - "3011:3011"
+    env_file:
+      - ./backend/services/socket-service/.env
+    environment:
+      - PORT=3011
+      - KAFKA_BROKERS=kafka:9092
+      - KAFKA_SECURITY_PROTOCOL=PLAINTEXT
+    networks:
+      - network
+    depends_on:
+      - kafka
+      - order-service
+      - restaurant-service
+    restart: unless-stopped
+
   # Redis for Cart Service and Order Session Management
   redis:
     image: redis:7-alpine

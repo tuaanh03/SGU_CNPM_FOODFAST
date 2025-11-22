@@ -1,15 +1,16 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import MerchantLayout from "@/components/MerchantLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Clock, CheckCircle, History, ChefHat, MapPin, Phone } from "lucide-react";
+import { Clock, CheckCircle, History, MapPin, Phone, Wifi, WifiOff } from "lucide-react";
 import { restaurantOrderService } from "@/services/restaurantOrder.service";
+import { useRestaurantOrders } from "@/lib/useRestaurantOrders";
 
 // Mock dữ liệu đơn hàng
 interface Order {
   id: number;
+  restaurantOrderId?: string; // ID từ RestaurantOrder table
   customerName: string;
   phone: string;
   address: string;
@@ -35,7 +36,8 @@ function OrderCard({ order, status }: any) {
                 <h3 className="font-bold text-lg">Đơn #{order.id}</h3>
                 {status === "new" && <Badge className="bg-red-500">Mới</Badge>}
                 {status === "confirmed" && <Badge className="bg-blue-500">Đã xác nhận</Badge>}
-                {status === "preparing" && <Badge className="bg-yellow-500">Đang chuẩn bị đơn hàng</Badge>}
+                {status === "preparing" && <Badge className="bg-yellow-500">Đang chuẩn bị</Badge>}
+                {status === "ready" && <Badge className="bg-green-500">Sẵn sàng</Badge>}
                 {status === "history" && <Badge variant="outline">Hoàn thành</Badge>}
               </div>
               <p className="text-sm text-muted-foreground">{order.restaurantName}</p>
@@ -74,27 +76,20 @@ function OrderCard({ order, status }: any) {
             {order.createdAt}
           </div>
 
-          {status === "new" && (
-            <div className="flex gap-2 pt-4 border-t">
-              <Button className="flex-1 bg-primary hover:bg-primary/90">
-                <ChefHat className="w-4 h-4 mr-2" />
-                Xác nhận & Nấu
-              </Button>
-              <Button variant="outline" className="flex-1 bg-transparent">
-                Từ chối
-              </Button>
+          {/* Kafka tự động update sau 30s - không cần buttons thủ công */}
+          {status === "confirmed" && (
+            <div className="pt-4 border-t">
+              <div className="text-sm text-muted-foreground text-center py-2 bg-blue-50 rounded">
+                ⏱️ Đơn hàng sẽ tự động chuyển sang "Đang chuẩn bị" sau 30 giây
+              </div>
             </div>
           )}
 
-          {status === "confirmed" && (
-            <div className="pt-4 border-t">
-              <Button className="w-full bg-green-500 hover:bg-green-600">✓ Hoàn thành</Button>
-            </div>
-          )}
-          {/* keep the same action for preparing as for confirmed */}
           {status === "preparing" && (
             <div className="pt-4 border-t">
-              <Button className="w-full bg-green-500 hover:bg-green-600">✓ Hoàn thành</Button>
+              <div className="text-sm text-muted-foreground text-center py-2 bg-yellow-50 rounded">
+                👨‍🍳 Đang chuẩn bị món ăn...
+              </div>
             </div>
           )}
         </div>
@@ -107,73 +102,201 @@ const MerchantOrderPage = () => {
   const [activeTab, setActiveTab] = useState("new");
   const [orders, setOrders] = useState(initialOrders);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  const [storeId, setStoreId] = useState<string | null>(null);
+
+  // Socket.IO real-time orders
+  const { lastOrder, statusUpdate, isConnected } = useRestaurantOrders(storeId);
 
   const newOrdersCount = orders.new.length;
   const confirmedOrdersCount = orders.confirmed.length;
   const historyOrdersCount = orders.history.length;
 
-  useEffect(() => {
-    const fetchOrders = async () => {
-      setLoadingOrders(true);
-      try {
-        const resp = await restaurantOrderService.getMyOrders({ page: 1, limit: 50 });
-        if (resp.success) {
-          const serverOrders = resp.data as any[];
-          const newList: Order[] = [];
-          const confirmedList: Order[] = [];
-          const historyList: Order[] = [];
+  // Refactor fetchOrders thành function riêng với useCallback để tránh re-create
+  const fetchOrders = useCallback(async () => {
+    setLoadingOrders(true);
+    try {
+      const resp = await restaurantOrderService.getMyOrders({ page: 1, limit: 50 });
+      if (resp.success) {
+        const serverOrders = resp.data as any[];
+        const newList: Order[] = [];
+        const confirmedList: Order[] = [];
+        const historyList: Order[] = [];
 
-          for (const ro of serverOrders) {
-            // normalize server status for safe comparisons
-            const serverStatus = (ro.restaurantStatus || '').toUpperCase();
+        for (const ro of serverOrders) {
+          // normalize server status for safe comparisons
+          const serverStatus = (ro.restaurantStatus || '').toUpperCase();
 
-            // map server restaurant order to UI Order
-            // If server reports PREPARING or CONFIRMED, treat the UI status as 'confirmed'
-            const uiOrder: Order = {
-              id: Number(ro.orderId?.slice?.(-6)) || Math.floor(Math.random() * 100000),
-              customerName: ro.customerInfo?.userId || 'Khách hàng',
-              phone: ro.customerInfo?.phone || 'N/A',
-              address: ro.customerInfo?.address || ro.deliveryAddress || 'N/A',
-              items: (ro.items || []).map((it: any) => ({ name: it.productName || it.name || 'Item', quantity: it.quantity || 1, price: it.price || it.productPrice || 0 })),
-              total: ro.totalPrice || 0,
-              // map PREPARING -> 'preparing' (special badge), CONFIRMED -> 'confirmed'
-              status: serverStatus === 'PREPARING' ? 'preparing' : (serverStatus === 'CONFIRMED' ? 'confirmed' : (ro.restaurantStatus?.toLowerCase() || 'new')),
-              createdAt: ro.receivedAt || new Date().toISOString(),
-              restaurantName: ''
-            };
+          // map server restaurant order to UI Order
+          const uiOrder: Order = {
+            id: Number(ro.orderId?.slice?.(-6)) || Math.floor(Math.random() * 100000),
+            restaurantOrderId: ro.id,
+            customerName: ro.customerInfo?.userId || 'Khách hàng',
+            phone: ro.customerInfo?.contactPhone || ro.customerInfo?.phone || 'N/A',
+            address: ro.customerInfo?.deliveryAddress || ro.customerInfo?.address || 'N/A',
+            items: (ro.items || []).map((it: any) => ({
+              name: it.productName || it.name || 'Item',
+              quantity: it.quantity || 1,
+              price: it.price || it.productPrice || 0
+            })),
+            total: ro.totalPrice || 0,
+            status: serverStatus === 'PREPARING' ? 'preparing' : (serverStatus === 'CONFIRMED' ? 'confirmed' : (ro.restaurantStatus?.toLowerCase() || 'new')),
+            createdAt: new Date(ro.receivedAt || ro.confirmedAt).toLocaleString('vi-VN'),
+            restaurantName: ''
+          };
 
-            // categorize by normalized serverStatus (case-insensitive)
-            if (serverStatus === 'CONFIRMED' || serverStatus === 'PREPARING') {
-              // both statuses still belong to the "Đã xác nhận" tab
-              confirmedList.push(uiOrder);
-            } else if (serverStatus === 'READY' || serverStatus === 'COMPLETED' || serverStatus === 'DONE') {
-              historyList.push(uiOrder);
-            } else {
-              newList.push(uiOrder);
-            }
+          // categorize by normalized serverStatus
+          if (serverStatus === 'CONFIRMED' || serverStatus === 'PREPARING') {
+            confirmedList.push(uiOrder);
+          } else if (serverStatus === 'READY' || serverStatus === 'COMPLETED' || serverStatus === 'DONE') {
+            historyList.push(uiOrder);
+          } else {
+            newList.push(uiOrder);
           }
-
-          setOrders({ new: newList, confirmed: confirmedList, history: historyList });
-        } else {
-          console.warn('Failed to load restaurant orders:', resp.message);
         }
-      } catch (err) {
-        console.error('Error loading restaurant orders:', err);
-      } finally {
-        setLoadingOrders(false);
+
+        setOrders({ new: newList, confirmed: confirmedList, history: historyList });
+      } else {
+        console.warn('Failed to load restaurant orders:', resp.message);
+      }
+    } catch (err) {
+      console.error('Error loading restaurant orders:', err);
+    } finally {
+      setLoadingOrders(false);
+    }
+  }, []); // Empty deps - function stable, chỉ phụ thuộc vào service call
+
+  // Load storeId từ API
+  useEffect(() => {
+    const loadStoreId = async () => {
+      try {
+        // Import store service để lấy thông tin store
+        const { storeService } = await import('@/services/store.service');
+        const response = await storeService.getMyStore();
+
+        if (response.success && response.data) {
+          const storeInfo = response.data;
+          setStoreId(storeInfo.id);
+          console.log('✅ Loaded storeId for socket:', storeInfo.id);
+
+          // Save to localStorage for future use
+          localStorage.setItem('storeInfo', JSON.stringify(storeInfo));
+        } else {
+          console.warn('⚠️ No store found for merchant');
+        }
+      } catch (error) {
+        console.error('❌ Error loading storeId:', error);
       }
     };
-
-    fetchOrders();
+    loadStoreId();
   }, []);
+
+  // Xử lý khi có đơn hàng mới từ socket - REAL-TIME, không cần fetch
+  useEffect(() => {
+    if (lastOrder) {
+      console.log('🆕 New order received from socket:', lastOrder);
+
+      // Convert socket order to UI Order format và thêm vào state
+      const newOrder: Order = {
+        id: Number(lastOrder.orderId?.slice?.(-6)) || Math.floor(Math.random() * 100000),
+        restaurantOrderId: lastOrder.orderId,
+        customerName: 'Khách hàng',
+        phone: lastOrder.contactPhone || 'N/A',
+        address: lastOrder.deliveryAddress || 'N/A',
+        items: (lastOrder.items || []).map((it: any) => ({
+          name: it.productName || it.name || 'Item',
+          quantity: it.quantity || 1,
+          price: it.price || 0
+        })),
+        total: lastOrder.totalPrice || 0,
+        status: 'confirmed', // Mới confirmed từ payment
+        createdAt: new Date(lastOrder.confirmedAt).toLocaleString('vi-VN'),
+        restaurantName: ''
+      };
+
+      // Thêm vào danh sách confirmed
+      setOrders((prev) => ({
+        ...prev,
+        confirmed: [newOrder, ...prev.confirmed],
+      }));
+
+      // Chuyển sang tab "Đã xác nhận" để xem
+      setActiveTab('confirmed');
+    }
+  }, [lastOrder]);
+
+  // Xử lý khi có status update từ Kafka qua socket - REAL-TIME
+  useEffect(() => {
+    if (statusUpdate) {
+      console.log('📦 Status update from socket:', statusUpdate);
+
+      const { orderId, restaurantStatus } = statusUpdate;
+
+      // Map status
+      const newStatus = restaurantStatus === 'PREPARING' ? 'preparing' :
+                       restaurantStatus === 'READY' ? 'ready' :
+                       restaurantStatus.toLowerCase();
+
+      // Update order trong state
+      setOrders((prev) => {
+        const allOrders = [...prev.new, ...prev.confirmed, ...prev.history];
+        const updatedOrder = allOrders.find(o => o.restaurantOrderId === orderId);
+
+        if (!updatedOrder) return prev;
+
+        // Update status
+        updatedOrder.status = newStatus;
+
+        // Re-categorize orders
+        const newList: Order[] = [];
+        const confirmedList: Order[] = [];
+        const historyList: Order[] = [];
+
+        allOrders.forEach(order => {
+          const status = order.restaurantOrderId === orderId ? newStatus : order.status;
+
+          if (status === 'confirmed' || status === 'preparing') {
+            confirmedList.push({ ...order, status });
+          } else if (status === 'ready' || status === 'completed') {
+            historyList.push({ ...order, status });
+          } else {
+            newList.push({ ...order, status });
+          }
+        });
+
+        return { new: newList, confirmed: confirmedList, history: historyList };
+      });
+    }
+  }, [statusUpdate]);
+
+  // Chỉ fetch 1 lần khi mount - các updates sau đó đều qua socket real-time
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
 
   return (
     <MerchantLayout>
       <div className="min-h-screen bg-background">
         <main className="container mx-auto px-4 py-8 space-y-8">
-          <div className="space-y-2">
-            <h1 className="text-4xl font-bold text-balance text-foreground">Quản lý đơn hàng</h1>
-            <p className="text-lg text-muted-foreground text-pretty">Xử lý và theo dõi đơn hàng của khách hàng</p>
+          <div className="flex items-start justify-between">
+            <div className="space-y-2">
+              <h1 className="text-4xl font-bold text-balance text-foreground">Quản lý đơn hàng</h1>
+              <p className="text-lg text-muted-foreground text-pretty">Xử lý và theo dõi đơn hàng của khách hàng</p>
+            </div>
+
+            {/* Socket connection indicator */}
+            <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${isConnected ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+              {isConnected ? (
+                <>
+                  <Wifi className="w-4 h-4" />
+                  <span className="text-sm font-medium">Real-time</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="w-4 h-4" />
+                  <span className="text-sm font-medium">Offline</span>
+                </>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -256,7 +379,11 @@ const MerchantOrderPage = () => {
                     ) : orders.new.length > 0 ? (
                       <div className="grid gap-4">
                         {orders.new.map((order) => (
-                          <OrderCard key={order.id} order={order} status={order.status} />
+                          <OrderCard
+                            key={order.id}
+                            order={order}
+                            status={order.status}
+                          />
                         ))}
                       </div>
                     ) : (
@@ -273,7 +400,11 @@ const MerchantOrderPage = () => {
                     ) : orders.confirmed.length > 0 ? (
                       <div className="grid gap-4">
                         {orders.confirmed.map((order) => (
-                          <OrderCard key={order.id} order={order} status={order.status} />
+                          <OrderCard
+                            key={order.id}
+                            order={order}
+                            status={order.status}
+                          />
                         ))}
                       </div>
                     ) : (
@@ -290,7 +421,11 @@ const MerchantOrderPage = () => {
                     ) : orders.history.length > 0 ? (
                       <div className="grid gap-4">
                         {orders.history.map((order) => (
-                          <OrderCard key={order.id} order={order} status={order.status} />
+                          <OrderCard
+                            key={order.id}
+                            order={order}
+                            status={order.status}
+                          />
                         ))}
                       </div>
                     ) : (
