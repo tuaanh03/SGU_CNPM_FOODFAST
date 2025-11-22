@@ -176,7 +176,7 @@ describe('Auth API - Integration Tests', () => {
                 .expect(200);
 
             expect(response.body.success).toBe(true);
-            expect(response.body.data.user).toHaveProperty('email', 'profiletest@test.com');
+            expect(response.body.data).toHaveProperty('email', 'profiletest@test.com');
         });
 
         it('should reject request without token', async () => {
