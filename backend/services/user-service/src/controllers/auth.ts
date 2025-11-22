@@ -441,12 +441,10 @@ export const getProfile = async (req: Request, res: Response) => {
 
         const { password, ...userWithoutPassword } = user;
 
-        // Return shape { data: { user: ... } } to match API contract used by tests
+        // Return consistent with login/register: { success: true, data: {...} }
         res.json({
             success: true,
-            data: {
-                user: userWithoutPassword,
-            },
+            data: userWithoutPassword,
         });
     } catch (error) {
         console.error("Error getting profile:", error);
