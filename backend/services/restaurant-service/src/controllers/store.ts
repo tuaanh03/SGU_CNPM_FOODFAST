@@ -1,6 +1,20 @@
 import { Request, Response } from "express";
 import prisma from "../lib/prisma";
 
+// Helper function: Calculate distance between two coordinates using Haversine formula
+// Returns distance in kilometers
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Radius of Earth in kilometers
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 // Tạo cửa hàng mới (chỉ STORE_ADMIN)
 export const createStore = async (req: Request, res: Response) => {
   try {
@@ -161,6 +175,82 @@ export const updateStore = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Lỗi khi cập nhật cửa hàng"
+    });
+  }
+};
+
+// Lấy danh sách nhà hàng gần vị trí người dùng (public)
+// ⚠️ Giới hạn: max 10km
+export const getNearbyStores = async (req: Request, res: Response) => {
+  try {
+    const { lat, lng, radius = 10, limit = 50 } = req.query;
+
+    // Validate input
+    if (!lat || !lng) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng cung cấp tọa độ (lat, lng)"
+      });
+    }
+
+    const latitude = parseFloat(lat as string);
+    const longitude = parseFloat(lng as string);
+    const radiusKm = Math.min(parseFloat(radius as string), 10); // ⭐ Giới hạn max 10km
+    const maxResults = parseInt(limit as string);
+
+    // Validate coordinates
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+      return res.status(400).json({
+        success: false,
+        message: "Tọa độ không hợp lệ"
+      });
+    }
+
+    // Get all active stores with coordinates
+    const allStores = await prisma.store.findMany({
+      where: {
+        isActive: true,
+        latitude: { not: null },
+        longitude: { not: null }
+      }
+    });
+
+    // Calculate distance for each store using Haversine formula
+    const storesWithDistance = allStores.map(store => {
+      const distance = calculateDistance(
+        latitude,
+        longitude,
+        store.latitude!,
+        store.longitude!
+      );
+      return {
+        ...store,
+        distance: Math.round(distance * 100) / 100 // Round to 2 decimal places
+      };
+    });
+
+    // Filter by radius and sort by distance
+    const nearbyStores = storesWithDistance
+      .filter(store => store.distance <= radiusKm)
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, maxResults);
+
+    console.log(`✅ Found ${nearbyStores.length} stores within ${radiusKm}km`);
+
+    res.json({
+      success: true,
+      data: nearbyStores,
+      meta: {
+        radius: radiusKm,
+        total: nearbyStores.length,
+        userLocation: { lat: latitude, lng: longitude }
+      }
+    });
+  } catch (error) {
+    console.error("Error getting nearby stores:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi tìm kiếm nhà hàng gần bạn"
     });
   }
 };

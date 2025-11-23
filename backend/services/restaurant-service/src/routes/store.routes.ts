@@ -4,6 +4,7 @@ import {
   getMyStore,
   updateStore,
   getAllStores,
+  getNearbyStores,
   getStoreById,
   checkStoreByOwnerId,
   getMyOrders,
@@ -15,6 +16,7 @@ const router = Router();
 
 // Public routes - không cần authentication
 router.get("/", getAllStores);
+router.get("/nearby", getNearbyStores); // ⭐ Tìm nhà hàng gần (max 10km)
 
 // Internal route - kiểm tra store theo ownerId (must be before "/:id")
 router.get("/internal/check/:ownerId", checkStoreByOwnerId);

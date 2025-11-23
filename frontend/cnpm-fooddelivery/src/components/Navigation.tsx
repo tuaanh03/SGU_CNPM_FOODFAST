@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Link } from "react-router";
-import { MapPin, User, ClipboardList, LogOut, LogIn } from "lucide-react";
+import { MapPin, User, ClipboardList, LogOut, LogIn, ChevronDown } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
+import { useAddress } from "@/contexts/address-context";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,28 +14,46 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { AddressSelectorDialog } from "./AddressSelectorDialog";
 
 const Navigation = () => {
   const { user, isAuthenticated, logout } = useAuth();
+  const { selectedAddress, addresses, setSelectedAddress } = useAddress();
+  const [showAddressDialog, setShowAddressDialog] = useState(false);
+
+  // Format địa chỉ hiển thị ngắn gọn
+  const getAddressDisplay = () => {
+    if (!selectedAddress) {
+      return "Chọn địa chỉ giao hàng";
+    }
+    return `${selectedAddress.ward}, ${selectedAddress.district}`;
+  };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <Link to="/" className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-lg">🍕</span>
-            </div>
-            <span className="font-bold text-xl text-foreground">FastFood</span>
-          </Link>
-        </div>
+    <>
+      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <Link to="/" className="flex items-center space-x-2">
+              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                <span className="text-primary-foreground font-bold text-lg">🍕</span>
+              </div>
+              <span className="font-bold text-xl text-foreground">FastFood</span>
+            </Link>
+          </div>
 
-        <div className="flex items-center space-x-2">
-          <Button variant="ghost" size="sm" className="text-muted-foreground">
-            <MapPin className="w-4 h-4 mr-2" />
-            Quận 1, TP.HCM
-          </Button>
-        </div>
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowAddressDialog(true)}
+              className={`text-muted-foreground ${!selectedAddress ? "text-orange-500" : ""}`}
+            >
+              <MapPin className="w-4 h-4 mr-2" />
+              <span className="max-w-[200px] truncate">{getAddressDisplay()}</span>
+              <ChevronDown className="w-3 h-3 ml-1" />
+            </Button>
+          </div>
 
         <div className="flex items-center space-x-2">
           {isAuthenticated ? (
@@ -97,6 +117,16 @@ const Navigation = () => {
         </div>
       </div>
     </header>
+
+      {/* Address Selector Dialog */}
+      <AddressSelectorDialog
+        open={showAddressDialog}
+        onOpenChange={setShowAddressDialog}
+        addresses={addresses}
+        selectedAddress={selectedAddress}
+        onSelectAddress={setSelectedAddress}
+      />
+    </>
   );
 };
 

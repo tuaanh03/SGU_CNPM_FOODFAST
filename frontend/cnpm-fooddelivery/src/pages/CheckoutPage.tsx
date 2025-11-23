@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { useCart } from "@/contexts/cart-context";
+import { useAddress } from "@/contexts/address-context";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -14,24 +14,36 @@ import { paymentService } from "@/services/payment.service";
 const CheckoutPage = () => {
   const navigate = useNavigate();
   const { state, formatPrice } = useCart();
+  const { selectedAddress } = useAddress();
   const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState({
-    deliveryAddress: "",
-    contactPhone: "",
     note: "",
   });
 
-  // Nếu giỏ hàng trống, redirect về trang chủ
+  // Validate giỏ hàng và địa chỉ
   useEffect(() => {
     if (state.items.length === 0) {
       toast.error("Giỏ hàng của bạn đang trống");
       navigate("/");
+      return;
     }
-  }, [state.items.length, navigate]);
+
+    if (!selectedAddress) {
+      toast.error("Vui lòng chọn địa chỉ giao hàng từ header");
+      navigate("/");
+      return;
+    }
+
+    if (!state.restaurant) {
+      toast.error("Vui lòng chọn nhà hàng trước khi thanh toán");
+      navigate("/");
+      return;
+    }
+  }, [state.items.length, selectedAddress, state.restaurant, navigate]);
 
   const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    e: React.ChangeEvent<HTMLTextAreaElement>
   ) => {
     setFormData({
       ...formData,
@@ -39,28 +51,14 @@ const CheckoutPage = () => {
     });
   };
 
-  const validateForm = () => {
-    if (!formData.deliveryAddress.trim()) {
-      toast.error("Vui lòng nhập địa chỉ giao hàng");
-      return false;
-    }
-    if (!formData.contactPhone.trim()) {
-      toast.error("Vui lòng nhập số điện thoại");
-      return false;
-    }
-    // Validate phone number (simple check)
-    const phoneRegex = /^[0-9]{10}$/;
-    if (!phoneRegex.test(formData.contactPhone.replace(/\s/g, ""))) {
-      toast.error("Số điện thoại không hợp lệ (10 chữ số)");
-      return false;
-    }
-    return true;
-  };
-
   const handlePlaceOrder = async () => {
-    if (!validateForm()) return;
     if (!state.restaurant) {
       toast.error("Không tìm thấy thông tin nhà hàng");
+      return;
+    }
+
+    if (!selectedAddress) {
+      toast.error("Vui lòng chọn địa chỉ giao hàng");
       return;
     }
 
@@ -74,23 +72,21 @@ const CheckoutPage = () => {
 
     setLoading(true);
     try {
-      // Resolve storeId: prefer state.restaurant.id, fallback to localStorage
-      let storeId: string | null | undefined = state.restaurant?.id;
-      if (!storeId) {
-        storeId = localStorage.getItem('cart_restaurantId');
-      }
+      const storeId = state.restaurant.id;
+      const deliveryAddressText = `${selectedAddress.address}, ${selectedAddress.ward}, ${selectedAddress.district}, ${selectedAddress.province}`;
 
-      if (!storeId) {
-        toast.error('Không xác định được ID nhà hàng (storeId). Vui lòng thử lại');
-        setLoading(false);
-        return;
-      }
+      console.log("📦 Creating order for store:", storeId);
+      console.log("📍 Delivery address:", {
+        address: deliveryAddressText,
+        lat: selectedAddress.latitude,
+        lng: selectedAddress.longitude,
+      });
 
       // Bước 1: Tạo order từ cart qua API Gateway
       const response = await orderService.createOrderFromCart({
-        storeId: String(storeId),
-        deliveryAddress: formData.deliveryAddress,
-        contactPhone: formData.contactPhone,
+        storeId: storeId,
+        deliveryAddress: deliveryAddressText,
+        contactPhone: selectedAddress.phone,
         note: formData.note || undefined,
       });
 
@@ -155,7 +151,7 @@ const CheckoutPage = () => {
 
       <div className="container mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Form */}
+          {/* Left Column - Order Info */}
           <div className="lg:col-span-2 space-y-6">
             {/* Restaurant Info */}
             <Card>
@@ -169,7 +165,7 @@ const CheckoutPage = () => {
                 {state.restaurant && (
                   <div className="flex items-center gap-4">
                     <img
-                      src={state.restaurant.imageUrl}
+                      src={state.restaurant.imageUrl || "https://via.placeholder.com/80"}
                       alt={state.restaurant.name}
                       className="w-16 h-16 rounded-lg object-cover"
                     />
@@ -184,7 +180,7 @@ const CheckoutPage = () => {
               </CardContent>
             </Card>
 
-            {/* Delivery Information */}
+            {/* Delivery Address Info */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -193,32 +189,19 @@ const CheckoutPage = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    Địa chỉ giao hàng *
-                  </label>
-                  <Input
-                    name="deliveryAddress"
-                    value={formData.deliveryAddress}
-                    onChange={handleInputChange}
-                    placeholder="Ví dụ: 123 Phố Huế, Hai Bà Trưng, Hà Nội"
-                    className="w-full"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium mb-2 flex items-center gap-2">
-                    <Phone className="h-4 w-4" />
-                    Số điện thoại *
-                  </label>
-                  <Input
-                    name="contactPhone"
-                    value={formData.contactPhone}
-                    onChange={handleInputChange}
-                    placeholder="Ví dụ: 0901234567"
-                    className="w-full"
-                  />
-                </div>
+                {selectedAddress && (
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <p className="font-medium mb-1">{selectedAddress.name}</p>
+                    <p className="text-sm text-muted-foreground flex items-start gap-2">
+                      <Phone className="h-4 w-4 mt-0.5" />
+                      {selectedAddress.phone}
+                    </p>
+                    <p className="text-sm text-muted-foreground flex items-start gap-2 mt-2">
+                      <MapPin className="h-4 w-4 mt-0.5" />
+                      {selectedAddress.address}, {selectedAddress.ward}, {selectedAddress.district}, {selectedAddress.province}
+                    </p>
+                  </div>
+                )}
 
                 <div>
                   <label className="text-sm font-medium mb-2 block">
