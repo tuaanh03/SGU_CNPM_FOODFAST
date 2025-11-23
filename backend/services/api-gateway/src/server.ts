@@ -356,8 +356,24 @@ server.use("/api/categories", productServiceProxy);
 // location service routes (public routes)
 server.use("/api/locations", locationServiceProxy);
 
-// restaurant service routes
+// ==================== RESTAURANT SERVICE ROUTES ====================
+// QUAN TRỌNG: Protected routes phải đặt trước public routes để match đúng
+
+// Protected routes - Yêu cầu authentication (STORE_ADMIN)
+// Các route này dành cho merchant dashboard
+server.use("/api/stores/my", authenticateToken, restaurantServiceProxy);
+server.use("/api/stores/orders", authenticateToken, restaurantServiceProxy);
+
+// Public routes - Không cần authentication
+// Lấy danh sách stores, thông tin store theo ID
 server.use("/api/stores", restaurantServiceProxy);
+
+console.log('✅ Restaurant routes configured:');
+console.log('  - /api/stores/my/* → Restaurant Service (WITH AUTH - merchant)');
+console.log('  - /api/stores/orders/* → Restaurant Service (WITH AUTH - order management)');
+console.log('  - /api/stores/* → Restaurant Service (NO AUTH - public)');
+
+// ================================================================
 
 // cart service routes (có xác thực từ Gateway)
 server.use("/api/cart", authenticateToken, cartServiceProxy);
