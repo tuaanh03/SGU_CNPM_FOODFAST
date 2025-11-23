@@ -18,10 +18,20 @@ env.config();
 const app = express();
 const httpServer = createServer(app);
 
+// Parse allowed origins from environment variable
+// Default includes localhost ports for development
+const defaultOrigins = "http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,https://admin-dashboard-one-rosy-75.vercel.app,https://sgu-cnpm-foodfast.vercel.app,https://restaurant-merchant.vercel.app,https://api-gateway-service-production-04a1.up.railway.app";
+const allowedOrigins = (process.env.SOCKET_CORS_ORIGINS || defaultOrigins)
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
+console.log('🔐 Allowed CORS origins:', allowedOrigins);
+
 // Initialize Socket.IO
 const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: ["http://localhost:3000", "http://localhost:5173", "http://localhost:5174", "http://localhost:5175", "http://localhost:5176"],
+    origin: allowedOrigins,
     credentials: true,
   },
   transports: ['websocket', 'polling'],
@@ -34,7 +44,7 @@ setSocketIO(io);
 app.use(express.json());
 app.use(
   cors({
-    origin: ["http://localhost:3000", "http://localhost:5173", "http://localhost:5174", "http://localhost:5175", "http://localhost:5176"],
+    origin: allowedOrigins,
     credentials: true,
   })
 );

@@ -295,6 +295,15 @@
             </PendingDiffInfo>
           </value>
         </entry>
+        <entry key="$PROJECT_DIR$/backend/services/socket-service/.env">
+          <value>
+            <PendingDiffInfo>
+              <option name="filePath" value="$PROJECT_DIR$/backend/services/socket-service/.env" />
+              <option name="originalContent" value="PORT=3011&#10;KAFKA_BROKERS=localhost:9092&#10;KAFKA_SECURITY_PROTOCOL=PLAINTEXT&#10;&#10;" />
+              <option name="updatedContent" value="PORT=3011&#10;KAFKA_BROKERS=localhost:9092&#10;KAFKA_SECURITY_PROTOCOL=PLAINTEXT&#10;&#10;# CORS Origins - comma separated list of allowed origins&#10;# Development (default if not set)&#10;SOCKET_CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:8080,http://localhost:8081,http://localhost:80&#10;&#10;# Production example (uncomment and update when deploying to Railway):&#10;# SOCKET_CORS_ORIGINS=https://your-customer-app.up.railway.app,https://your-merchant-app.up.railway.app,https://your-admin-app.up.railway.app,https://yourdomain.com&#10;&#10;" />
+            </PendingDiffInfo>
+          </value>
+        </entry>
         <entry key="$PROJECT_DIR$/backend/services/user-service/simulate/load-test/.gitignore">
           <value>
             <PendingDiffInfo>
