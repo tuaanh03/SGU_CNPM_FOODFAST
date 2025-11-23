@@ -1,4 +1,4 @@
-import { Kafka } from "kafkajs";
+import { Kafka, Partitioners } from "kafkajs";
 import { Server as SocketIOServer } from "socket.io";
 import { socketEmitCounter } from "../lib/metrics";
 
@@ -162,7 +162,9 @@ async function handleRestaurantOrderStatus(data: any) {
   }
 }
 
-export const producer = kafka.producer();
+export const producer = kafka.producer({
+  createPartitioner: Partitioners.LegacyPartitioner,
+});
 let isProducerConnected = false;
 
 // Publish restaurant order status change event

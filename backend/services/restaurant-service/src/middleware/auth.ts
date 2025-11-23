@@ -11,12 +11,31 @@ interface AuthRequest extends Request {
 }
 
 // Middleware xác thực JWT token từ user-service
+// Hỗ trợ 2 modes:
+// 1. Đọc từ headers x-user-* (khi gọi qua API Gateway)
+// 2. Verify JWT token (khi gọi trực tiếp cho testing)
 export const authenticateToken = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ) => {
   try {
+    // Mode 1: Check if user info forwarded from API Gateway
+    const userIdHeader = req.headers['x-user-id'] as string;
+    const userEmailHeader = req.headers['x-user-email'] as string;
+    const userRoleHeader = req.headers['x-user-role'] as string;
+
+    if (userIdHeader && userEmailHeader && userRoleHeader) {
+      // User info đã được API Gateway verify và forward
+      req.user = {
+        userId: userIdHeader,
+        email: userEmailHeader,
+        role: userRoleHeader
+      };
+      return next();
+    }
+
+    // Mode 2: Fallback - Verify JWT token directly (for testing)
     const authHeader = req.headers.authorization;
     const token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
 
