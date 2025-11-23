@@ -1,4 +1,4 @@
-import { Kafka } from 'kafkajs';
+import { Kafka, Partitioners } from 'kafkajs';
 import prisma from '../lib/prisma';
 import { transitionToPreparing } from '../controllers/store';
 import {
@@ -35,7 +35,9 @@ const kafka = new Kafka({
 });
 
 const consumer = kafka.consumer({ groupId: 'restaurant-service-group' });
-const producer = kafka.producer();
+const producer = kafka.producer({
+  createPartitioner: Partitioners.LegacyPartitioner,
+});
 let isProducerConnected = false;
 
 export async function runConsumer() {
