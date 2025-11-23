@@ -1,7 +1,8 @@
 // API Configuration
-// Vercel: dùng public URL của API Gateway
-// Railway/Docker: dùng relative path /api (nginx proxy)
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+// QUAN TRỌNG: Luôn gọi qua API Gateway (port 3000)
+// Local dev: http://localhost:3000/api
+// Vercel/Production: Set VITE_API_BASE_URL in environment variables
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
 
 // Log để debug
 console.log('🔧 API Configuration:');

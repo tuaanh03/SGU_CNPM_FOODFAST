@@ -11,6 +11,7 @@
 5. payment.event
 6. product.sync
 7. inventory.reserve.result
+8. restaurant.order.status ⭐ (QUAN TRỌNG - Real-time updates)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## 📊 CHI TIẾT TOPICS
@@ -58,6 +59,18 @@
 **Mục đích**: Kết quả reserve inventory
 **Data**: orderId, items, reserved, failedItems
 
+### 8. restaurant.order.status ⭐ (QUAN TRỌNG)
+**Producer**: Restaurant Service, Socket Service
+**Consumers**: Order Service, Socket Service, Drone Service
+**Mục đích**: Cập nhật trạng thái đơn hàng từ restaurant (PENDING → PREPARING → READY_FOR_PICKUP)
+**Data**:
+  - eventType: "RESTAURANT_STATUS_UPDATE" | "ORDER_READY_FOR_PICKUP"
+  - orderId, storeId, restaurantStatus
+  - readyAt (khi status = READY_FOR_PICKUP)
+  - pickupLocation: { storeId, restaurantName, address, lat, lng }
+  - customerInfo, items, totalPrice
+**Real-time:** Socket service emit events đến customer, merchant, admin dashboard
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## 🔄 LUỒNG MESSAGE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -79,7 +92,15 @@ User thanh toán VNPay:
 
 Order thanh toán thành công:
   → Order Service produces: order.confirmed
-  → Restaurant Service consumes → Chuẩn bị món
+  → Restaurant Service consumes → Tạo RestaurantOrder (PENDING)
+  → Socket Service consumes → Emit real-time đến merchant
+  → (Sau 30s tự động) Restaurant Service produces: restaurant.order.status (PREPARING)
+  → Socket Service consumes → Emit real-time đến customer & merchant
+
+Merchant báo order ready:
+  → Restaurant Service produces: restaurant.order.status (ORDER_READY_FOR_PICKUP)
+  → Socket Service consumes → Emit real-time đến dispatch queue (admin dashboard)
+  → Drone Service consumes → Tạo delivery record
 
 Order hết hạn:
   → Order Service produces: order.expired
@@ -112,6 +133,8 @@ order-service-group (Order Service)
 notification-service-group (Notification Service)
 restaurant-service-group (Restaurant Service)
 product-service-group (Product Service)
+socket-service-group (Socket Service) ⭐
+drone-service-group (Drone Service) ⭐
 
 **Lưu ý**: Mỗi service có consumer group riêng để:
 - Mỗi service nhận đầy đủ message
