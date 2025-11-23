@@ -45,14 +45,18 @@ export async function publishEvent(messages: string) {
 
   try {
     if (!isProducerConnected) {
+      console.log('📡 Connecting Kafka producer...');
       await producer.connect();
       isProducerConnected = true;
+      console.log('✅ Kafka producer connected');
     }
     await producer.send({
       topic,
       messages: [{ key: `message-${Date.now()}`, value: messages }],
     });
+    console.log(`✅ Published to ${topic}`);
   } catch (error) {
+    console.error(`❌ Failed to publish to ${topic}:`, error);
     throw error;
   }
 }
@@ -133,8 +137,9 @@ export async function runConsumer() {
     await consumer.subscribe({ topic: "payment.event", fromBeginning: true });
     await consumer.subscribe({ topic: "inventory.reserve.result", fromBeginning: true });
     await consumer.subscribe({ topic: "product.sync", fromBeginning: true });
+    await consumer.subscribe({ topic: "restaurant.order.status", fromBeginning: true });
 
-    console.log("Consumer is listening to payment.event, inventory.reserve.result, and product.sync");
+    console.log("Consumer is listening to payment.event, inventory.reserve.result, product.sync, and restaurant.order.status");
 
     // Process messages
     await consumer.run({
@@ -151,6 +156,8 @@ export async function runConsumer() {
             await handleInventoryReserveResult(data);
           } else if (topic === "product.sync") {
             await handleProductSync(data);
+          } else if (topic === "restaurant.order.status") {
+            await handleRestaurantOrderStatus(data);
           }
         } catch (error) {
           console.error(`Error processing ${topic} event:`, error);
@@ -172,12 +179,14 @@ export async function handlePaymentEvent(data: any) {
     const processingTimer = orderProcessingDurationByStatus.startTimer({ status: data.paymentStatus });
 
     try {
-      let orderStatus: "pending" | "success" | "cancelled";
+      let orderStatus: "pending" | "confirmed" | "cancelled";
       let action: string;
 
       if (data.paymentStatus === "success") {
-        orderStatus = "success";
+        // Payment thành công → chuyển sang CONFIRMED (chờ restaurant xử lý)
+        orderStatus = "confirmed";
         action = "confirmed";
+        console.log(`✅ Order ${data.orderId} payment success - status changed to CONFIRMED`);
       } else if (data.paymentStatus === "cancelled") {
         orderStatus = "cancelled";
         action = "cancelled";
@@ -202,7 +211,8 @@ export async function handlePaymentEvent(data: any) {
 
       console.log(`Order ${data.orderId} status updated to: ${orderStatus}`);
 
-      if (orderStatus === "success" || orderStatus === "cancelled") {
+      // Chỉ xóa session khi cancelled, KHÔNG xóa khi confirmed vì order vẫn đang xử lý
+      if (orderStatus === "cancelled") {
         await deleteOrderSession(data.orderId);
         sessionOperationsCounter.inc({ operation: 'expire' });
         console.log(`✅ Deleted Redis session for order ${data.orderId} after status: ${orderStatus}`);
@@ -309,6 +319,61 @@ async function handleProductSync(event: any) {
 
   } catch (error) {
     console.error("Error handling product sync:", error);
+  }
+}
+
+// Handle restaurant order status changes
+async function handleRestaurantOrderStatus(data: any) {
+  const { eventType, orderId, restaurantStatus, timestamp } = data;
+
+  try {
+    if (eventType === "RESTAURANT_ORDER_STATUS_CHANGED") {
+      console.log(`📥 Received restaurant status update for order ${orderId}: ${restaurantStatus}`);
+
+      // Map restaurant status to order status
+      let orderStatus: "confirmed" | "preparing" | "readyForPickup" | "delivering" | "completed" | "cancelled" | "pending";
+
+      switch (restaurantStatus) {
+        case "CONFIRMED":
+          orderStatus = "confirmed";
+          break;
+        case "PREPARING":
+          orderStatus = "preparing";
+          break;
+        case "READY":
+          orderStatus = "readyForPickup";
+          break;
+        case "DELIVERING":
+          orderStatus = "delivering";
+          break;
+        case "COMPLETED":
+          orderStatus = "completed";
+          // Xóa session khi hoàn thành
+          await deleteOrderSession(orderId);
+          sessionOperationsCounter.inc({ operation: 'expire' });
+          console.log(`✅ Deleted Redis session for completed order ${orderId}`);
+          break;
+        case "CANCELLED":
+          orderStatus = "cancelled";
+          await deleteOrderSession(orderId);
+          sessionOperationsCounter.inc({ operation: 'expire' });
+          break;
+        default:
+          console.warn(`Unknown restaurant status: ${restaurantStatus}`);
+          return;
+      }
+
+      // Update order status
+      await prisma.order.update({
+        where: { id: orderId },
+        data: { status: orderStatus },
+      });
+
+      ordersCreatedCounter.inc({ status: orderStatus, action: 'restaurant_update' });
+      console.log(`✅ Order ${orderId} status updated to: ${orderStatus}`);
+    }
+  } catch (error) {
+    console.error("Error handling restaurant order status:", error);
   }
 }
 

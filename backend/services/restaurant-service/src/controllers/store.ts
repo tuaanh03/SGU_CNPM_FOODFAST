@@ -314,8 +314,8 @@ export const getMyOrders = async (req: Request, res: Response) => {
 
 // New: transitionToPreparing helper used by kafka consumer to auto-start preparing
 export async function transitionToPreparing(restaurantOrderId: string) {
-    console.log(` transitioning order to PREPARING:`)
-    const updated = await prisma.restaurantOrder.update({
+  console.log(` transitioning order to PREPARING:`)
+  const updated = await prisma.restaurantOrder.update({
     where: { id: restaurantOrderId },
     data: {
       restaurantStatus: "PREPARING",
@@ -324,4 +324,95 @@ export async function transitionToPreparing(restaurantOrderId: string) {
   });
 
   console.log(`📦 Order ${updated.orderId} is now PREPARING`);
+
+  // Publish event to Kafka for socket-service to emit real-time
+  const { publishRestaurantOrderStatusEvent } = require('../utils/kafka');
+  try {
+    await publishRestaurantOrderStatusEvent({
+      eventType: "RESTAURANT_ORDER_STATUS_CHANGED",
+      orderId: updated.orderId,
+      storeId: updated.storeId,
+      restaurantStatus: "PREPARING",
+      timestamp: new Date().toISOString(),
+    });
+    console.log(`📤 Published PREPARING status for order ${updated.orderId}`);
+  } catch (err) {
+    console.error(`Error publishing status change for order ${updated.orderId}:`, err);
+  }
 }
+
+// New: transitionToReady helper - notify order is ready for pickup
+export async function transitionToReady(restaurantOrderId: string) {
+  const updated = await prisma.restaurantOrder.update({
+    where: { id: restaurantOrderId },
+    data: {
+      restaurantStatus: "READY_FOR_PICKUP",
+      readyAt: new Date()
+    }
+  });
+
+  console.log(`✅ Order ${updated.orderId} is READY for pickup`);
+
+  // Fetch store info để include trong payload
+  const store = await prisma.store.findUnique({ where: { id: updated.storeId } });
+
+  // Publish event to Kafka
+  const { publishRestaurantOrderStatusEvent } = require('../utils/kafka');
+  try {
+    await publishRestaurantOrderStatusEvent({
+      eventType: "ORDER_READY_FOR_PICKUP",
+      orderId: updated.orderId,
+      storeId: updated.storeId,
+      restaurantStatus: "READY_FOR_PICKUP",
+      readyAt: new Date().toISOString(),
+      pickupLocation: {
+        storeId: updated.storeId,
+        restaurantName: store?.name || '',
+        address: store?.address || '',
+        lat: store?.latitude || null,
+        lng: store?.longitude || null,
+      },
+      customerInfo: updated.customerInfo,
+      items: updated.items,
+      totalPrice: updated.totalPrice,
+    });
+    console.log(`📤 Published ORDER_READY_FOR_PICKUP for order ${updated.orderId}`);
+  } catch (err) {
+    console.error(`Error publishing ORDER_READY_FOR_PICKUP for order ${updated.orderId}:`, err);
+  }
+}
+
+// API endpoint: merchant báo đơn ready for pickup
+export const updateOrderToReady = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+    const { restaurantOrderId } = req.params;
+
+    // Verify store ownership
+    const store = await prisma.store.findUnique({ where: { ownerId: userId } });
+    if (!store) {
+      return res.status(404).json({ success: false, message: 'Bạn chưa có cửa hàng' });
+    }
+
+    const ro = await prisma.restaurantOrder.findUnique({ where: { id: restaurantOrderId } });
+    if (!ro) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng' });
+    }
+    if (ro.storeId !== store.id) {
+      return res.status(403).json({ success: false, message: 'Không có quyền truy cập đơn hàng này' });
+    }
+
+    // Call helper to update status and publish event
+    await transitionToReady(restaurantOrderId);
+
+    res.json({
+      success: true,
+      message: 'Đã thông báo đội giao hàng (Ready for pickup)',
+      data: { restaurantOrderId, status: 'READY_FOR_PICKUP' }
+    });
+  } catch (err) {
+    console.error('Error updating order to ready:', err);
+    res.status(500).json({ success: false, message: 'Lỗi server khi cập nhật trạng thái' });
+  }
+};
+

@@ -209,7 +209,7 @@ export const updateDeliveryStatus = async (req: Request, res: Response) => {
     });
 
     // If delivery is completed, set drone back to available
-    if (status === 'DELIVERED' || status === 'FAILED' || status === 'CANCELLED') {
+    if ((status === 'DELIVERED' || status === 'FAILED' || status === 'CANCELLED') && delivery.droneId) {
       await prisma.drone.update({
         where: { id: delivery.droneId },
         data: { status: 'AVAILABLE' }
@@ -250,7 +250,7 @@ export const addTrackingPoint = async (req: Request, res: Response) => {
       where: { id: deliveryId }
     });
 
-    if (delivery) {
+    if (delivery && delivery.droneId) {
       await prisma.drone.update({
         where: { id: delivery.droneId },
         data: {

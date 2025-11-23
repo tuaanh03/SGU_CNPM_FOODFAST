@@ -7,4 +7,5 @@ export const config = {
     restaurantServiceUrl: process.env.RESTAURANT_SERVICE_URL || "http://restaurant-service:3005",
     cartServiceUrl: process.env.CART_SERVICE_URL || "http://cart-service:3006",
     locationServiceUrl: process.env.LOCATION_SERVICE_URL || "http://location-service:3007",
+    droneServiceUrl: process.env.DRONE_SERVICE_URL || "http://drone-service:3008",
 };

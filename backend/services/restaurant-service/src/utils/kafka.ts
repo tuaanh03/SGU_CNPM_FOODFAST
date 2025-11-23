@@ -35,6 +35,8 @@ const kafka = new Kafka({
 });
 
 const consumer = kafka.consumer({ groupId: 'restaurant-service-group' });
+const producer = kafka.producer();
+let isProducerConnected = false;
 
 export async function runConsumer() {
   try {
@@ -151,3 +153,29 @@ async function handleOrderConfirmed(payload: any) {
     console.error(`Failed to upsert RestaurantOrder for order ${orderId}:`, err);
   }
 }
+
+// Publish restaurant order status change event
+export async function publishRestaurantOrderStatusEvent(payload: any) {
+  const topic = "restaurant.order.status";
+
+  try {
+    if (!isProducerConnected) {
+      await producer.connect();
+      isProducerConnected = true;
+    }
+    await producer.send({
+      topic,
+      messages: [
+        {
+          key: `restaurant-order-${payload.orderId}`,
+          value: JSON.stringify(payload),
+        },
+      ],
+    });
+    console.log(`📤 Published restaurant.order.status for order ${payload.orderId}`);
+  } catch (error) {
+    console.error("❌ Error publishing restaurant.order.status:", error);
+    throw error;
+  }
+}
+

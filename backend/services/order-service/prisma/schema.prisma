@@ -10,7 +10,11 @@ datasource db {
 // ---------- Enums ----------
 enum OrderStatus {
   pending
-  success
+  completed // Đã thanh toán thành công
+  confirmed // Đơn hàng đã được xác nhận bởi nhà hàng
+  preparing // Nhà hàng đang chuẩn bị đơn hàng
+  readyForPickup // Đơn hàng đã sẵn sàng để giao hoặc khách đến lấy
+  delivering
   cancelled // Đã hủy, thanh toán thất bại, hoặc hết hạn
 }
 

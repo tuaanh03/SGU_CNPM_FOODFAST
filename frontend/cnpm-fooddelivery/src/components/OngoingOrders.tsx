@@ -2,11 +2,12 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Clock, MapPin, Phone, Loader2, CreditCard, Eye } from "lucide-react";
+import { Clock, MapPin, Phone, Loader2, CreditCard, Eye, Wifi } from "lucide-react";
 import { orderService } from "@/services/order.service";
 import { paymentService } from "@/services/payment.service";
 import { toast } from "sonner";
 import OrderDetailDialog from "./OrderDetailDialog";
+import { useOrderTracking } from "@/lib/useOrderTracking";
 
 interface OngoingOrder {
   id: string;
@@ -37,10 +38,72 @@ const OngoingOrders = () => {
   const [paymentLoading, setPaymentLoading] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<OngoingOrder | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null);
+
+  // Socket.IO tracking cho đơn hàng đang chọn
+  const { orderStatus, isConnected } = useOrderTracking(trackingOrderId);
 
   useEffect(() => {
     loadOngoingOrders();
   }, []);
+
+  // Tự động track đơn hàng confirmed đầu tiên
+  useEffect(() => {
+    if (orders.length > 0 && !trackingOrderId) {
+      const confirmedOrder = orders.find((o) =>
+        o.status === "confirmed" ||
+        o.status === "preparing" ||
+        o.status === "processing"
+      );
+      if (confirmedOrder) {
+        setTrackingOrderId(confirmedOrder.id);
+      }
+    }
+  }, [orders, trackingOrderId]);
+
+  // Xử lý cập nhật trạng thái từ socket
+  useEffect(() => {
+    if (orderStatus && trackingOrderId) {
+      console.log('📦 Order status updated from socket:', orderStatus);
+
+      // Cập nhật status trong danh sách orders
+      setOrders((prev) =>
+        prev.map((order) =>
+          order.id === orderStatus.orderId
+            ? { ...order, status: mapRestaurantStatusToOrderStatus(orderStatus.restaurantStatus) }
+            : order
+        )
+      );
+
+      // Show toast notification
+      const statusText = getStatusText(orderStatus.restaurantStatus);
+      toast.info(`Đơn hàng ${orderStatus.orderId.slice(0, 8)}: ${statusText}`);
+    }
+  }, [orderStatus, trackingOrderId]);
+
+  // Helper: Map restaurant status to order status
+  const mapRestaurantStatusToOrderStatus = (restaurantStatus: string): string => {
+    const statusMap: Record<string, string> = {
+      'CONFIRMED': 'confirmed',
+      'PREPARING': 'preparing',
+      'READY': 'ready',
+      'DELIVERING': 'delivering',
+      'COMPLETED': 'completed',
+    };
+    return statusMap[restaurantStatus] || restaurantStatus.toLowerCase();
+  };
+
+  // Helper: Get readable status text
+  const getStatusText = (restaurantStatus: string): string => {
+    const textMap: Record<string, string> = {
+      'CONFIRMED': 'Đã xác nhận',
+      'PREPARING': 'Đang chuẩn bị',
+      'READY': 'Sẵn sàng giao',
+      'DELIVERING': 'Đang giao hàng',
+      'COMPLETED': 'Hoàn thành',
+    };
+    return textMap[restaurantStatus] || restaurantStatus;
+  };
 
   const loadOngoingOrders = async () => {
     try {
@@ -48,11 +111,15 @@ const OngoingOrders = () => {
       const response = await orderService.getMyOrders();
 
       if (response.success) {
-        // Lọc chỉ lấy đơn hàng đang pending (chưa hoàn thành và chưa hủy)
+        // Lọc chỉ lấy đơn hàng đang xử lý (chưa hoàn thành và chưa hủy)
         const ongoingOrders = response.data.filter((order: any) =>
           order.status === "pending" ||
           order.status === "processing" ||
-          order.status === "confirmed"
+          order.status === "confirmed" ||
+          order.status === "preparing" ||
+          order.status === "ready" ||
+          order.status === "readyForPickup" ||
+          order.status === "delivering"
         );
 
         setOrders(ongoingOrders.map((order: any) => ({
@@ -132,13 +199,28 @@ const OngoingOrders = () => {
     },
     preparing: {
       label: "Đang chuẩn bị",
-      color: "bg-yellow-100 text-yellow-800",
+      color: "bg-orange-100 text-orange-800",
       icon: "👨‍🍳"
+    },
+    ready: {
+      label: "Sẵn sàng giao",
+      color: "bg-blue-100 text-blue-800",
+      icon: "📦"
+    },
+    delivering: {
+      label: "Đang giao hàng",
+      color: "bg-purple-100 text-purple-800",
+      icon: "🚚"
     },
     on_the_way: {
       label: "Đang giao hàng",
       color: "bg-blue-100 text-blue-800",
       icon: "🚚"
+    },
+    completed: {
+      label: "Hoàn thành",
+      color: "bg-gray-100 text-gray-800",
+      icon: "✓"
     }
   };
 
@@ -202,7 +284,16 @@ const OngoingOrders = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div>
-                    <CardTitle className="text-lg">Đơn hàng {order.orderNumber}</CardTitle>
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-lg">Đơn hàng {order.orderNumber}</CardTitle>
+                      {/* Real-time tracking indicator */}
+                      {trackingOrderId === order.id && isConnected && (
+                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
+                          <Wifi className="w-3 h-3 mr-1" />
+                          Live
+                        </Badge>
+                      )}
+                    </div>
                     <p className="text-sm text-muted-foreground">
                       {order.items.length} món • {order.orderTime}
                     </p>

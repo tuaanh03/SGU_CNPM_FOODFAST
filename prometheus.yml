@@ -39,6 +39,11 @@ scrape_configs:
     static_configs:
       - targets: ['restaurant-service:3005']
 
+  - job_name: 'socket-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['socket-service:3011']
+
   # Kafka Exporter - scrapes Kafka broker/topic/consumer metrics
   - job_name: 'kafka-exporter'
     metrics_path: '/metrics'

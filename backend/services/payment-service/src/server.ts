@@ -12,8 +12,6 @@ env.config();
 
 const server = express();
 
-// Run kafka consumer
-runConsumer();
 
 // Middleware's
 server.use(express.json());
@@ -128,6 +126,14 @@ server.use((req: Request, res: Response) => {
   });
 });
 
-server.listen(process.env.PORT, () => {
+server.listen(process.env.PORT, async () => {
   console.log(`Payment service is running on port ${process.env.PORT}`);
+
+  // Start Kafka consumer after server is ready
+  try {
+    await runConsumer();
+    console.log('✅ Kafka consumer started for payment-service');
+  } catch (err) {
+    console.error('❌ Failed to start Kafka consumer:', err);
+  }
 });
