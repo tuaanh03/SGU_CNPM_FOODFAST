@@ -48,9 +48,9 @@ model Drone {
 }
 
 model Delivery {
-  id      String @id @default(uuid())
-  orderId String @unique
-  droneId String
+  id      String  @id @default(uuid())
+  orderId String  @unique
+  droneId String?
 
   restaurantName    String
   restaurantLat     Float
@@ -76,7 +76,7 @@ model Delivery {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  drone          Drone           @relation(fields: [droneId], references: [id])
+  drone          Drone?          @relation(fields: [droneId], references: [id])
   trackingPoints TrackingPoint[]
 
   @@index([orderId])

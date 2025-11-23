@@ -129,7 +129,7 @@ const DashboardPage = () => {
                         </CardContent>
                     </Card>
 
-                    <Card className="cursor-pointer transition-all hover:shadow-lg opacity-60">
+                    <Card className="cursor-pointer transition-all hover:shadow-lg" onClick={() => navigate("/drones")}>
                         <CardHeader>
                             <CardTitle className="flex items-center">
                                 <Drone className="mr-2 h-5 w-5" />
@@ -140,8 +140,8 @@ const DashboardPage = () => {
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <Button className="w-full" variant="outline" disabled>
-                                Đang Phát Triển
+                            <Button className="w-full">
+                                Xem Drone
                             </Button>
                         </CardContent>
                     </Card>

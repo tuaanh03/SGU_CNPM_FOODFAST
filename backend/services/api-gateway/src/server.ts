@@ -275,6 +275,13 @@ const locationServiceProxy = proxy(config.locationServiceUrl, {
     ...trackProxyMetrics('location-service')
 });
 
+// proxy middleware for Drone Service (với user info forwarding cho admin routes)
+const droneServiceProxy = proxy(config.droneServiceUrl, {
+    proxyReqPathResolver: (req) => req.originalUrl.replace(/^\/api/, ""),
+    ...addCorsOnProxyResp,
+    ...trackProxyMetrics('drone-service', { forwardUser: true })
+});
+
 // ====== AGGREGATION ENDPOINT ======
 // GET /api/restaurants/:restaurantId/menu
 // Gọi song song restaurant-service và product-service, gom kết quả trả về client
@@ -354,6 +361,10 @@ server.use("/api/stores", restaurantServiceProxy);
 
 // cart service routes (có xác thực từ Gateway)
 server.use("/api/cart", authenticateToken, cartServiceProxy);
+
+// drone service routes (có xác thực từ Gateway - chỉ admin mới dùng)
+server.use("/api/drones", authenticateToken, droneServiceProxy);
+server.use("/api/deliveries", authenticateToken, droneServiceProxy);
 
 // health check route
 server.get("/", (_req: Request, res: Response) => {

@@ -76,6 +76,34 @@ class AuthService {
     return result;
   }
 
+  // Lưu token và user info vào localStorage (theo pattern của project)
+  saveAuthData(token: string, user: User) {
+    localStorage.setItem("system_admin_token", token);
+    localStorage.setItem("system_admin_user", JSON.stringify(user));
+  }
+
+  // Lấy token từ localStorage
+  getToken(): string | null {
+    return localStorage.getItem("system_admin_token");
+  }
+
+  // Lấy user info từ localStorage
+  getUser(): User | null {
+    const userStr = localStorage.getItem("system_admin_user");
+    if (!userStr) return null;
+    try {
+      return JSON.parse(userStr);
+    } catch {
+      return null;
+    }
+  }
+
+  // Đăng xuất
+  logout() {
+    localStorage.removeItem("system_admin_token");
+    localStorage.removeItem("system_admin_user");
+  }
+
   // Lấy thông tin profile
   async getProfile(): Promise<{ success: boolean; data: User }> {
     const token = this.getToken();
@@ -99,37 +127,9 @@ class AuthService {
     return response.json();
   }
 
-  // Lưu token và user info vào localStorage
-  saveAuthData(token: string, user: User) {
-    localStorage.setItem("system_admin_token", token);
-    localStorage.setItem("system_admin_user", JSON.stringify(user));
-  }
-
-  // Lấy token từ localStorage
-  getToken(): string | null {
-    return localStorage.getItem("system_admin_token");
-  }
-
-  // Lấy user info từ localStorage
-  getUser(): User | null {
-    const userStr = localStorage.getItem("system_admin_user");
-    if (!userStr) return null;
-    try {
-      return JSON.parse(userStr);
-    } catch {
-      return null;
-    }
-  }
-
   // Kiểm tra đã đăng nhập chưa
   isAuthenticated(): boolean {
     return !!this.getToken();
-  }
-
-  // Đăng xuất
-  logout() {
-    localStorage.removeItem("system_admin_token");
-    localStorage.removeItem("system_admin_user");
   }
 }
 
@@ -139,4 +139,6 @@ export const authService = new AuthService();
 export const getAuthToken = (): string | null => {
   return localStorage.getItem("system_admin_token");
 };
+
+
 

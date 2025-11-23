@@ -164,7 +164,13 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
             };
 
             // Publish event order.create để Payment Service consumer
-            await publishEvent(JSON.stringify(orderPayload));
+            try {
+                await publishEvent(JSON.stringify(orderPayload));
+                console.log(`📤 Published order.create event for order ${savedOrder.id}`);
+            } catch (kafkaError: any) {
+                console.error(`❌ Failed to publish order.create event for order ${savedOrder.id}:`, kafkaError);
+                // Continue - don't block user, payment will fail later
+            }
 
             res.status(201).json({
                 success: true,

@@ -45,14 +45,18 @@ export async function publishEvent(messages: string) {
 
   try {
     if (!isProducerConnected) {
+      console.log('📡 Connecting Kafka producer...');
       await producer.connect();
       isProducerConnected = true;
+      console.log('✅ Kafka producer connected');
     }
     await producer.send({
       topic,
       messages: [{ key: `message-${Date.now()}`, value: messages }],
     });
+    console.log(`✅ Published to ${topic}`);
   } catch (error) {
+    console.error(`❌ Failed to publish to ${topic}:`, error);
     throw error;
   }
 }

@@ -21,9 +21,10 @@ const httpServer = createServer(app);
 // Initialize Socket.IO
 const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: ["http://localhost:3000", "http://localhost:5173", "http://localhost:5174"],
+    origin: ["http://localhost:3000", "http://localhost:5173", "http://localhost:5174", "http://localhost:5175", "http://localhost:5176"],
     credentials: true,
   },
+  transports: ['websocket', 'polling'],
 });
 
 // Set Socket.IO instance for Kafka consumer
@@ -33,7 +34,7 @@ setSocketIO(io);
 app.use(express.json());
 app.use(
   cors({
-    origin: ["http://localhost:3000", "http://localhost:5173", "http://localhost:5174"],
+    origin: ["http://localhost:3000", "http://localhost:5173", "http://localhost:5174", "http://localhost:5175", "http://localhost:5176"],
     credentials: true,
   })
 );
@@ -136,6 +137,13 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Join dispatch room (for admin dispatchers)
+  socket.on("join:dispatch", () => {
+    socket.join("dispatch");
+    console.log(`🚚 Socket ${socket.id} joined dispatch room`);
+    socket.emit("joined:dispatch", { success: true });
+  });
+
   // Leave restaurant room
   socket.on("leave:restaurant", (data: { storeId: string }) => {
     const { storeId } = data;
@@ -152,6 +160,12 @@ io.on("connection", (socket) => {
       socket.leave(`order:${orderId}`);
       console.log(`📦 Socket ${socket.id} left order:${orderId}`);
     }
+  });
+
+  // Leave dispatch room
+  socket.on("leave:dispatch", () => {
+    socket.leave("dispatch");
+    console.log(`🚚 Socket ${socket.id} left dispatch room`);
   });
 
   // Disconnect event

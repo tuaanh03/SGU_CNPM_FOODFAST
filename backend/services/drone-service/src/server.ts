@@ -5,6 +5,7 @@ import cookieParser from "cookie-parser";
 import droneRoutes from "./routes/drone.routes";
 import deliveryRoutes from "./routes/delivery.routes";
 import express, { NextFunction, Request, Response } from "express";
+import { runConsumer } from "./utils/kafka";
 
 env.config();
 
@@ -66,7 +67,15 @@ server.use((req: Request, res: Response) => {
 
 const PORT = process.env.PORT || 3008;
 
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
   console.log(`Drone service is running on port ${PORT}`);
+
+  // Start Kafka consumer
+  try {
+    await runConsumer();
+    console.log('✅ Kafka consumer started for drone-service');
+  } catch (err) {
+    console.error('❌ Failed to start Kafka consumer:', err);
+  }
 });
 

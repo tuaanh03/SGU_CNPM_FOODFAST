@@ -86,10 +86,19 @@ function OrderCard({ order, status }: any) {
           )}
 
           {status === "preparing" && (
-            <div className="pt-4 border-t">
+            <div className="pt-4 border-t space-y-2">
               <div className="text-sm text-muted-foreground text-center py-2 bg-yellow-50 rounded">
                 👨‍🍳 Đang chuẩn bị món ăn...
               </div>
+              {order.onNotifyReady && (
+                <button
+                  onClick={() => order.onNotifyReady(order.restaurantOrderId)}
+                  disabled={order.notifying}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {order.notifying ? '⏳ Đang thông báo...' : '🚚 Thông báo đội giao (Ready)'}
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -103,6 +112,7 @@ const MerchantOrderPage = () => {
   const [orders, setOrders] = useState(initialOrders);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [storeId, setStoreId] = useState<string | null>(null);
+  const [notifyingOrderId, setNotifyingOrderId] = useState<string | null>(null);
 
   // Socket.IO real-time orders
   const { lastOrder, statusUpdate, isConnected } = useRestaurantOrders(storeId);
@@ -110,6 +120,26 @@ const MerchantOrderPage = () => {
   const newOrdersCount = orders.new.length;
   const confirmedOrdersCount = orders.confirmed.length;
   const historyOrdersCount = orders.history.length;
+
+  // Handler để thông báo đội giao
+  const handleNotifyReady = async (restaurantOrderId: string) => {
+    if (!restaurantOrderId) return;
+
+    setNotifyingOrderId(restaurantOrderId);
+    try {
+      const response = await restaurantOrderService.notifyReady(restaurantOrderId);
+      if (response.success) {
+        // Reload orders to reflect status change
+        await fetchOrders();
+        alert('✅ Đã thông báo đội giao hàng thành công!');
+      }
+    } catch (error: any) {
+      console.error('Error notifying ready:', error);
+      alert('❌ Lỗi: ' + error.message);
+    } finally {
+      setNotifyingOrderId(null);
+    }
+  };
 
   // Refactor fetchOrders thành function riêng với useCallback để tránh re-create
   const fetchOrders = useCallback(async () => {
@@ -127,7 +157,7 @@ const MerchantOrderPage = () => {
           const serverStatus = (ro.restaurantStatus || '').toUpperCase();
 
           // map server restaurant order to UI Order
-          const uiOrder: Order = {
+          const uiOrder: any = {
             id: Number(ro.orderId?.slice?.(-6)) || Math.floor(Math.random() * 100000),
             restaurantOrderId: ro.id,
             customerName: ro.customerInfo?.userId || 'Khách hàng',
@@ -141,7 +171,9 @@ const MerchantOrderPage = () => {
             total: ro.totalPrice || 0,
             status: serverStatus === 'PREPARING' ? 'preparing' : (serverStatus === 'CONFIRMED' ? 'confirmed' : (ro.restaurantStatus?.toLowerCase() || 'new')),
             createdAt: new Date(ro.receivedAt || ro.confirmedAt).toLocaleString('vi-VN'),
-            restaurantName: ''
+            restaurantName: '',
+            onNotifyReady: handleNotifyReady,
+            notifying: notifyingOrderId === ro.id
           };
 
           // categorize by normalized serverStatus

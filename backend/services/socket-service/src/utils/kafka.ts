@@ -133,6 +133,33 @@ async function handleRestaurantOrderStatus(data: any) {
       console.log(`✅ Emitted order:status:update to restaurant:${storeId} - Status: ${restaurantStatus}`);
     }
   }
+
+  // Handle ORDER_READY_FOR_PICKUP event - emit to dispatch queue
+  if (eventType === "ORDER_READY_FOR_PICKUP") {
+    const dispatchPayload = {
+      orderId,
+      storeId,
+      restaurantStatus: "READY_FOR_PICKUP",
+      readyAt: data.readyAt,
+      pickupLocation: data.pickupLocation,
+      customerInfo: data.customerInfo,
+      items: data.items,
+      totalPrice: data.totalPrice,
+      timestamp: data.readyAt || new Date().toISOString(),
+    };
+
+    // Emit to dispatch room (admin dispatchers)
+    io.to("dispatch").emit("dispatch:delivery:created", dispatchPayload);
+    socketEmitCounter.inc({ event_name: "dispatch:delivery:created" });
+    console.log(`✅ Emitted dispatch:delivery:created to dispatch room - order ${orderId}`);
+
+    // Also emit to restaurant room for merchant visibility
+    if (storeId) {
+      io.to(`restaurant:${storeId}`).emit("order:status:update", dispatchPayload);
+      socketEmitCounter.inc({ event_name: "order:status:update" });
+      console.log(`✅ Emitted order:status:update to restaurant:${storeId} - Ready for pickup`);
+    }
+  }
 }
 
 export const producer = kafka.producer();

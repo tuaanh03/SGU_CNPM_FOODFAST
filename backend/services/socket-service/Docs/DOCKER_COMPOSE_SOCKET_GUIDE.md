@@ -305,9 +305,9 @@ Thêm middleware xác thực Socket.IO connection.
 
 ## 📚 Tài liệu tham khảo
 
-- [Socket Service Setup Guide](./SOCKET_SERVICE_SETUP_GUIDE.md)
-- [Real-time Flow Documentation](./SOCKET_REALTIME_FLOW.md)
-- [Architecture Diagram](./ARCHITECTURE_REALTIME_DIAGRAM.md)
+- [Socket Service Setup Guide](SOCKET_SERVICE_SETUP_GUIDE.md)
+- [Real-time Flow Documentation](SOCKET_REALTIME_FLOW.md)
+- [Architecture Diagram](ARCHITECTURE_REALTIME_DIAGRAM.md)
 
 ## 🎉 Hoàn tất!
 

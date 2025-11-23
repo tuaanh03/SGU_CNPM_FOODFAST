@@ -7,6 +7,7 @@ import {
   getStoreById,
   checkStoreByOwnerId,
   getMyOrders,
+  updateOrderToReady,
 } from "../controllers/store";
 import { authenticateToken, requireStoreAdmin } from "../middleware/auth";
 
@@ -23,6 +24,9 @@ router.post("/", authenticateToken, requireStoreAdmin, createStore);
 router.get("/my/store", authenticateToken, requireStoreAdmin, getMyStore);
 router.get("/my/orders", authenticateToken, requireStoreAdmin, getMyOrders);
 router.put("/my/store", authenticateToken, requireStoreAdmin, updateStore);
+
+// Update order to ready for pickup
+router.put("/orders/:restaurantOrderId/ready", authenticateToken, requireStoreAdmin, updateOrderToReady);
 
 // Lấy thông tin cửa hàng theo ID (public) - đặt sau các route tĩnh để tránh bị che khuất
 router.get("/:id", getStoreById);

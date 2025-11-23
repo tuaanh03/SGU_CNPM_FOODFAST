@@ -392,6 +392,9 @@ services:
       context: ./frontend/admin-dashboard
       dockerfile: Dockerfile
     container_name: admin-dashboard
+    environment:
+      # Nginx sẽ proxy /api/ sang api-gateway (nội bộ docker network)
+      - VITE_API_BASE_URL_INTERNAL=http://api-gateway:3000/api/
     ports:
       - "8081:80"
     networks:
