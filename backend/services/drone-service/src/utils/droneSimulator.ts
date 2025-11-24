@@ -117,51 +117,81 @@ export class DroneSimulator {
     if (distanceToDestination < 0.1) { // 100m instead of 50m
       console.log(`🎯 Drone ${this.droneId} arrived at restaurant!`);
 
-      // Update delivery status to PICKING_UP
-      const prisma = require('../lib/prisma').default;
-      await prisma.delivery.update({
-        where: { id: this.deliveryId },
-        data: { status: 'PICKING_UP' }
-      });
+      try {
+        // Update delivery status to PICKING_UP
+        const prisma = require('../lib/prisma').default;
+        console.log(`📝 Updating delivery ${this.deliveryId} status to PICKING_UP...`);
 
-      // Auto-generate OTP
-      const { otpRedis } = require('../lib/redis');
-      const { publishOtpGeneratedEvent } = require('./kafka');
-      const otp = await otpRedis.generateOtp(this.deliveryId);
+        await prisma.delivery.update({
+          where: { id: this.deliveryId },
+          data: { status: 'PICKING_UP' }
+        });
+        console.log(`✅ Delivery ${this.deliveryId} status updated to PICKING_UP`);
 
-      // Get delivery info for event
-      const delivery = await prisma.delivery.findUnique({
-        where: { id: this.deliveryId },
-        select: {
-          orderId: true,
-          restaurantName: true
+        // Auto-generate OTP
+        const { otpRedis } = require('../lib/redis');
+        console.log(`🔐 Generating OTP for delivery ${this.deliveryId}...`);
+        const otp = await otpRedis.generateOtp(this.deliveryId);
+        console.log(`✅ OTP generated: ${otp}`);
+
+        // Get delivery info for event
+        console.log(`📋 Fetching delivery info for delivery ${this.deliveryId}...`);
+        const delivery = await prisma.delivery.findUnique({
+          where: { id: this.deliveryId },
+          select: {
+            orderId: true,
+            restaurantName: true,
+            storeId: true
+          }
+        });
+
+        if (!delivery) {
+          console.error(`❌ Delivery ${this.deliveryId} not found in database!`);
+          await this.stop();
+          return;
         }
-      });
 
-      // Publish OTP generated event
-      await publishOtpGeneratedEvent({
-        eventType: 'OTP_GENERATED',
-        deliveryId: this.deliveryId,
-        orderId: delivery?.orderId,
-        otp,
-        expiresIn: 30,
-        restaurantName: delivery?.restaurantName,
-        timestamp: new Date().toISOString()
-      });
+        console.log(`✅ Delivery info fetched:`, {
+          orderId: delivery.orderId,
+          storeId: delivery.storeId,
+          restaurantName: delivery.restaurantName
+        });
 
-      console.log(`🔐 Auto-generated OTP for delivery ${this.deliveryId}: ${otp}`);
+        // Publish OTP generated event
+        const { publishOtpGeneratedEvent } = require('./kafka');
+        console.log(`📤 Publishing OTP generated event...`);
 
-      // Publish arrival event
-      const { publishDroneArrivedEvent } = require('./kafka');
-      await publishDroneArrivedEvent({
-        eventType: 'DRONE_ARRIVED_AT_RESTAURANT',
-        deliveryId: this.deliveryId,
-        droneId: this.droneId,
-        orderId: delivery?.orderId,
-        timestamp: new Date().toISOString()
-      });
+        await publishOtpGeneratedEvent({
+          eventType: 'OTP_GENERATED',
+          deliveryId: this.deliveryId,
+          orderId: delivery.orderId,
+          storeId: delivery.storeId,
+          otp,
+          expiresIn: 30,
+          restaurantName: delivery.restaurantName,
+          timestamp: new Date().toISOString()
+        });
+        console.log(`✅ OTP generated event published - OTP: ${otp}`);
 
-      console.log(`📤 Published drone.arrived event for orderId: ${delivery?.orderId}`);
+        // Publish arrival event
+        const { publishDroneArrivedEvent } = require('./kafka');
+        console.log(`📤 Publishing drone arrived event...`);
+
+        await publishDroneArrivedEvent({
+          eventType: 'DRONE_ARRIVED_AT_RESTAURANT',
+          deliveryId: this.deliveryId,
+          droneId: this.droneId,
+          orderId: delivery.orderId,
+          storeId: delivery.storeId,
+          timestamp: new Date().toISOString()
+        });
+        console.log(`✅ Drone arrived event published for orderId: ${delivery.orderId}`);
+
+      } catch (error) {
+        console.error(`❌ Error in drone arrival process for delivery ${this.deliveryId}:`, error);
+        console.error(`❌ Error stack:`, (error as Error).stack);
+        // Continue to stop simulation even if error
+      }
 
       // Stop simulation - wait for OTP verification
       await this.stop();

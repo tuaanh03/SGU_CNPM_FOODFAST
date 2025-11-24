@@ -73,6 +73,7 @@ export const getDeliveryById = async (req: Request, res: Response) => {
 export const getDeliveryByOrderId = async (req: Request, res: Response) => {
   try {
     const { orderId } = req.params;
+    console.log(`🔍 [getDeliveryByOrderId] Fetching delivery for orderId: ${orderId}`);
 
     const delivery = await prisma.delivery.findUnique({
       where: { orderId },
@@ -86,20 +87,24 @@ export const getDeliveryByOrderId = async (req: Request, res: Response) => {
     });
 
     if (!delivery) {
+      console.warn(`⚠️ [getDeliveryByOrderId] Delivery not found for orderId: ${orderId}`);
       return res.status(404).json({
         success: false,
         message: "Delivery not found",
       });
     }
 
+    console.log(`✅ [getDeliveryByOrderId] Found delivery ${delivery.id} for orderId: ${orderId}`);
     res.status(200).json({
       success: true,
       data: delivery,
     });
   } catch (error: any) {
+    console.error(`❌ [getDeliveryByOrderId] Error fetching delivery for orderId ${req.params.orderId}:`, error);
+    console.error(`❌ [getDeliveryByOrderId] Error details:`, error.message, error.stack);
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: error.message || 'Internal server error',
     });
   }
 };
@@ -110,6 +115,7 @@ export const createDelivery = async (req: Request, res: Response) => {
     const {
       orderId,
       droneId,
+      storeId, // ✅ Add storeId
       restaurantName,
       restaurantLat,
       restaurantLng,
@@ -148,6 +154,7 @@ export const createDelivery = async (req: Request, res: Response) => {
         data: {
           orderId,
           droneId,
+          storeId, // ✅ Include storeId
           restaurantName,
           restaurantLat,
           restaurantLng,
@@ -381,6 +388,34 @@ export const generatePickupOtp = async (req: Request, res: Response) => {
       },
       message: "OTP generated successfully. Valid for 30 seconds."
     });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// Wrapper: Verify OTP by orderId (convert to deliveryId)
+export const verifyPickupOtpByOrderId = async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
+
+    // Find delivery by orderId
+    const delivery = await prisma.delivery.findUnique({
+      where: { orderId }
+    });
+
+    if (!delivery) {
+      return res.status(404).json({
+        success: false,
+        message: "Delivery not found for this order",
+      });
+    }
+
+    // Forward to verifyPickupOtp with deliveryId
+    req.params.deliveryId = delivery.id;
+    return verifyPickupOtp(req, res);
   } catch (error: any) {
     res.status(500).json({
       success: false,

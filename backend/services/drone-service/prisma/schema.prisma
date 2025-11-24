@@ -51,6 +51,7 @@ model Delivery {
   id      String  @id @default(uuid())
   orderId String  @unique
   droneId String?
+  storeId String? // ✅ Add storeId to link with restaurant
 
   restaurantName    String
   restaurantLat     Float

@@ -92,6 +92,7 @@ async function handleOrderReadyForPickup(data: any) {
       where: { orderId },
       update: {
         status: 'PENDING',
+        storeId, // ✅ Add storeId
         restaurantName: pickupLocation?.restaurantName || '',
         restaurantLat,
         restaurantLng,
@@ -105,6 +106,7 @@ async function handleOrderReadyForPickup(data: any) {
       create: {
         orderId,
         droneId: null, // Null - admin will assign later
+        storeId, // ✅ Add storeId
         restaurantName: pickupLocation?.restaurantName || '',
         restaurantLat,
         restaurantLng,

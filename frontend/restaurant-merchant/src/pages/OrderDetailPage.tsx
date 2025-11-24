@@ -126,14 +126,23 @@ const OrderDetailPage = () => {
   // Check if drone has arrived for this order
   const droneArrived = order?.orderId && droneArrivedOrders.has(order.orderId);
 
+  // Auto-show OTP dialog when drone arrives
+  useEffect(() => {
+    if (droneArrived && !showOtpDialog) {
+      console.log('🚁 [OrderDetailPage] Drone arrived! Auto-showing OTP dialog');
+      setShowOtpDialog(true);
+    }
+  }, [droneArrived]);
+
   // Debug logging
   useEffect(() => {
     console.log('🔍 [OrderDetailPage] State check:');
     console.log('  - order.orderId:', order?.orderId);
     console.log('  - droneArrivedOrders:', Array.from(droneArrivedOrders));
     console.log('  - droneArrived:', droneArrived);
+    console.log('  - showOtpDialog:', showOtpDialog);
     console.log('  - isConnected:', isConnected);
-  }, [order?.orderId, droneArrivedOrders, droneArrived, isConnected]);
+  }, [order?.orderId, droneArrivedOrders, droneArrived, showOtpDialog, isConnected]);
 
   const getStatusBadge = (status: string) => {
     const statusMap: Record<string, { label: string; className: string }> = {

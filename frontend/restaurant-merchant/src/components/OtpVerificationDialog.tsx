@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Loader2, CheckCircle, XCircle } from "lucide-react";
 import API_BASE_URL from "@/config/api";
+import { getAuthToken } from "@/services/auth.service";
 
 interface OtpVerificationDialogProps {
   open: boolean;
@@ -35,10 +36,17 @@ const OtpVerificationDialog = ({
       setLoading(true);
       setError("");
 
+      const token = getAuthToken();
+      if (!token) {
+        setError("Vui lòng đăng nhập lại");
+        return;
+      }
+
       const response = await fetch(`${API_BASE_URL}/deliveries/order/${orderId}/verify-otp`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
         },
         body: JSON.stringify({ otp }),
       });
