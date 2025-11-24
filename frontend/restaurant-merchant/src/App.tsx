@@ -1,6 +1,7 @@
 import { Toaster } from "sonner";
 import { BrowserRouter, Route, Routes, Navigate } from "react-router";
 import { AuthProvider } from "@/contexts/auth-context";
+import { RestaurantSocketProvider } from "@/contexts/RestaurantSocketContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
 import NotFound from "./pages/NotFound";
@@ -12,14 +13,16 @@ import ProductManagementPage from "./pages/ProductManagementPage";
 import ProductFormPage from "./pages/ProductFormPage";
 import CategoryManagementPage from "./pages/CategoryManagementPage";
 import MerchantOrderPage from "./pages/MerchantOrdersPage";
+import OrderDetailPage from "./pages/OrderDetailPage";
 
 function App() {
     return (
         <>
             <Toaster />
-            <AuthProvider>
-                <BrowserRouter>
-                    <Routes>
+            <BrowserRouter>
+                <AuthProvider>
+                    <RestaurantSocketProvider>
+                        <Routes>
                         {/* Redirect root to merchant login */}
                         <Route path="/" element={<Navigate to="/merchant/login" replace />} />
 
@@ -86,12 +89,37 @@ function App() {
                                 </ProtectedRoute>
                             }
                         />
+                        <Route
+                            path="/merchant/orders/:orderId"
+                            element={
+                                <ProtectedRoute requiredRole="STORE_ADMIN">
+                                    <OrderDetailPage />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/orders"
+                            element={
+                                <ProtectedRoute requiredRole="STORE_ADMIN">
+                                    <MerchantOrderPage />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/orders/:orderId"
+                            element={
+                                <ProtectedRoute requiredRole="STORE_ADMIN">
+                                    <OrderDetailPage />
+                                </ProtectedRoute>
+                            }
+                        />
 
                         {/* 404 Not Found */}
                         <Route path="*" element={<NotFound />} />
-                    </Routes>
-                </BrowserRouter>
-            </AuthProvider>
+                        </Routes>
+                    </RestaurantSocketProvider>
+                </AuthProvider>
+            </BrowserRouter>
         </>
     );
 }

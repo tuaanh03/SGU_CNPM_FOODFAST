@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes } from "react-router";
 import { CartProvider } from "@/contexts/cart-context";
 import { AuthProvider } from "@/contexts/auth-context";
 import { AddressProvider } from "@/contexts/address-context";
+import { CustomerSocketProvider } from "@/contexts/CustomerSocketContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
 import HomePage from "./pages/HomePage";
@@ -27,9 +28,10 @@ function App() {
         <>
             <Toaster />
             <AuthProvider>
-                <AddressProvider>
-                    <CartProvider>
-                        <BrowserRouter>
+                <CustomerSocketProvider>
+                    <AddressProvider>
+                        <CartProvider>
+                            <BrowserRouter>
                             <Routes>
                             {/* Public Routes */}
                             <Route path="/" element={<HomePage />} />
@@ -106,6 +108,7 @@ function App() {
                     </BrowserRouter>
                 </CartProvider>
                 </AddressProvider>
+                </CustomerSocketProvider>
             </AuthProvider>
         </>
     );

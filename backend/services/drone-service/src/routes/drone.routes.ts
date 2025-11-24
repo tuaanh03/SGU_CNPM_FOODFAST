@@ -6,6 +6,7 @@ import {
   updateDrone,
   updateDroneLocation,
   getAvailableDrones,
+  getNearbyDrones,
   deleteDrone
 } from "../controllers/drone.controller";
 
@@ -13,6 +14,7 @@ const router = Router();
 
 router.get("/", getAllDrones);
 router.get("/available", getAvailableDrones);
+router.get("/nearby", getNearbyDrones);
 router.get("/:id", getDroneById);
 router.post("/", createDrone);
 router.put("/:id", updateDrone);

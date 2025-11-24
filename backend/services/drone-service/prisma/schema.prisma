@@ -69,6 +69,8 @@ model Delivery {
 
   status DeliveryStatus @default(PENDING)
 
+  pickupVerifiedAt DateTime?
+
   assignedAt  DateTime?
   pickedUpAt  DateTime?
   deliveredAt DateTime?

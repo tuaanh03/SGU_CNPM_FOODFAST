@@ -1,11 +1,13 @@
 import { Toaster } from "sonner";
 import { BrowserRouter, Route, Routes } from "react-router";
 import { AuthProvider } from "@/contexts/auth-context";
+import { AdminSocketProvider } from "@/contexts/AdminSocketContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
 import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
 import DispatchQueuePage from "./pages/DispatchQueuePage";
+import DeliveryManagementPage from "./pages/DeliveryManagementPage";
 import OrderDetailPage from "./pages/OrderDetailPage";
 import RouteTrackingPage from "./pages/RouteTrackingPage";
 import DroneManagementPage from "./pages/DroneManagementPage";
@@ -16,7 +18,8 @@ function App() {
         <>
             <Toaster />
             <AuthProvider>
-                <BrowserRouter>
+                <AdminSocketProvider>
+                    <BrowserRouter>
                     <Routes>
                         {/* Auth Routes */}
                         <Route path="/login" element={<LoginPage />} />
@@ -35,6 +38,14 @@ function App() {
                             element={
                                 <ProtectedRoute requiredRole="SYSTEM_ADMIN">
                                     <DispatchQueuePage />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/deliveries"
+                            element={
+                                <ProtectedRoute requiredRole="SYSTEM_ADMIN">
+                                    <DeliveryManagementPage />
                                 </ProtectedRoute>
                             }
                         />
@@ -66,6 +77,7 @@ function App() {
                         <Route path="*" element={<NotFound />} />
                     </Routes>
                 </BrowserRouter>
+                </AdminSocketProvider>
             </AuthProvider>
         </>
     );

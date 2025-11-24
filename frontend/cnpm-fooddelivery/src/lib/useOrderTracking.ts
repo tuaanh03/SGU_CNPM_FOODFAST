@@ -29,6 +29,18 @@ export const useOrderTracking = (orderId: string | null) => {
       setOrderStatus(data);
     };
 
+    // Listen for drone assigned
+    const handleDroneAssigned = (data: any) => {
+      console.log('🚁 Drone assigned to order:', data);
+      // Update status to show drone is assigned
+      setOrderStatus({
+        orderId: data.orderId,
+        storeId: '',
+        restaurantStatus: 'DELIVERING',
+        timestamp: data.timestamp
+      });
+    };
+
     // Listen for joined confirmation
     const handleJoined = (data: any) => {
       console.log('✅ Joined order room:', data);
@@ -45,6 +57,7 @@ export const useOrderTracking = (orderId: string | null) => {
 
     on('connect', handleConnect);
     on('order:status:update', handleStatusUpdate);
+    on('drone:assigned', handleDroneAssigned);
     on('joined:order', handleJoined);
 
     // Join ngay nếu đã connected
@@ -60,6 +73,7 @@ export const useOrderTracking = (orderId: string | null) => {
       }
       off('connect', handleConnect);
       off('order:status:update', handleStatusUpdate);
+      off('drone:assigned', handleDroneAssigned);
       off('joined:order', handleJoined);
     };
   }, [orderId]); // Chỉ depend vào orderId

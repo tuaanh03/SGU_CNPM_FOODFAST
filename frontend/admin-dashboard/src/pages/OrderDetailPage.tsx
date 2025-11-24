@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
 import { useAuth } from "@/contexts/auth-context";
+import { useAdminSocket } from "@/contexts/AdminSocketContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -16,28 +17,139 @@ import {
     CheckCircle,
     XCircle
 } from "lucide-react";
-import { mockOrders, getSuitableDrones } from "@/services/mockData";
-import type { Drone as DroneType } from "@/services/mockData";
+import type { Drone as DroneType } from "@/services/drone.service";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { toast } from "sonner";
 import DroneSelectionDialog from "@/components/DroneSelectionDialog";
+import OrderMapSection from "@/components/OrderMapSection";
+import { deliveryService } from "@/services/delivery.service";
+import API_BASE_URL from "@/config/api";
 
 const OrderDetailPage = () => {
+    const { joinOrder, leaveOrder } = useAdminSocket();
     const { orderId } = useParams();
     const navigate = useNavigate();
     const { logout } = useAuth();
 
-    const [order, setOrder] = useState(() => mockOrders.find(o => o.id === orderId));
+    const [nearbyDrones, setNearbyDrones] = useState<any[]>([]);
+    const [pickupLocation, setPickupLocation] = useState<any>(null);
+    const [deliveryDestination, setDeliveryDestination] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+    const [order, setOrder] = useState<any>(null);
     const [showDroneSelection, setShowDroneSelection] = useState(false);
     const [suitableDrones, setSuitableDrones] = useState<DroneType[]>([]);
     const [selectedDrone, setSelectedDrone] = useState<DroneType | null>(null);
 
+    // Fetch delivery by orderId
     useEffect(() => {
-        if (!order) {
-            navigate('/dispatch');
-        }
-    }, [order, navigate]);
+        const fetchDelivery = async () => {
+            if (!orderId) {
+                navigate('/dispatch');
+                return;
+            }
+
+            try {
+                setLoading(true);
+                const response = await deliveryService.getDeliveryByOrderId(orderId);
+
+                if (response.success) {
+                    // Map delivery to order format for compatibility với UI hiện tại
+                    setOrder({
+                        id: response.data.orderId,
+                        orderCode: response.data.orderId.slice(0, 8).toUpperCase(),
+                        customerName: response.data.customerName,
+                        customerPhone: response.data.customerPhone,
+                        customerAddress: response.data.customerAddress,
+                        restaurantName: response.data.restaurantName,
+                        restaurantAddress: response.data.restaurantAddress,
+                        status: response.data.status,
+                        totalAmount: 0, // Delivery không có totalAmount
+                        items: [], // Delivery không có items detail
+                        createdAt: response.data.createdAt,
+                        route: {
+                            distance: response.data.distance,
+                            estimatedTime: response.data.estimatedTime,
+                            waypoints: [
+                                {
+                                    type: 'restaurant',
+                                    address: response.data.restaurantAddress,
+                                    lat: response.data.restaurantLat,
+                                    lng: response.data.restaurantLng
+                                },
+                                {
+                                    type: 'customer',
+                                    address: response.data.customerAddress,
+                                    lat: response.data.customerLat,
+                                    lng: response.data.customerLng
+                                }
+                            ]
+                        }
+                    });
+
+                    // Set pickup and delivery locations for map
+                    setPickupLocation({
+                        lat: response.data.restaurantLat,
+                        lng: response.data.restaurantLng,
+                        restaurantName: response.data.restaurantName,
+                        address: response.data.restaurantAddress
+                    });
+
+                    setDeliveryDestination({
+                        lat: response.data.customerLat,
+                        lng: response.data.customerLng,
+                        address: response.data.customerAddress
+                    });
+
+                    // Fetch nearby drones for this restaurant location
+                    try {
+                        const dronesResponse = await fetch(
+                            `${API_BASE_URL}/drones/nearby?lat=${response.data.restaurantLat}&lng=${response.data.restaurantLng}&radius=10`,
+                            {
+                                headers: {
+                                    'Authorization': `Bearer ${localStorage.getItem('system_admin_token')}`,
+                                    'Content-Type': 'application/json'
+                                }
+                            }
+                        );
+
+                        if (dronesResponse.ok) {
+                            const dronesData = await dronesResponse.json();
+                            if (dronesData.success && dronesData.data) {
+                                setNearbyDrones(dronesData.data);
+                                console.log(`📍 Found ${dronesData.data.length} nearby drones`);
+                            }
+                        } else {
+                            console.error('Failed to fetch nearby drones:', dronesResponse.status);
+                        }
+                    } catch (droneError) {
+                        console.error('Error fetching nearby drones:', droneError);
+                    }
+                }
+            } catch (error: any) {
+                console.error('Error fetching delivery:', error);
+                toast.error('Không thể tải thông tin đơn hàng');
+                navigate('/dispatch');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchDelivery();
+    }, [orderId, navigate]);
+
+    // Join order room để nhận realtime updates
+    useEffect(() => {
+        if (!orderId) return;
+
+        console.log('🔌 [OrderDetailPage] Joining order:', orderId);
+        joinOrder(orderId);
+
+        return () => {
+            console.log('🔌 [OrderDetailPage] Leaving order:', orderId);
+            leaveOrder(orderId);
+        };
+    }, [orderId, joinOrder, leaveOrder]);
 
     const handleLogout = () => {
         logout();
@@ -54,12 +166,11 @@ const OrderDetailPage = () => {
     const handleApprove = () => {
         if (!order) return;
 
-        // Get suitable drones for this order
-        const drones = getSuitableDrones(order);
-        setSuitableDrones(drones);
+        // Use nearbyDrones fetched from API
+        setSuitableDrones(nearbyDrones);
 
-        if (drones.length === 0) {
-            toast.error("Không có drone phù hợp cho đơn hàng này!");
+        if (nearbyDrones.length === 0) {
+            toast.error("Không có drone khả dụng gần nhà hàng!");
             return;
         }
 
@@ -77,27 +188,60 @@ const OrderDetailPage = () => {
         }, 1500);
     };
 
-    const handleDroneSelect = (drone: DroneType) => {
-        setSelectedDrone(drone);
-        setShowDroneSelection(false);
-        toast.success(`Đã chọn ${drone.name} cho đơn hàng!`);
+    const handleDroneSelect = async (drone: any) => {
+        if (!orderId) return;
 
-        // Update order status
-        if (order) {
-            setOrder({ ...order, status: 'APPROVED' });
+        try {
+            // Call API to assign drone to delivery
+            const response = await deliveryService.assignDrone(orderId, drone.id);
+
+            if (response.success) {
+                setSelectedDrone(drone);
+                toast.success(`Đã gán ${drone.name} cho đơn hàng thành công!`);
+
+                // Update order status locally
+                if (order) {
+                    setOrder({ ...order, status: 'ASSIGNED' });
+                }
+
+                // Save to localStorage for tracking
+                localStorage.setItem(`drone_for_order_${orderId}`, JSON.stringify(drone));
+
+                // Navigate to tracking page after short delay
+                setTimeout(() => {
+                    navigate(`/order/${orderId}/tracking`);
+                }, 1000);
+            } else {
+                toast.error(response.message || 'Không thể gán drone');
+            }
+        } catch (error: any) {
+            console.error('Error assigning drone:', error);
+            toast.error(error.message || 'Có lỗi xảy ra khi gán drone');
         }
-
-        // Save drone to localStorage
-        localStorage.setItem(`drone_for_order_${orderId}`, JSON.stringify(drone));
-
-        // Navigate to tracking page
-        setTimeout(() => {
-            navigate(`/order/${orderId}/tracking`);
-        }, 500);
     };
 
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                <div className="text-center">
+                    <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mb-4"></div>
+                    <p className="text-gray-600">Đang tải thông tin đơn hàng...</p>
+                </div>
+            </div>
+        );
+    }
+
     if (!order) {
-        return null;
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                <div className="text-center">
+                    <p className="text-gray-600 mb-4">Không tìm thấy đơn hàng</p>
+                    <Button onClick={() => navigate('/dispatch')}>
+                        Quay lại Dispatch Queue
+                    </Button>
+                </div>
+            </div>
+        );
     }
 
     return (
@@ -193,25 +337,76 @@ const OrderDetailPage = () => {
                             </CardHeader>
                             <CardContent>
                                 <div className="space-y-3">
-                                    {order.items.map((item) => (
-                                        <div key={item.id} className="flex items-center justify-between">
-                                            <div className="flex-1">
-                                                <p className="text-sm font-medium">{item.productName}</p>
-                                                <p className="text-xs text-gray-500">SL: {item.quantity}</p>
+                                    {order.items && order.items.length > 0 ? (
+                                        <>
+                                            {order.items.map((item: any) => (
+                                                <div key={item.id} className="flex items-center justify-between">
+                                                    <div className="flex-1">
+                                                        <p className="text-sm font-medium">{item.productName}</p>
+                                                        <p className="text-xs text-gray-500">SL: {item.quantity}</p>
+                                                    </div>
+                                                    <p className="text-sm font-medium">{formatCurrency(item.price * item.quantity)}</p>
+                                                </div>
+                                            ))}
+                                            <Separator />
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-base font-bold">Tổng cộng</p>
+                                                <p className="text-base font-bold text-blue-600">
+                                                    {formatCurrency(order.totalAmount)}
+                                                </p>
                                             </div>
-                                            <p className="text-sm font-medium">{formatCurrency(item.price * item.quantity)}</p>
-                                        </div>
-                                    ))}
-                                    <Separator />
-                                    <div className="flex items-center justify-between">
-                                        <p className="text-base font-bold">Tổng cộng</p>
-                                        <p className="text-base font-bold text-blue-600">
-                                            {formatCurrency(order.totalAmount)}
-                                        </p>
-                                    </div>
+                                        </>
+                                    ) : (
+                                        <p className="text-sm text-gray-500">Không có thông tin món ăn</p>
+                                    )}
                                 </div>
                             </CardContent>
                         </Card>
+
+                        {/* Map Section - Show pickup, delivery and nearby drones */}
+                        {pickupLocation && (
+                            <OrderMapSection
+                                pickupLocation={pickupLocation}
+                                deliveryDestination={deliveryDestination}
+                                drones={nearbyDrones}
+                            />
+                        )}
+
+                        {/* Nearby Drones List for Assignment */}
+                        {nearbyDrones.length > 0 && !selectedDrone && order.status === 'PENDING' && (
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Drone className="h-5 w-5 text-blue-600" />
+                                        Drones khả dụng gần nhà hàng ({nearbyDrones.length})
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="space-y-3">
+                                        {nearbyDrones.map((drone: any) => (
+                                            <div
+                                                key={drone.id}
+                                                className="flex items-center justify-between p-3 border rounded-lg hover:bg-blue-50 cursor-pointer transition-colors"
+                                                onClick={() => handleDroneSelect(drone)}
+                                            >
+                                                <div className="flex-1">
+                                                    <p className="font-medium text-gray-900">{drone.name}</p>
+                                                    <p className="text-sm text-gray-600">{drone.model}</p>
+                                                    <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
+                                                        <span>📍 {drone.distance} km</span>
+                                                        <span>🔋 {drone.battery}%</span>
+                                                        <span>📦 {drone.maxPayload} kg</span>
+                                                    </div>
+                                                </div>
+                                                <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                                                    Chọn Drone
+                                                </Button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )}
 
                         {/* Selected Drone Card */}
                         {selectedDrone && (
@@ -285,7 +480,7 @@ const OrderDetailPage = () => {
                                         <div className="flex items-start space-x-2">
                                             <Store className="h-4 w-4 text-orange-600 mt-1" />
                                             <p className="text-xs text-gray-600">
-                                                {order.route.waypoints.find(w => w.type === 'restaurant')?.address}
+                                                {order.route.waypoints.find((w: any) => w.type === 'restaurant')?.address}
                                             </p>
                                         </div>
                                     </div>
@@ -294,7 +489,7 @@ const OrderDetailPage = () => {
                                         <div className="flex items-start space-x-2">
                                             <MapPin className="h-4 w-4 text-green-600 mt-1" />
                                             <p className="text-xs text-gray-600">
-                                                {order.route.waypoints.find(w => w.type === 'customer')?.address}
+                                                {order.route.waypoints.find((w: any) => w.type === 'customer')?.address}
                                             </p>
                                         </div>
                                     </div>

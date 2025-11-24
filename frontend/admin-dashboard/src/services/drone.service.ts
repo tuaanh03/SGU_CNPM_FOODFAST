@@ -10,7 +10,13 @@ export interface Drone {
   maxRange: number;
   currentLat?: number;
   currentLng?: number;
+  currentLocation?: {
+    lat: number;
+    lng: number;
+  };
   status: 'AVAILABLE' | 'IN_USE' | 'CHARGING' | 'MAINTENANCE' | 'OFFLINE';
+  distanceFromRestaurant?: number; // in km
+  distance?: number; // in km (alias)
   lastMaintenance?: string;
   createdAt: string;
   updatedAt: string;
@@ -51,6 +57,41 @@ export interface TrackingPoint {
   speed?: number;
   battery: number;
   timestamp: string;
+}
+
+export interface Order {
+  id: string;
+  orderCode: string;
+  customerName: string;
+  customerPhone: string;
+  customerAddress: string;
+  restaurantName: string;
+  restaurantAddress: string;
+  status: string;
+  totalAmount: number;
+  createdAt: string;
+  items: OrderItem[];
+  route?: RouteInfo;
+}
+
+export interface OrderItem {
+  id: string;
+  productName: string;
+  quantity: number;
+  price: number;
+}
+
+export interface RouteInfo {
+  distance: number; // in km
+  estimatedTime: number; // in minutes
+  waypoints: Waypoint[];
+}
+
+export interface Waypoint {
+  lat: number;
+  lng: number;
+  address: string;
+  type: 'restaurant' | 'customer';
 }
 
 class DroneService {

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Battery, Weight, Navigation, CheckCircle } from "lucide-react";
-import type { Drone } from "@/services/mockData";
+import type { Drone } from "@/services/drone.service";
 
 interface DroneSelectionDialogProps {
     open: boolean;

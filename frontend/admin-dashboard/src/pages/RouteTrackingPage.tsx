@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
 import { useAuth } from "@/contexts/auth-context";
+import { useAdminSocket } from "@/contexts/AdminSocketContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,34 +20,104 @@ import {
     TrendingUp,
     Activity
 } from "lucide-react";
-import { mockOrders } from "@/services/mockData";
-import type { Order, Drone } from "@/services/mockData";
+import type { Order, Drone } from "@/services/drone.service";
+import { deliveryService } from "@/services/delivery.service";
+import { toast } from "sonner";
+import DroneTrackingMap from "@/components/DroneTrackingMap";
 
 const RouteTrackingPage = () => {
     const { orderId } = useParams();
     const navigate = useNavigate();
     const { logout } = useAuth();
+    const { joinOrder, leaveOrder, realtimeDronePositions, currentOtps } = useAdminSocket();
 
     // Get order and drone from URL state or localStorage
     const [order, setOrder] = useState<Order | null>(null);
     const [drone, setDrone] = useState<Drone | null>(null);
     const [droneProgress, setDroneProgress] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
+    const [delivery, setDelivery] = useState<any>(null);
+    const [currentOtp, setCurrentOtp] = useState<string>("");
+    const [realtimeDronePosition, setRealtimeDronePosition] = useState<{ lat: number; lng: number } | null>(null);
 
     useEffect(() => {
-        // Get order from mock data
-        const foundOrder = mockOrders.find(o => o.id === orderId);
-        if (foundOrder) {
-            setOrder(foundOrder);
-        }
+        const fetchDelivery = async () => {
+            if (!orderId) {
+                setIsLoading(false);
+                return;
+            }
 
-        // Try to get drone from localStorage
-        const savedDrone = localStorage.getItem(`drone_for_order_${orderId}`);
-        if (savedDrone) {
-            setDrone(JSON.parse(savedDrone));
-        }
+            try {
+                // Fetch delivery from API
+                const response = await deliveryService.getDeliveryByOrderId(orderId);
 
-        setIsLoading(false);
+                if (response.success) {
+                    const deliveryData = response.data;
+                    setDelivery(deliveryData);
+
+                    // Map delivery to order format
+                    setOrder({
+                        id: deliveryData.orderId,
+                        orderCode: deliveryData.orderId.slice(0, 8).toUpperCase(),
+                        customerName: deliveryData.customerName,
+                        customerPhone: deliveryData.customerPhone,
+                        customerAddress: deliveryData.customerAddress,
+                        restaurantName: deliveryData.restaurantName,
+                        restaurantAddress: deliveryData.restaurantAddress,
+                        status: deliveryData.status,
+                        totalAmount: 0,
+                        items: [],
+                        createdAt: deliveryData.createdAt,
+                        route: {
+                            distance: deliveryData.distance,
+                            estimatedTime: deliveryData.estimatedTime,
+                            waypoints: [
+                                {
+                                    type: 'restaurant',
+                                    address: deliveryData.restaurantAddress,
+                                    lat: deliveryData.restaurantLat,
+                                    lng: deliveryData.restaurantLng
+                                },
+                                {
+                                    type: 'customer',
+                                    address: deliveryData.customerAddress,
+                                    lat: deliveryData.customerLat,
+                                    lng: deliveryData.customerLng
+                                }
+                            ]
+                        }
+                    } as any);
+
+                    // Get drone info
+                    if (deliveryData.drone) {
+                        setDrone({
+                            id: deliveryData.drone.id,
+                            name: deliveryData.drone.name,
+                            model: deliveryData.drone.model,
+                            battery: deliveryData.drone.battery,
+                            status: deliveryData.drone.status,
+                            currentLat: deliveryData.drone.currentLat,
+                            currentLng: deliveryData.drone.currentLng
+                        } as any);
+                    } else {
+                        // Fallback to localStorage
+                        const savedDrone = localStorage.getItem(`drone_for_order_${orderId}`);
+                        if (savedDrone) {
+                            setDrone(JSON.parse(savedDrone));
+                        }
+                    }
+                } else {
+                    toast.error('Không tìm thấy thông tin delivery cho order này');
+                }
+            } catch (error) {
+                console.error('Error fetching delivery:', error);
+                toast.error('Không thể tải thông tin đơn hàng');
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchDelivery();
 
         // Simulate drone movement progress
         const interval = setInterval(() => {
@@ -58,6 +129,54 @@ const RouteTrackingPage = () => {
 
         return () => clearInterval(interval);
     }, [orderId]);
+
+    // Join order room và listen cho realtime updates
+    useEffect(() => {
+        if (!orderId) return;
+
+        console.log('🔌 [RouteTrackingPage] Joining order:', orderId);
+        joinOrder(orderId);
+
+        return () => {
+            console.log('🔌 [RouteTrackingPage] Leaving order:', orderId);
+            leaveOrder(orderId);
+        };
+    }, [orderId, joinOrder, leaveOrder]);
+
+    // Update OTP từ AdminSocketContext
+    useEffect(() => {
+        if (orderId && currentOtps[orderId]) {
+            setCurrentOtp(currentOtps[orderId]);
+            console.log(`🔐 [RouteTrackingPage] OTP updated: ${currentOtps[orderId]}`);
+        }
+    }, [orderId, currentOtps]);
+
+    // Update drone position từ AdminSocketContext
+    useEffect(() => {
+        if (orderId && realtimeDronePositions[orderId]) {
+            const position = realtimeDronePositions[orderId];
+            console.log(`🚁 [RouteTrackingPage] Drone position updated: [${position.lat}, ${position.lng}]`);
+
+            setRealtimeDronePosition(position);
+
+            // Update delivery with new drone position
+            setDelivery((prev: any) => ({
+                ...prev,
+                drone: {
+                    ...prev?.drone,
+                    currentLat: position.lat,
+                    currentLng: position.lng
+                }
+            }));
+
+            // Update drone state for other components
+            setDrone((prev: any) => prev ? {
+                ...prev,
+                currentLat: position.lat,
+                currentLng: position.lng
+            } : null);
+        }
+    }, [orderId, realtimeDronePositions]);
 
     const handleLogout = () => {
         logout();
@@ -129,7 +248,33 @@ const RouteTrackingPage = () => {
                 <div className="grid gap-6 lg:grid-cols-3">
                     {/* Left Column - Map */}
                     <div className="lg:col-span-2 space-y-6">
-                        {/* Large Map Card */}
+                        {/* DroneTrackingMap with Mapbox */}
+                        {delivery && restaurantWaypoint && customerWaypoint && drone && (
+                            <DroneTrackingMap
+                                droneLocation={{
+                                    lat: realtimeDronePosition?.lat || delivery.drone?.currentLat || drone.currentLat || restaurantWaypoint.lat,
+                                    lng: realtimeDronePosition?.lng || delivery.drone?.currentLng || drone.currentLng || restaurantWaypoint.lng
+                                }}
+                                restaurantLocation={{
+                                    lat: restaurantWaypoint.lat,
+                                    lng: restaurantWaypoint.lng,
+                                    name: order.restaurantName
+                                }}
+                                customerLocation={{
+                                    lat: customerWaypoint.lat,
+                                    lng: customerWaypoint.lng,
+                                    address: order.customerAddress
+                                }}
+                                homeBaseLocation={{
+                                    lat: drone.currentLat || restaurantWaypoint.lat,
+                                    lng: drone.currentLng || restaurantWaypoint.lng
+                                }}
+                                deliveryStatus={delivery.status}
+                            />
+                        )}
+
+                        {/* Large Map Card (Fallback if no delivery data) */}
+                        {!delivery && (
                         <Card className="overflow-hidden">
                             <CardHeader className="bg-gradient-to-r from-blue-600 to-blue-700 text-white">
                                 <CardTitle className="flex items-center justify-between">
@@ -253,6 +398,7 @@ const RouteTrackingPage = () => {
                                 </div>
                             </CardContent>
                         </Card>
+                        )}
 
                         {/* Route Information */}
                         <div className="grid gap-4 md:grid-cols-2">
@@ -332,6 +478,26 @@ const RouteTrackingPage = () => {
                                             className="h-full bg-green-500"
                                             style={{ width: `${drone.battery}%` }}
                                         />
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {/* OTP Display Card */}
+                        {currentOtp && delivery?.status === 'PICKING_UP' && (
+                            <Card className="border-green-200 bg-green-50 animate-pulse">
+                                <CardHeader>
+                                    <CardTitle className="flex items-center text-green-900">
+                                        🔐 Mã OTP Nhận Hàng
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-center p-4">
+                                        <p className="text-sm text-gray-600 mb-2">Mã xác nhận cho merchant:</p>
+                                        <p className="text-4xl font-bold text-green-700 tracking-widest mb-2">
+                                            {currentOtp}
+                                        </p>
+                                        <p className="text-xs text-gray-500">Hết hạn sau 30 giây</p>
                                     </div>
                                 </CardContent>
                             </Card>

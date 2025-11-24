@@ -1,38 +1,82 @@
-Mục tiêu
+Socket service received event from topic order.confirmed: {
 
-Thêm workflow "Order → Ready for pickup → Notify drone-service → Create Delivery → Push lên Dispatch UI" mà KHÔNG thay đổi cấu trúc project hiện tại.
 
-Tóm tắt ý tưởng (ngắn):
+eventType: 'ORDER_CONFIRMED',
 
-Khi merchant báo "Ready" cho một RestaurantOrder, gọi endpoint backend (restaurant-service)
-Backend cập nhật trường restaurantStatus -> READY_FOR_PICKUP và readyAt
-Backend publish một event Kafka (topic có sẵn restaurant.order.status) với eventType = ORDER_READY_FOR_PICKUP (payload chuẩn)
-drone-service (mới/đã cập nhật) có một Kafka consumer, lắng nghe topic restaurant.order.status và xử lý event ORDER_READY_FOR_PICKUP để tạo/ghi delivery record (idempotent)
-socket-service đã subscribe restaurant.order.status — mở rộng handler để khi nhận ORDER_READY_FOR_PICKUP sẽ emit đến room dispatch (ví dụ dispatch) và/hoặc restaurant:{storeId} để UI merchant & admin thấy
-admin-dashboard (DispatchQueuePage) subscribe websocket room dispatch và hiển thị delivery mới realtime
-Yêu cầu và nguyên tắc
 
-Không phá vỡ cấu trúc code hiện có
-Dùng topic restaurant.order.status (đã có ở repo) để tận dụng consumer hiện tại
-Idempotency: xử lý event nhiều lần không tạo duplicate delivery (upsert by orderId)
-Bảo mật: endpoint merchant gọi phải authenticate (reuse middleware hiện có)
-Hướng dẫn các file cần sửa, snippet kèm nơi chèn (không tự động sửa)
-Checklist (những bước cần làm)
+orderId: '4bbde549-dc3f-4eae-a534-b888506aad46',
 
-Backend - restaurant-service
-Thêm helper controller transitionToReady(restaurantOrderId: string)
-Thêm API endpoint (protected) để merchant trigger READY_FOR_PICKUP (ví dụ: PUT /stores/orders/:restaurantOrderId/ready)
-Khi update DB -> publish Kafka event via existing publishRestaurantOrderStatusEvent với payload chuẩn
-Backend - drone-service
-Thêm Kafka consumer (groupId e.g. drone-service-group) subscribe restaurant.order.status
-Khi nhận event ORDER_READY_FOR_PICKUP → upsert Delivery in DB (use prisma.upsert by orderId)
-(Optional) Publish internal event delivery.created (topic) if needed
-Backend - socket-service
-Mở rộng handler handleRestaurantOrderStatus để detect ORDER_READY_FOR_PICKUP và emit dispatch:delivery:created to dispatch room
-Ensure the payload to socket contains delivery summary (orderId, storeId, restaurantName, restaurantLat/Lng, customer info, etc.)
-Frontend - restaurant-merchant
-Thêm nút "Thông báo đội giao" trên MerchantOrdersPage.tsx khi status === 'preparing' (UI: small button)
-Khi click, call new API PUT /api/stores/orders/:id/ready (via restaurantOrder.service) and show feedback
-Frontend - admin-dashboard (DispatchQueuePage)
-Subscribe socket room dispatch (use existing useSocket helper) và lắng nghe dispatch:delivery:created
-Khi nhận event, thêm vào state queue để hiển thị realtime
+
+storeId: '56835870-530f-4f2e-8f89-23e940d9b8f1',
+
+
+userId: '9eee6c93-b09a-4ee4-b6f0-b3667b7b0cab',
+
+
+items: [
+
+
+{
+
+
+productId: 'cffb1645-9be8-40bb-89e1-0e8ba1a087e2',
+
+
+productName: 'Sữa bò',
+
+
+quantity: 3,
+
+
+price: 20000
+
+
+}
+
+
+],
+
+
+totalPrice: 60000,
+
+
+deliveryAddress: 'Nguyễn Trọng Trí, An Lạc A, 71900, Bình Tân, Thành phố Hồ Chí Minh, Việt Nam, , , ',
+
+
+contactPhone: '0966770042',
+
+
+note: null,
+
+
+customerLatitude: 10.741006,
+
+
+customerLongitude: 106.616178,
+
+
+confirmedAt: '2025-11-24T15:20:37.259Z',
+
+
+estimatedPrepTime: 15
+
+
+}
+
+
+✅ Emitted order:confirmed to restaurant:56835870-530f-4f2e-8f89-23e940d9b8f1 for order 4bbde549-dc3f-4eae-a534-b888506aad46
+
+New socket connection: kNjfIUJxnbrYt8IdAAAR
+
+
+📦 Socket kNjfIUJxnbrYt8IdAAAR joined order:4bbde549-dc3f-4eae-a534-b888506aad46
+
+
+📦 Socket kNjfIUJxnbrYt8IdAAAR joined order:a4321166-e997-46aa-8f78-2044263de520
+
+
+📦 Socket kNjfIUJxnbrYt8IdAAAR joined order:3f863994-4f57-4782-ba0e-18d6074c3b33
+
+LOG CHO THẤY CHỈ CÓ MÌNH SOCKET CỦA CNPM-FOODDELIVERY JOIN VÀO ORDER. KHÔNG CÓ SOCKET NÀO CỦA NHÀ HÀNG JOIN VÀO ORDER CẢ. 
+
+ID SOCKET CỦA RESTAURANT LÀ: RDS_FEMjFmg7hnnnAAAT

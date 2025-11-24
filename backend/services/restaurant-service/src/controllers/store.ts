@@ -494,21 +494,36 @@ export const updateOrderToReady = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: 'Bạn chưa có cửa hàng' });
     }
 
-    const ro = await prisma.restaurantOrder.findUnique({ where: { id: restaurantOrderId } });
+    // Try to find by restaurantOrderId first (table ID)
+    let ro = await prisma.restaurantOrder.findUnique({ where: { id: restaurantOrderId } });
+
+    // If not found, try to find by orderId (system order ID)
     if (!ro) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng' });
+      console.log(`⚠️ RestaurantOrder not found by ID ${restaurantOrderId}, trying by orderId...`);
+      ro = await prisma.restaurantOrder.findUnique({ where: { orderId: restaurantOrderId } });
+
+      if (!ro) {
+        console.error(`❌ RestaurantOrder not found by ID or orderId: ${restaurantOrderId}`);
+        return res.status(404).json({
+          success: false,
+          message: 'Không tìm thấy đơn hàng. Đơn hàng có thể chưa được xử lý hoàn tất, vui lòng thử lại sau vài giây.'
+        });
+      }
+
+      console.log(`✅ Found RestaurantOrder by orderId: ${ro.id}`);
     }
+
     if (ro.storeId !== store.id) {
       return res.status(403).json({ success: false, message: 'Không có quyền truy cập đơn hàng này' });
     }
 
-    // Call helper to update status and publish event
-    await transitionToReady(restaurantOrderId);
+    // Call helper to update status and publish event (use actual table ID)
+    await transitionToReady(ro.id);
 
     res.json({
       success: true,
       message: 'Đã thông báo đội giao hàng (Ready for pickup)',
-      data: { restaurantOrderId, status: 'READY_FOR_PICKUP' }
+      data: { restaurantOrderId: ro.id, orderId: ro.orderId, status: 'READY_FOR_PICKUP' }
     });
   } catch (err) {
     console.error('Error updating order to ready:', err);
