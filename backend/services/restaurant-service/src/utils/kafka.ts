@@ -112,7 +112,9 @@ async function handleOrderConfirmed(payload: any) {
     deliveryAddress: deliveryAddress || null,
     contactPhone: contactPhone || null,
     note: note || null,
-    estimatedPrepTime: estimatedPrepTime || null
+    estimatedPrepTime: estimatedPrepTime || null,
+    customerLatitude: payload.customerLatitude || null,
+    customerLongitude: payload.customerLongitude || null
   };
 
   try {

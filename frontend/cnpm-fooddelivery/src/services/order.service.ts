@@ -6,6 +6,8 @@ export interface CreateOrderFromCartRequest {
   deliveryAddress: string;
   contactPhone: string;
   note?: string;
+  customerLatitude?: number;
+  customerLongitude?: number;
 }
 
 export interface OrderResponse {

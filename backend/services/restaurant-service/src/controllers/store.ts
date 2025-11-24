@@ -446,6 +446,11 @@ export async function transitionToReady(restaurantOrderId: string) {
   // Fetch store info để include trong payload
   const store = await prisma.store.findUnique({ where: { id: updated.storeId } });
 
+  // Extract customer coordinates from customerInfo
+  const customerInfo = updated.customerInfo as any;
+  const customerLat = customerInfo?.customerLatitude || null;
+  const customerLng = customerInfo?.customerLongitude || null;
+
   // Publish event to Kafka
   const { publishRestaurantOrderStatusEvent } = require('../utils/kafka');
   try {
@@ -462,11 +467,16 @@ export async function transitionToReady(restaurantOrderId: string) {
         lat: store?.latitude || null,
         lng: store?.longitude || null,
       },
+      deliveryDestination: {
+        address: customerInfo?.deliveryAddress || '',
+        lat: customerLat,
+        lng: customerLng,
+      },
       customerInfo: updated.customerInfo,
       items: updated.items,
       totalPrice: updated.totalPrice,
     });
-    console.log(`📤 Published ORDER_READY_FOR_PICKUP for order ${updated.orderId}`);
+    console.log(`📤 Published ORDER_READY_FOR_PICKUP for order ${updated.orderId} with pickup & delivery coordinates`);
   } catch (err) {
     console.error(`Error publishing ORDER_READY_FOR_PICKUP for order ${updated.orderId}:`, err);
   }

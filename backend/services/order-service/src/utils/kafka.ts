@@ -242,6 +242,8 @@ export async function handlePaymentEvent(data: any) {
               deliveryAddress: order.deliveryAddress,
               contactPhone: order.contactPhone,
               note: order.note,
+              customerLatitude: order.customerLatitude,
+              customerLongitude: order.customerLongitude,
               confirmedAt: new Date().toISOString(),
               estimatedPrepTime,
             };
