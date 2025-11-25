@@ -77,6 +77,19 @@ class DeliveryService {
     return response.json();
   }
 
+  // Get delivery progress from Redis
+  async getDeliveryProgress(id: string): Promise<{ success: boolean; data: { progress: number; source: 'redis' | 'default' } }> {
+    const response = await fetch(`${API_BASE_URL}/deliveries/${id}/progress`, {
+      headers: this.getAuthHeader(),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch delivery progress');
+    }
+
+    return response.json();
+  }
+
   async updateDeliveryStatus(id: string, status: Delivery['status']) {
     const response = await fetch(`${API_BASE_URL}/deliveries/${id}/status`, {
       method: 'PATCH',
@@ -91,16 +104,41 @@ class DeliveryService {
     return response.json();
   }
 
-  async assignDrone(deliveryId: string, droneId: string) {
-    // Update delivery với droneId và status ASSIGNED
-    const response = await fetch(`${API_BASE_URL}/deliveries/${deliveryId}`, {
+  async assignDrone(orderId: string, droneId: string) {
+    // First, get delivery by orderId
+    const deliveryResponse = await this.getDeliveryByOrderId(orderId);
+
+    if (!deliveryResponse.success) {
+      throw new Error('Delivery not found for this order');
+    }
+
+    const deliveryId = deliveryResponse.data.id;
+
+    // Assign drone to delivery
+    const response = await fetch(`${API_BASE_URL}/deliveries/${deliveryId}/assign-drone`, {
       method: 'PATCH',
       headers: this.getAuthHeader(),
-      body: JSON.stringify({ droneId, status: 'ASSIGNED' }),
+      body: JSON.stringify({ droneId }),
     });
 
     if (!response.ok) {
-      throw new Error('Failed to assign drone');
+      const error = await response.json().catch(() => ({ message: 'Failed to assign drone' }));
+      throw new Error(error.message || 'Failed to assign drone');
+    }
+
+    return response.json();
+  }
+
+  async verifyPickupOtp(deliveryId: string, otp: string) {
+    const response = await fetch(`${API_BASE_URL}/deliveries/${deliveryId}/verify-otp`, {
+      method: 'POST',
+      headers: this.getAuthHeader(),
+      body: JSON.stringify({ otp }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Failed to verify OTP' }));
+      throw new Error(error.message || 'Failed to verify OTP');
     }
 
     return response.json();

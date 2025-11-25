@@ -152,7 +152,15 @@ const DispatchQueuePage = () => {
                         </h2>
                         <div className="grid gap-4 mb-6">
                             {deliveryNotifications.map((delivery, idx) => (
-                                <Card key={`${delivery.orderId}-${idx}`} className="border-green-500 border-2 bg-green-50">
+                                <Card
+                                    key={`${delivery.orderId}-${idx}`}
+                                    className="border-green-500 border-2 bg-green-50 cursor-pointer transition-all hover:shadow-lg"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        console.log('Navigating to order:', delivery.orderId);
+                                        navigate(`/order/${delivery.orderId}`);
+                                    }}
+                                >
                                     <CardHeader>
                                         <div className="flex items-start justify-between">
                                             <div className="space-y-1">
@@ -244,6 +252,11 @@ const DispatchQueuePage = () => {
                                 <Card
                                     key={delivery.id}
                                     className="cursor-pointer transition-all hover:shadow-lg border-blue-200"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        console.log('Navigating to order:', delivery.orderId);
+                                        navigate(`/order/${delivery.orderId}`);
+                                    }}
                                 >
                                     <CardHeader>
                                         <div className="flex items-start justify-between">

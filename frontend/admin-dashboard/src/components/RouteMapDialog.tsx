@@ -8,7 +8,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Store, User, Navigation, Clock } from "lucide-react";
-import type { Order, Drone } from "@/services/mockData";
+import type { Order, Drone } from "@/services/drone.service";
 
 interface RouteMapDialogProps {
     open: boolean;

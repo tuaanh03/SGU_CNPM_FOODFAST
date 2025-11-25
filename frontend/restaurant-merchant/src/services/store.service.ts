@@ -67,7 +67,15 @@ class StoreService {
       throw new Error(error.message || "Lỗi khi lấy thông tin cửa hàng");
     }
 
-    return response.json();
+    const result = await response.json();
+
+    // ✅ Tự động lưu vào localStorage NGAY sau khi API trả về (realtime)
+    if (result.success && result.data) {
+      localStorage.setItem('storeInfo', JSON.stringify(result.data));
+      console.log('✅ [StoreService] Saved storeInfo to localStorage (realtime):', result.data.id);
+    }
+
+    return result;
   }
 
   // Tạo cửa hàng mới

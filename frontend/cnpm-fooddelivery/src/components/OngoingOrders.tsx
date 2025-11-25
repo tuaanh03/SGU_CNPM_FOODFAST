@@ -7,7 +7,8 @@ import { orderService } from "@/services/order.service";
 import { paymentService } from "@/services/payment.service";
 import { toast } from "sonner";
 import OrderDetailDialog from "./OrderDetailDialog";
-import { useOrderTracking } from "@/lib/useOrderTracking";
+import CustomerOtpDialog from "./CustomerOtpDialog";
+import { useCustomerSocket } from "@/contexts/CustomerSocketContext";
 
 interface OngoingOrder {
   id: string;
@@ -38,56 +39,75 @@ const OngoingOrders = () => {
   const [paymentLoading, setPaymentLoading] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<OngoingOrder | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
-  const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null);
+  const [otpDialogOpen, setOtpDialogOpen] = useState(false);
+  const [currentOtpOrderId, setCurrentOtpOrderId] = useState<string | null>(null);
 
-  // Socket.IO tracking cho đơn hàng đang chọn
-  const { orderStatus, isConnected } = useOrderTracking(trackingOrderId);
+  // Use CustomerSocketContext for realtime updates
+  const { orderStatuses, joinOrder, leaveOrder, isConnected, droneArrivedOrders } = useCustomerSocket();
 
   useEffect(() => {
     loadOngoingOrders();
   }, []);
 
-  // Tự động track đơn hàng confirmed đầu tiên
+  // Join order rooms khi có orders - track orderId list để tránh re-join liên tục
   useEffect(() => {
-    if (orders.length > 0 && !trackingOrderId) {
-      const confirmedOrder = orders.find((o) =>
-        o.status === "confirmed" ||
-        o.status === "preparing" ||
-        o.status === "processing"
-      );
-      if (confirmedOrder) {
-        setTrackingOrderId(confirmedOrder.id);
-      }
-    }
-  }, [orders, trackingOrderId]);
+    if (orders.length === 0) return;
+
+    const activeOrders = orders.filter(o =>
+      o.status === "confirmed" ||
+      o.status === "preparing" ||
+      o.status === "processing" ||
+      o.status === "ready"
+    );
+
+    console.log('🔌 [OngoingOrders] Joining order rooms for', activeOrders.length, 'active orders');
+
+    activeOrders.forEach(order => {
+      console.log('📢 [OngoingOrders] Joining order room:', order.id);
+      joinOrder(order.id);
+    });
+
+    return () => {
+      activeOrders.forEach(order => {
+        console.log('📢 [OngoingOrders] Leaving order room:', order.id);
+        leaveOrder(order.id);
+      });
+    };
+  }, [orders.map(o => o.id).join(',')]); // Depend on order IDs to avoid re-joining
 
   // Xử lý cập nhật trạng thái từ socket
   useEffect(() => {
-    if (orderStatus && trackingOrderId) {
-      console.log('📦 Order status updated from socket:', orderStatus);
+    // orderStatuses là Record<orderId, status>
+    Object.entries(orderStatuses).forEach(([orderId, status]) => {
+      console.log('📦 [OngoingOrders] Order status updated from socket:', { orderId, status });
 
       // Cập nhật status trong danh sách orders
       setOrders((prev) =>
         prev.map((order) =>
-          order.id === orderStatus.orderId
-            ? { ...order, status: mapRestaurantStatusToOrderStatus(orderStatus.restaurantStatus) }
+          order.id === orderId
+            ? { ...order, status: mapRestaurantStatusToOrderStatus(status) }
             : order
         )
       );
 
-      // Show toast notification
-      const statusText = getStatusText(orderStatus.restaurantStatus);
-      toast.info(`Đơn hàng ${orderStatus.orderId.slice(0, 8)}: ${statusText}`);
-    }
-  }, [orderStatus, trackingOrderId]);
+      // Show toast notification (chỉ lần đầu tiên)
+      const statusText = getStatusText(status);
+      toast.info(`📦 Đơn hàng: ${statusText}`);
+    });
+  }, [orderStatuses]);
+
+  // ✅ Không tự động mở dialog nữa, chỉ hiển thị nút "Nhập OTP" khi drone arrived
 
   // Helper: Map restaurant status to order status
   const mapRestaurantStatusToOrderStatus = (restaurantStatus: string): string => {
     const statusMap: Record<string, string> = {
       'CONFIRMED': 'confirmed',
       'PREPARING': 'preparing',
+      'READY_FOR_PICKUP': 'ready',
       'READY': 'ready',
+      'PICKED_UP': 'delivering',
       'DELIVERING': 'delivering',
+      'DELIVERED': 'completed',
       'COMPLETED': 'completed',
     };
     return statusMap[restaurantStatus] || restaurantStatus.toLowerCase();
@@ -98,8 +118,11 @@ const OngoingOrders = () => {
     const textMap: Record<string, string> = {
       'CONFIRMED': 'Đã xác nhận',
       'PREPARING': 'Đang chuẩn bị',
+      'READY_FOR_PICKUP': 'Sẵn sàng giao',
       'READY': 'Sẵn sàng giao',
+      'PICKED_UP': 'Đang giao hàng',
       'DELIVERING': 'Đang giao hàng',
+      'DELIVERED': 'Hoàn thành',
       'COMPLETED': 'Hoàn thành',
     };
     return textMap[restaurantStatus] || restaurantStatus;
@@ -253,6 +276,13 @@ const OngoingOrders = () => {
     setDetailDialogOpen(true);
   };
 
+  // ✅ Handler để mở OTP dialog
+  const handleEnterOtp = (orderId: string) => {
+    console.log('🔐 [OngoingOrders] Opening OTP dialog for order:', orderId);
+    setCurrentOtpOrderId(orderId);
+    setOtpDialogOpen(true);
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center py-12">
@@ -287,7 +317,7 @@ const OngoingOrders = () => {
                     <div className="flex items-center gap-2">
                       <CardTitle className="text-lg">Đơn hàng {order.orderNumber}</CardTitle>
                       {/* Real-time tracking indicator */}
-                      {trackingOrderId === order.id && isConnected && (
+                      {isConnected && (
                         <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
                           <Wifi className="w-3 h-3 mr-1" />
                           Live
@@ -375,11 +405,22 @@ const OngoingOrders = () => {
                   </Button>
                 ) : (
                   <>
-                    <Button variant="outline" size="sm" className="flex-1">
-                      <Phone className="w-4 h-4 mr-2" />
-                      {order.contactPhone}
-                    </Button>
-                    {order.status === "confirmed" && (
+                    {/* ✅ Nút "Nhập mã OTP" khi drone đã đến */}
+                    {droneArrivedOrders.has(order.id) ? (
+                      <Button
+                        size="sm"
+                        className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                        onClick={() => handleEnterOtp(order.id)}
+                      >
+                        🔐 Nhập mã OTP
+                      </Button>
+                    ) : (
+                      <Button variant="outline" size="sm" className="flex-1">
+                        <Phone className="w-4 h-4 mr-2" />
+                        {order.contactPhone}
+                      </Button>
+                    )}
+                    {order.status === "confirmed" && !droneArrivedOrders.has(order.id) && (
                       <Button size="sm" className="flex-1">
                         Theo dõi đơn hàng
                       </Button>
@@ -398,6 +439,39 @@ const OngoingOrders = () => {
           open={detailDialogOpen}
           onOpenChange={setDetailDialogOpen}
           order={selectedOrder}
+        />
+      )}
+
+      {/* Customer OTP Dialog */}
+      {currentOtpOrderId && (
+        <CustomerOtpDialog
+          open={otpDialogOpen}
+          onClose={() => {
+            setOtpDialogOpen(false);
+            setCurrentOtpOrderId(null);
+          }}
+          orderId={currentOtpOrderId}
+          onSuccess={() => {
+            console.log('✅ [OngoingOrders] OTP verified successfully');
+
+            // ✅ Xóa orderId khỏi droneArrivedOrders trong localStorage
+            if (currentOtpOrderId) {
+              try {
+                const saved = localStorage.getItem('droneArrivedOrders');
+                if (saved) {
+                  const arrivedOrders = JSON.parse(saved) as string[];
+                  const filtered = arrivedOrders.filter(id => id !== currentOtpOrderId);
+                  localStorage.setItem('droneArrivedOrders', JSON.stringify(filtered));
+                  console.log('✅ [OngoingOrders] Removed from droneArrivedOrders:', currentOtpOrderId);
+                }
+              } catch (error) {
+                console.error('❌ [OngoingOrders] Error removing from droneArrivedOrders:', error);
+              }
+            }
+
+            // Reload orders
+            loadOngoingOrders();
+          }}
         />
       )}
     </div>

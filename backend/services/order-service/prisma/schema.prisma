@@ -35,6 +35,10 @@ model Order {
   deliveryAddress String?
   contactPhone    String?
 
+  // Tọa độ giao hàng (delivery destination)
+  customerLatitude  Float?
+  customerLongitude Float?
+
   items OrderItem[]
 
   createdAt      DateTime  @default(now()) // Thời điểm tạo đơn hàng

@@ -103,7 +103,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
             return;
         }
 
-        const { items, deliveryAddress, contactPhone, note, storeId } = parsedBody.data;
+        const { items, deliveryAddress, contactPhone, note, storeId, customerLatitude, customerLongitude } = parsedBody.data;
 
         try {
             // Tính toán tổng tiền và validate sản phẩm
@@ -121,6 +121,8 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
                     totalPrice,
                     deliveryAddress,
                     contactPhone,
+                    customerLatitude,
+                    customerLongitude,
                     note,
                     status: "pending", // Order ở trạng thái PENDING
                     expirationTime, // Thời điểm hết hạn thanh toán
@@ -159,6 +161,9 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
                 storeId: savedOrder.storeId || null,
                 items: validItems, // Gửi thông tin items cho payment
                 totalPrice: savedOrder.totalPrice,
+                deliveryAddress: savedOrder.deliveryAddress,
+                customerLatitude: savedOrder.customerLatitude,
+                customerLongitude: savedOrder.customerLongitude,
                 expiresAt: session.expirationTime.toISOString(),
                 timestamp: new Date().toISOString()
             };
@@ -470,7 +475,7 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
             return;
         }
 
-        const { storeId, deliveryAddress, contactPhone, note } = req.body;
+        const { storeId, deliveryAddress, contactPhone, note, customerLatitude, customerLongitude } = req.body;
 
         if (!storeId) {
             processingTimer();
@@ -552,6 +557,8 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
                 totalPrice: validationResult.totalPrice,
                 deliveryAddress,
                 contactPhone,
+                customerLatitude,
+                customerLongitude,
                 note,
                 status: "pending", // Order ở trạng thái PENDING
                 expirationTime, // Thời điểm hết hạn thanh toán
@@ -590,6 +597,9 @@ export const createOrderFromCart = async (req: AuthenticatedRequest, res: Respon
             storeId: savedOrder.storeId || null,
             items: validationResult.validItems, // Gửi full items info với price snapshot
             totalPrice: savedOrder.totalPrice,
+            deliveryAddress: savedOrder.deliveryAddress,
+            customerLatitude: savedOrder.customerLatitude,
+            customerLongitude: savedOrder.customerLongitude,
             expiresAt: session.expirationTime.toISOString(),
             timestamp: new Date().toISOString()
         };

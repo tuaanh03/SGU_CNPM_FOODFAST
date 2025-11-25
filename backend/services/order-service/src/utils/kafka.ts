@@ -138,8 +138,9 @@ export async function runConsumer() {
     await consumer.subscribe({ topic: "inventory.reserve.result", fromBeginning: true });
     await consumer.subscribe({ topic: "product.sync", fromBeginning: true });
     await consumer.subscribe({ topic: "restaurant.order.status", fromBeginning: true });
+    await consumer.subscribe({ topic: "delivery.completed", fromBeginning: false });
 
-    console.log("Consumer is listening to payment.event, inventory.reserve.result, product.sync, and restaurant.order.status");
+    console.log("Consumer is listening to payment.event, inventory.reserve.result, product.sync, restaurant.order.status, and delivery.completed");
 
     // Process messages
     await consumer.run({
@@ -158,6 +159,8 @@ export async function runConsumer() {
             await handleProductSync(data);
           } else if (topic === "restaurant.order.status") {
             await handleRestaurantOrderStatus(data);
+          } else if (topic === "delivery.completed") {
+            await handleDeliveryCompleted(data);
           }
         } catch (error) {
           console.error(`Error processing ${topic} event:`, error);
@@ -242,6 +245,8 @@ export async function handlePaymentEvent(data: any) {
               deliveryAddress: order.deliveryAddress,
               contactPhone: order.contactPhone,
               note: order.note,
+              customerLatitude: order.customerLatitude,
+              customerLongitude: order.customerLongitude,
               confirmedAt: new Date().toISOString(),
               estimatedPrepTime,
             };
@@ -366,7 +371,7 @@ async function handleRestaurantOrderStatus(data: any) {
       // Update order status
       await prisma.order.update({
         where: { id: orderId },
-        data: { status: orderStatus },
+        data: { status: orderStatus as any },
       });
 
       ordersCreatedCounter.inc({ status: orderStatus, action: 'restaurant_update' });
@@ -374,6 +379,46 @@ async function handleRestaurantOrderStatus(data: any) {
     }
   } catch (error) {
     console.error("Error handling restaurant order status:", error);
+  }
+}
+
+// Handle delivery.completed event - Update Order status to COMPLETED
+async function handleDeliveryCompleted(data: any) {
+  const { orderId, deliveryId, eventType } = data;
+
+  if (!orderId) {
+    console.warn('⚠️ delivery.completed event missing orderId');
+    return;
+  }
+
+  try {
+    console.log(`📦 [handleDeliveryCompleted] Processing event for orderId: ${orderId}`);
+
+    // Find order
+    const order = await prisma.order.findUnique({
+      where: { id: orderId }
+    });
+
+    if (!order) {
+      console.warn(`⚠️ Order ${orderId} not found in database`);
+      return;
+    }
+
+    // Only update if event is customer verified
+    if (eventType === 'DELIVERY_COMPLETED_CUSTOMER_VERIFIED') {
+      // Update Order status to COMPLETED
+      await prisma.order.update({
+        where: { id: orderId },
+        data: {
+          status: 'completed' as any
+        }
+      });
+
+      console.log(`✅ [handleDeliveryCompleted] Order ${orderId} status updated to COMPLETED`);
+      ordersCreatedCounter.inc({ status: 'completed', action: 'delivery_completed' });
+    }
+  } catch (error) {
+    console.error(`❌ Error handling delivery.completed for orderId ${orderId}:`, error);
   }
 }
 

@@ -77,6 +77,23 @@ export const useRestaurantOrders = (storeId: string | null) => {
       toast.info(`Đơn hàng ${data.orderId.slice(0, 8)}: ${statusText}`);
     };
 
+    // Listen for OTP generated (when drone arrives)
+    const handleOtpGenerated = (data: any) => {
+      console.log('🔐 OTP Generated:', data);
+
+      // Show toast with OTP prominently
+      toast.success(`🚁 Drone đã đến! Mã OTP: ${data.otp}`, {
+        description: `Đơn hàng ${data.orderId.slice(0, 8)} - Hết hạn sau ${data.expiresIn}s`,
+        duration: 30000, // Show for 30 seconds
+      });
+
+      // Play notification sound
+      try {
+        const audio = new Audio('/notification.mp3');
+        audio.play().catch(() => {});
+      } catch (error) {}
+    };
+
     // Listen for joined confirmation
     const handleJoined = (data: any) => {
       console.log('✅ Joined restaurant room:', data);
@@ -94,6 +111,7 @@ export const useRestaurantOrders = (storeId: string | null) => {
     on('connect', handleConnect);
     on('order:confirmed', handleNewOrder);
     on('order:status:update', handleStatusUpdate); // Listen status update
+    on('otp:generated', handleOtpGenerated); // Listen OTP
     on('joined:restaurant', handleJoined);
 
     // Join ngay nếu đã connected
@@ -110,6 +128,7 @@ export const useRestaurantOrders = (storeId: string | null) => {
       off('connect', handleConnect);
       off('order:confirmed', handleNewOrder);
       off('order:status:update', handleStatusUpdate);
+      off('otp:generated', handleOtpGenerated);
       off('joined:restaurant', handleJoined);
     };
   }, [storeId]); // Chỉ depend vào storeId

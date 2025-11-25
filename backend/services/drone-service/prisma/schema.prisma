@@ -20,6 +20,7 @@ enum DeliveryStatus {
   ASSIGNED
   PICKING_UP
   IN_TRANSIT
+  AWAITING_CUSTOMER_PICKUP
   DELIVERED
   FAILED
   CANCELLED
@@ -51,6 +52,7 @@ model Delivery {
   id      String  @id @default(uuid())
   orderId String  @unique
   droneId String?
+  storeId String? // ✅ Add storeId to link with restaurant
 
   restaurantName    String
   restaurantLat     Float
@@ -68,6 +70,8 @@ model Delivery {
   actualTime    Int?
 
   status DeliveryStatus @default(PENDING)
+
+  pickupVerifiedAt DateTime?
 
   assignedAt  DateTime?
   pickedUpAt  DateTime?

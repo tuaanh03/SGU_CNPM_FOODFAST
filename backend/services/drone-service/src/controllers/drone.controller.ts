@@ -1,6 +1,5 @@
 import { Request, Response } from "express";
 import prisma from "../lib/prisma";
-import { DroneStatus } from "@prisma/client";
 
 // Get all drones
 export const getAllDrones = async (req: Request, res: Response) => {
@@ -8,7 +7,7 @@ export const getAllDrones = async (req: Request, res: Response) => {
     const { status } = req.query;
 
     const drones = await prisma.drone.findMany({
-      where: status ? { status: status as DroneStatus } : {},
+      where: status ? { status: status as any } : {},
       orderBy: { createdAt: 'desc' },
       include: {
         deliveries: {
@@ -164,7 +163,7 @@ export const getAvailableDrones = async (req: Request, res: Response) => {
 
     // Calculate distance from restaurant if coordinates provided
     if (restaurantLat && restaurantLng) {
-      const dronesWithDistance = drones.map(drone => {
+      const dronesWithDistance = drones.map((drone: any) => {
         const distance = calculateDistance(
           parseFloat(restaurantLat as string),
           parseFloat(restaurantLng as string),
@@ -174,7 +173,7 @@ export const getAvailableDrones = async (req: Request, res: Response) => {
         return { ...drone, distanceFromRestaurant: distance };
       });
 
-      dronesWithDistance.sort((a, b) => a.distanceFromRestaurant - b.distanceFromRestaurant);
+      dronesWithDistance.sort((a: any, b: any) => a.distanceFromRestaurant - b.distanceFromRestaurant);
 
       return res.status(200).json({
         success: true,
@@ -185,6 +184,68 @@ export const getAvailableDrones = async (req: Request, res: Response) => {
     res.status(200).json({
       success: true,
       data: drones,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// Get nearby drones for map display (admin dashboard)
+export const getNearbyDrones = async (req: Request, res: Response) => {
+  try {
+    const { lat, lng, radius = 10 } = req.query;
+
+    if (!lat || !lng) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng cung cấp tọa độ (lat, lng)",
+      });
+    }
+
+    const latitude = parseFloat(lat as string);
+    const longitude = parseFloat(lng as string);
+    const radiusKm = Math.min(parseFloat(radius as string), 10); // Max 10km
+
+    // Get all available drones with coordinates
+    const allDrones = await prisma.drone.findMany({
+      where: {
+        status: 'AVAILABLE',
+        battery: { gte: 30 },
+        currentLat: { not: null },
+        currentLng: { not: null }
+      }
+    });
+
+    // Calculate distance for each drone
+    const dronesWithDistance = allDrones
+      .map((drone: any) => {
+        const distance = calculateDistance(latitude, longitude, drone.currentLat!, drone.currentLng!);
+        return {
+          id: drone.id,
+          name: drone.name,
+          model: drone.model,
+          battery: drone.battery,
+          maxPayload: drone.maxPayload,
+          currentLat: drone.currentLat,
+          currentLng: drone.currentLng,
+          distance: Math.round(distance * 100) / 100,
+          status: drone.status
+        };
+      })
+      .filter((drone: any) => drone.distance <= radiusKm)
+      .sort((a: any, b: any) => a.distance - b.distance);
+
+    res.status(200).json({
+      success: true,
+      data: dronesWithDistance,
+      meta: {
+        radius: radiusKm,
+        total: dronesWithDistance.length,
+        center: { lat: latitude, lng: longitude }
+      }
     });
   } catch (error: any) {
     res.status(500).json({
@@ -211,6 +272,65 @@ export const deleteDrone = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: error.message,
+    });
+  }
+};
+
+// Get drone realtime location from Redis
+export const getDroneLocation = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { droneLocationRedis } = require('../lib/redis');
+
+    // Try to get location from Redis first (realtime position)
+    const redisLocation = await droneLocationRedis.getDroneLocation(id);
+
+    if (redisLocation) {
+      console.log(`✅ [getDroneLocation] Found realtime location in Redis for drone ${id}`);
+      return res.status(200).json({
+        success: true,
+        data: {
+          lat: redisLocation.lat,
+          lng: redisLocation.lng,
+          source: 'redis' // Realtime position
+        }
+      });
+    }
+
+    // Fallback to database (home base position)
+    const drone = await prisma.drone.findUnique({
+      where: { id },
+      select: { currentLat: true, currentLng: true, status: true }
+    });
+
+    if (!drone) {
+      return res.status(404).json({
+        success: false,
+        message: "Drone not found"
+      });
+    }
+
+    if (!drone.currentLat || !drone.currentLng) {
+      return res.status(404).json({
+        success: false,
+        message: "Drone location not available"
+      });
+    }
+
+    console.log(`⚠️ [getDroneLocation] Using DB location (home base) for drone ${id}`);
+    return res.status(200).json({
+      success: true,
+      data: {
+        lat: drone.currentLat,
+        lng: drone.currentLng,
+        source: 'database' // Home base position
+      }
+    });
+  } catch (error: any) {
+    console.error('❌ [getDroneLocation] Error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
     });
   }
 };

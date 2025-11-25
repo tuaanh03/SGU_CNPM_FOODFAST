@@ -10,7 +10,13 @@ export interface Drone {
   maxRange: number;
   currentLat?: number;
   currentLng?: number;
+  currentLocation?: {
+    lat: number;
+    lng: number;
+  };
   status: 'AVAILABLE' | 'IN_USE' | 'CHARGING' | 'MAINTENANCE' | 'OFFLINE';
+  distanceFromRestaurant?: number; // in km
+  distance?: number; // in km (alias)
   lastMaintenance?: string;
   createdAt: string;
   updatedAt: string;
@@ -53,6 +59,41 @@ export interface TrackingPoint {
   timestamp: string;
 }
 
+export interface Order {
+  id: string;
+  orderCode: string;
+  customerName: string;
+  customerPhone: string;
+  customerAddress: string;
+  restaurantName: string;
+  restaurantAddress: string;
+  status: string;
+  totalAmount: number;
+  createdAt: string;
+  items: OrderItem[];
+  route?: RouteInfo;
+}
+
+export interface OrderItem {
+  id: string;
+  productName: string;
+  quantity: number;
+  price: number;
+}
+
+export interface RouteInfo {
+  distance: number; // in km
+  estimatedTime: number; // in minutes
+  waypoints: Waypoint[];
+}
+
+export interface Waypoint {
+  lat: number;
+  lng: number;
+  address: string;
+  type: 'restaurant' | 'customer';
+}
+
 class DroneService {
   private getAuthHeader() {
     const token = localStorage.getItem('system_admin_token');
@@ -83,6 +124,14 @@ class DroneService {
 
   async getDroneById(id: string) {
     const response = await fetch(`${API_BASE_URL}/drones/${id}`, {
+      headers: this.getAuthHeader(),
+    });
+    return response.json();
+  }
+
+  // Get drone realtime location from Redis
+  async getDroneLocation(id: string): Promise<{ success: boolean; data: { lat: number; lng: number; source: 'redis' | 'database' } }> {
+    const response = await fetch(`${API_BASE_URL}/drones/${id}/location`, {
       headers: this.getAuthHeader(),
     });
     return response.json();

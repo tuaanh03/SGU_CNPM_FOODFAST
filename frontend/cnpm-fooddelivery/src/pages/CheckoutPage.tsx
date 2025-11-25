@@ -88,6 +88,8 @@ const CheckoutPage = () => {
         deliveryAddress: deliveryAddressText,
         contactPhone: selectedAddress.phone,
         note: formData.note || undefined,
+        customerLatitude: selectedAddress.latitude,
+        customerLongitude: selectedAddress.longitude,
       });
 
       if (response.success) {

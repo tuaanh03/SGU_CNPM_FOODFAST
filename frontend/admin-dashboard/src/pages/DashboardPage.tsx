@@ -1,20 +1,41 @@
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Package, Drone, Clock, CheckCircle, LogOut } from "lucide-react";
-import { mockOrders, mockDrones } from "@/services/mockData";
+import { deliveryService } from "@/services/delivery.service";
 
 const DashboardPage = () => {
     const navigate = useNavigate();
     const { user, logout } = useAuth();
+    const [stats, setStats] = useState({
+        pendingOrders: 0,
+        inTransit: 0,
+        delivered: 0,
+        availableDrones: 0,
+    });
 
-    const stats = {
-        pendingOrders: mockOrders.filter(o => o.status === 'PENDING_APPROVAL').length,
-        inTransit: mockOrders.filter(o => o.status === 'IN_TRANSIT').length,
-        delivered: mockOrders.filter(o => o.status === 'DELIVERED').length,
-        availableDrones: mockDrones.filter(d => d.status === 'AVAILABLE').length,
-    };
+    useEffect(() => {
+        const fetchStats = async () => {
+            try {
+                const response = await deliveryService.getAllDeliveries({});
+                if (response.success) {
+                    const deliveries = response.data;
+                    setStats({
+                        pendingOrders: deliveries.filter((d: any) => d.status === 'PENDING').length,
+                        inTransit: deliveries.filter((d: any) => ['ASSIGNED', 'PICKING_UP', 'IN_TRANSIT'].includes(d.status)).length,
+                        delivered: deliveries.filter((d: any) => d.status === 'DELIVERED').length,
+                        availableDrones: 0, // TODO: Fetch from drone API
+                    });
+                }
+            } catch (error) {
+                console.error('Error fetching stats:', error);
+            }
+        };
+
+        fetchStats();
+    }, []);
 
     const handleLogout = () => {
         logout();
@@ -111,7 +132,7 @@ const DashboardPage = () => {
                 </div>
 
                 {/* Quick Actions */}
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     <Card className="cursor-pointer transition-all hover:shadow-lg" onClick={() => navigate("/dispatch")}>
                         <CardHeader>
                             <CardTitle className="flex items-center">
@@ -125,6 +146,40 @@ const DashboardPage = () => {
                         <CardContent>
                             <Button className="w-full">
                                 Xem Hàng Đợi
+                            </Button>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="cursor-pointer transition-all hover:shadow-lg" onClick={() => navigate("/deliveries")}>
+                        <CardHeader>
+                            <CardTitle className="flex items-center">
+                                <Clock className="mr-2 h-5 w-5" />
+                                Quản Lý Giao Hàng
+                            </CardTitle>
+                            <CardDescription>
+                                Theo dõi các đơn hàng đang được giao
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <Button className="w-full" variant="default">
+                                Xem Giao Hàng
+                            </Button>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="cursor-pointer transition-all hover:shadow-lg" onClick={() => navigate("/completed-deliveries")}>
+                        <CardHeader>
+                            <CardTitle className="flex items-center">
+                                <CheckCircle className="mr-2 h-5 w-5" />
+                                Đơn Đã Giao
+                            </CardTitle>
+                            <CardDescription>
+                                Xem lịch sử các đơn hàng đã hoàn thành
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <Button className="w-full" variant="default">
+                                Xem Lịch Sử
                             </Button>
                         </CardContent>
                     </Card>

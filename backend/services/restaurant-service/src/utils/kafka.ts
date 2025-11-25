@@ -44,7 +44,8 @@ export async function runConsumer() {
   try {
     await consumer.connect();
     await consumer.subscribe({ topic: 'order.confirmed', fromBeginning: true });
-    console.log('Restaurant service Kafka consumer subscribed to order.confirmed');
+    await consumer.subscribe({ topic: 'delivery.completed', fromBeginning: false });
+    console.log('Restaurant service Kafka consumer subscribed to order.confirmed and delivery.completed');
 
     await consumer.run({
       eachMessage: async (payload: { topic: string; partition: number; message: { value?: Buffer | string | null } }) => {
@@ -57,6 +58,8 @@ export async function runConsumer() {
 
           if (event.eventType === 'ORDER_CONFIRMED') {
             await handleOrderConfirmed(event);
+          } else if (event.eventType === 'DELIVERY_COMPLETED_CUSTOMER_VERIFIED') {
+            await handleDeliveryCompleted(event);
           }
 
           kafkaConsumerMessageCounter.inc({ topic, status: 'success' });
@@ -112,7 +115,9 @@ async function handleOrderConfirmed(payload: any) {
     deliveryAddress: deliveryAddress || null,
     contactPhone: contactPhone || null,
     note: note || null,
-    estimatedPrepTime: estimatedPrepTime || null
+    estimatedPrepTime: estimatedPrepTime || null,
+    customerLatitude: payload.customerLatitude || null,
+    customerLongitude: payload.customerLongitude || null
   };
 
   try {
@@ -153,6 +158,55 @@ async function handleOrderConfirmed(payload: any) {
     }, 30000);
   } catch (err) {
     console.error(`Failed to upsert RestaurantOrder for order ${orderId}:`, err);
+  }
+}
+
+// Handle delivery.completed event - Update RestaurantOrder status to COMPLETED
+async function handleDeliveryCompleted(event: any) {
+  const { orderId, deliveryId, eventType } = event;
+
+  if (!orderId) {
+    console.warn('⚠️ delivery.completed event missing orderId');
+    return;
+  }
+
+  try {
+    console.log(`📦 [handleDeliveryCompleted] Processing event for orderId: ${orderId}`);
+
+    // Find restaurant order
+    const restaurantOrder = await prisma.restaurantOrder.findUnique({
+      where: { orderId }
+    });
+
+    if (!restaurantOrder) {
+      console.warn(`⚠️ RestaurantOrder not found for orderId: ${orderId}`);
+      return;
+    }
+
+    // Only update if event is customer verified
+    if (eventType === 'DELIVERY_COMPLETED_CUSTOMER_VERIFIED') {
+      // Update RestaurantOrder status to COMPLETED
+      await prisma.restaurantOrder.update({
+        where: { id: restaurantOrder.id },
+        data: {
+          restaurantStatus: 'COMPLETED'
+        }
+      });
+
+      console.log(`✅ [handleDeliveryCompleted] RestaurantOrder ${restaurantOrder.id} status updated to COMPLETED`);
+
+      // Publish status change event
+      await publishRestaurantOrderStatusEvent({
+        eventType: 'RESTAURANT_ORDER_STATUS_CHANGED',
+        orderId: orderId,
+        restaurantOrderId: restaurantOrder.id,
+        storeId: restaurantOrder.storeId,
+        restaurantStatus: 'COMPLETED',
+        timestamp: new Date().toISOString()
+      });
+    }
+  } catch (error) {
+    console.error(`❌ Error handling delivery.completed for orderId ${orderId}:`, error);
   }
 }
 
