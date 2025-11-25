@@ -10,6 +10,7 @@ import { MapPin, Phone, Store, ShoppingBag, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { orderService } from "@/services/order.service";
 import { paymentService } from "@/services/payment.service";
+import { locationService } from "@/services/location.service";
 
 const CheckoutPage = () => {
   const navigate = useNavigate();
@@ -75,11 +76,39 @@ const CheckoutPage = () => {
       const storeId = state.restaurant.id;
       const deliveryAddressText = `${selectedAddress.address}, ${selectedAddress.ward}, ${selectedAddress.district}, ${selectedAddress.province}`;
 
+      // ✅ CRITICAL FIX: Geocode address nếu chưa có tọa độ (tránh gửi null lên Railway)
+      let lat = selectedAddress.latitude;
+      let lng = selectedAddress.longitude;
+
+      if (!lat || !lng) {
+        console.log("⚠️ Address missing coordinates, geocoding now...");
+        toast.info("Đang xác định vị trí giao hàng...");
+
+        try {
+          const geocodeResult = await locationService.geocode({
+            address: selectedAddress.address,
+            ward: selectedAddress.ward,
+            district: selectedAddress.district,
+            province: selectedAddress.province,
+          });
+
+          lat = geocodeResult.latitude;
+          lng = geocodeResult.longitude;
+
+          console.log("✅ Geocoded coordinates:", { lat, lng });
+        } catch (geocodeError: any) {
+          console.error("❌ Geocoding failed:", geocodeError);
+          toast.error("Không thể xác định vị trí giao hàng. Vui lòng kiểm tra địa chỉ.");
+          setLoading(false);
+          return;
+        }
+      }
+
       console.log("📦 Creating order for store:", storeId);
       console.log("📍 Delivery address:", {
         address: deliveryAddressText,
-        lat: selectedAddress.latitude,
-        lng: selectedAddress.longitude,
+        lat,
+        lng,
       });
 
       // Bước 1: Tạo order từ cart qua API Gateway
@@ -88,8 +117,8 @@ const CheckoutPage = () => {
         deliveryAddress: deliveryAddressText,
         contactPhone: selectedAddress.phone,
         note: formData.note || undefined,
-        customerLatitude: selectedAddress.latitude,
-        customerLongitude: selectedAddress.longitude,
+        customerLatitude: lat,
+        customerLongitude: lng,
       });
 
       if (response.success) {
