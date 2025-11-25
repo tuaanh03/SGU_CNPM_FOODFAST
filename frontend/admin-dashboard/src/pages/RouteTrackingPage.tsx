@@ -21,6 +21,7 @@ import {
     Activity
 } from "lucide-react";
 import type { Order, Drone } from "@/services/drone.service";
+import { droneService } from "@/services/drone.service";
 import { deliveryService } from "@/services/delivery.service";
 import { toast } from "sonner";
 import DroneTrackingMap from "@/components/DroneTrackingMap";
@@ -90,15 +91,44 @@ const RouteTrackingPage = () => {
 
                     // Get drone info
                     if (deliveryData.drone) {
+                        // ✅ Fetch realtime position from Redis
+                        let dronePosition = {
+                            lat: deliveryData.drone.currentLat,
+                            lng: deliveryData.drone.currentLng
+                        };
+
+                        try {
+                            console.log(`🔍 Fetching realtime position for drone ${deliveryData.drone.id}...`);
+                            const locationResponse = await droneService.getDroneLocation(deliveryData.drone.id);
+                            if (locationResponse.success) {
+                                dronePosition = locationResponse.data;
+                                console.log(`✅ Got realtime position from ${locationResponse.data.source}:`, dronePosition);
+                            }
+                        } catch (err) {
+                            console.warn('⚠️ Failed to fetch realtime position, using DB position');
+                        }
+
                         setDrone({
                             id: deliveryData.drone.id,
                             name: deliveryData.drone.name,
                             model: deliveryData.drone.model,
                             battery: deliveryData.drone.battery,
                             status: deliveryData.drone.status,
-                            currentLat: deliveryData.drone.currentLat,
-                            currentLng: deliveryData.drone.currentLng
+                            currentLat: dronePosition.lat,
+                            currentLng: dronePosition.lng
                         } as any);
+
+                        // ✅ Fetch delivery progress from Redis
+                        try {
+                            console.log(`🔍 Fetching progress for delivery ${deliveryData.id}...`);
+                            const progressResponse = await deliveryService.getDeliveryProgress(deliveryData.id);
+                            if (progressResponse.success) {
+                                setDroneProgress(progressResponse.data.progress);
+                                console.log(`✅ Got progress from ${progressResponse.data.source}: ${progressResponse.data.progress}%`);
+                            }
+                        } catch (err) {
+                            console.warn('⚠️ Failed to fetch progress, starting from 0');
+                        }
                     } else {
                         // Fallback to localStorage
                         const savedDrone = localStorage.getItem(`drone_for_order_${orderId}`);
@@ -118,16 +148,6 @@ const RouteTrackingPage = () => {
         };
 
         fetchDelivery();
-
-        // Simulate drone movement progress
-        const interval = setInterval(() => {
-            setDroneProgress(prev => {
-                if (prev >= 100) return 100;
-                return prev + 0.5;
-            });
-        }, 1000);
-
-        return () => clearInterval(interval);
     }, [orderId]);
 
     // Join order room và listen cho realtime updates

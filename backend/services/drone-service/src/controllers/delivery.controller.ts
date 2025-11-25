@@ -109,6 +109,45 @@ export const getDeliveryByOrderId = async (req: Request, res: Response) => {
   }
 };
 
+// Get delivery progress from Redis
+export const getDeliveryProgress = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { droneLocationRedis } = require('../lib/redis');
+
+    console.log(`🔍 [getDeliveryProgress] Fetching progress for delivery: ${id}`);
+
+    // Get progress from Redis
+    const progress = await droneLocationRedis.getRouteProgress(id);
+
+    if (progress === null || progress === undefined) {
+      console.warn(`⚠️ [getDeliveryProgress] No progress found in Redis for delivery ${id}`);
+      return res.status(200).json({
+        success: true,
+        data: {
+          progress: 0,
+          source: 'default'
+        }
+      });
+    }
+
+    console.log(`✅ [getDeliveryProgress] Found progress in Redis: ${progress}%`);
+    res.status(200).json({
+      success: true,
+      data: {
+        progress: parseFloat(progress.toString()),
+        source: 'redis'
+      }
+    });
+  } catch (error: any) {
+    console.error('❌ [getDeliveryProgress] Error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
 // Create delivery (assign drone to order)
 export const createDelivery = async (req: Request, res: Response) => {
   try {
@@ -502,6 +541,50 @@ export const verifyPickupOtp = async (req: Request, res: Response) => {
       console.error('❌ Error publishing pickup.verified event:', kafkaError);
     }
 
+    // ✅ START PHASE 2: Drone continues to customer
+    try {
+      console.log(`🚁 [PHASE 2] Starting drone simulation: Restaurant → Customer`);
+
+      // Build route: Restaurant → Customer
+      const route = [
+        { lat: updatedDelivery.restaurantLat, lng: updatedDelivery.restaurantLng },
+        { lat: updatedDelivery.customerLat, lng: updatedDelivery.customerLng }
+      ];
+
+      // Get drone's home base coordinates
+      const droneHomeBase = {
+        lat: updatedDelivery.drone?.currentLat || updatedDelivery.restaurantLat,
+        lng: updatedDelivery.drone?.currentLng || updatedDelivery.restaurantLng
+      };
+
+      // Start Phase 2 simulation
+      const { droneSimulatorManager } = require('../utils/droneSimulator');
+      const { publishDroneLocationUpdate } = require('../utils/kafka');
+
+      await droneSimulatorManager.startSimulation(
+        updatedDelivery.id,
+        updatedDelivery.droneId!,
+        route,
+        droneHomeBase,
+        async (lat: number, lng: number) => {
+          // Emit realtime location updates via Kafka → Socket
+          await publishDroneLocationUpdate({
+            deliveryId: updatedDelivery.id,
+            orderId: updatedDelivery.orderId,
+            droneId: updatedDelivery.droneId,
+            lat,
+            lng,
+            timestamp: new Date().toISOString()
+          });
+        }
+      );
+
+      console.log(`✅ [PHASE 2] Drone simulation started for delivery ${updatedDelivery.id}`);
+    } catch (simulationError) {
+      console.error('❌ Error starting Phase 2 simulation:', simulationError);
+      // Don't fail the response, simulation error is not critical
+    }
+
     res.status(200).json({
       success: true,
       data: updatedDelivery,
@@ -572,6 +655,137 @@ export const updateDeliveryStatus = async (req: Request, res: Response) => {
       success: true,
       data: delivery,
     });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// Verify customer OTP when receiving delivery
+export const verifyCustomerPickupOtp = async (req: Request, res: Response) => {
+  try {
+    const { deliveryId } = req.params;
+    const { otp } = req.body;
+
+    if (!otp) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP is required",
+      });
+    }
+
+    const delivery = await prisma.delivery.findUnique({
+      where: { id: deliveryId },
+      include: { drone: true }
+    });
+
+    if (!delivery) {
+      return res.status(404).json({
+        success: false,
+        message: "Delivery not found",
+      });
+    }
+
+    if (delivery.status !== 'AWAITING_CUSTOMER_PICKUP') {
+      return res.status(400).json({
+        success: false,
+        message: "Delivery is not awaiting customer pickup",
+      });
+    }
+
+    // Verify OTP from Redis
+    const { otpRedis } = require('../lib/redis');
+    const customerOtpKey = `customer:${deliveryId}`;
+    const isValid = await otpRedis.verifyOtp(customerOtpKey, otp);
+
+    if (!isValid) {
+      const ttl = await otpRedis.getOtpTtl(customerOtpKey);
+      if (ttl === -2) {
+        return res.status(400).json({
+          success: false,
+          message: "OTP has expired or does not exist",
+        });
+      }
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
+    }
+
+    // Delete OTP after successful verification
+    await otpRedis.deleteOtp(customerOtpKey);
+
+    // ✅ OTP valid - Update delivery status to DELIVERED
+    const updatedDelivery = await prisma.delivery.update({
+      where: { id: deliveryId },
+      data: {
+        status: 'DELIVERED',
+        deliveredAt: new Date()
+      },
+      include: { drone: true }
+    });
+
+    // Update drone status back to AVAILABLE
+    if (updatedDelivery.droneId) {
+      await prisma.drone.update({
+        where: { id: updatedDelivery.droneId },
+        data: { status: 'AVAILABLE' }
+      });
+    }
+
+    // ✅ Publish delivery.completed.customer.verified event
+    const { publishDeliveryCompletedEvent } = require('../utils/kafka');
+    try {
+      await publishDeliveryCompletedEvent({
+        eventType: 'DELIVERY_COMPLETED_CUSTOMER_VERIFIED',
+        orderId: updatedDelivery.orderId,
+        deliveryId: updatedDelivery.id,
+        storeId: updatedDelivery.storeId,
+        status: 'DELIVERED',
+        deliveredAt: updatedDelivery.deliveredAt,
+        timestamp: new Date().toISOString()
+      });
+      console.log(`📤 Published DELIVERY_COMPLETED_CUSTOMER_VERIFIED event for order ${updatedDelivery.orderId}`);
+    } catch (kafkaError) {
+      console.error('❌ Error publishing delivery.completed event:', kafkaError);
+    }
+
+    res.status(200).json({
+      success: true,
+      data: updatedDelivery,
+      message: "Customer pickup verified successfully. Delivery completed."
+    });
+  } catch (error: any) {
+    console.error('❌ Error in verifyCustomerPickupOtp:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// Wrapper: Verify customer OTP by orderId
+export const verifyCustomerPickupOtpByOrderId = async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
+
+    // Find delivery by orderId
+    const delivery = await prisma.delivery.findUnique({
+      where: { orderId }
+    });
+
+    if (!delivery) {
+      return res.status(404).json({
+        success: false,
+        message: "Delivery not found for this order",
+      });
+    }
+
+    // Forward to verifyCustomerPickupOtp with deliveryId
+    req.params.deliveryId = delivery.id;
+    return verifyCustomerPickupOtp(req, res);
   } catch (error: any) {
     res.status(500).json({
       success: false,

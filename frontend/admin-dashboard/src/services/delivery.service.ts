@@ -77,6 +77,19 @@ class DeliveryService {
     return response.json();
   }
 
+  // Get delivery progress from Redis
+  async getDeliveryProgress(id: string): Promise<{ success: boolean; data: { progress: number; source: 'redis' | 'default' } }> {
+    const response = await fetch(`${API_BASE_URL}/deliveries/${id}/progress`, {
+      headers: this.getAuthHeader(),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch delivery progress');
+    }
+
+    return response.json();
+  }
+
   async updateDeliveryStatus(id: string, status: Delivery['status']) {
     const response = await fetch(`${API_BASE_URL}/deliveries/${id}/status`, {
       method: 'PATCH',

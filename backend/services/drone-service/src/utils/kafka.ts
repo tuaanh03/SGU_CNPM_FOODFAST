@@ -356,3 +356,84 @@ export async function publishOtpGeneratedEvent(payload: any) {
   }
 }
 
+// Publish customer.otp.generated event to Socket Service
+export async function publishCustomerOtpGeneratedEvent(payload: any) {
+  const topic = 'customer.otp.generated';
+
+  try {
+    if (!isProducerConnected) {
+      await producer.connect();
+      isProducerConnected = true;
+      console.log('✅ Kafka producer connected');
+    }
+
+    await producer.send({
+      topic,
+      messages: [
+        {
+          key: `customer-otp-generated-${payload.deliveryId}`,
+          value: JSON.stringify(payload)
+        }
+      ]
+    });
+
+    console.log(`📤 Published customer.otp.generated event for orderId ${payload.orderId}, OTP: ${payload.otp}`);
+  } catch (error) {
+    console.error('❌ Error publishing customer.otp.generated event:', error);
+  }
+}
+
+// Publish drone.arrived.at.customer event to Socket Service
+export async function publishDroneArrivedAtCustomerEvent(payload: any) {
+  const topic = 'drone.arrived.at.customer';
+
+  try {
+    if (!isProducerConnected) {
+      await producer.connect();
+      isProducerConnected = true;
+      console.log('✅ Kafka producer connected');
+    }
+
+    await producer.send({
+      topic,
+      messages: [
+        {
+          key: `drone-arrived-customer-${payload.deliveryId}`,
+          value: JSON.stringify(payload)
+        }
+      ]
+    });
+
+    console.log(`📤 Published drone.arrived.at.customer event for orderId ${payload.orderId}`);
+  } catch (error) {
+    console.error('❌ Error publishing drone.arrived.at.customer event:', error);
+  }
+}
+
+// Publish delivery.completed event to Socket Service
+export async function publishDeliveryCompletedEvent(payload: any) {
+  const topic = 'delivery.completed';
+
+  try {
+    if (!isProducerConnected) {
+      await producer.connect();
+      isProducerConnected = true;
+      console.log('✅ Kafka producer connected');
+    }
+
+    await producer.send({
+      topic,
+      messages: [
+        {
+          key: `delivery-completed-${payload.deliveryId}`,
+          value: JSON.stringify(payload)
+        }
+      ]
+    });
+
+    console.log(`📤 Published delivery.completed event for orderId ${payload.orderId}`);
+  } catch (error) {
+    console.error('❌ Error publishing delivery.completed event:', error);
+  }
+}
+

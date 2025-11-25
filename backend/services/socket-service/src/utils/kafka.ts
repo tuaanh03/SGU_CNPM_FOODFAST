@@ -60,8 +60,11 @@ export async function runConsumer() {
     await consumer.subscribe({ topic: "otp.generated", fromBeginning: false });
     await consumer.subscribe({ topic: "drone.location.update", fromBeginning: false });
     await consumer.subscribe({ topic: "drone.arrived", fromBeginning: false });
+    await consumer.subscribe({ topic: "delivery.completed", fromBeginning: false });
+    await consumer.subscribe({ topic: "customer.otp.generated", fromBeginning: false });
+    await consumer.subscribe({ topic: "drone.arrived.at.customer", fromBeginning: false });
 
-    console.log("✅ Socket service Kafka consumer subscribed to: order.confirmed, restaurant.order.status, drones.nearby, drone.assigned, pickup.verified, otp.generated, drone.location.update, drone.arrived");
+    console.log("✅ Socket service Kafka consumer subscribed to: order.confirmed, restaurant.order.status, drones.nearby, drone.assigned, pickup.verified, otp.generated, drone.location.update, drone.arrived, delivery.completed, customer.otp.generated, drone.arrived.at.customer");
 
     // Process messages
     await consumer.run({
@@ -88,6 +91,12 @@ export async function runConsumer() {
             await handleDroneLocationUpdate(data);
           } else if (topic === "drone.arrived") {
             await handleDroneArrived(data);
+          } else if (topic === "delivery.completed") {
+            await handleDeliveryCompleted(data);
+          } else if (topic === "customer.otp.generated") {
+            await handleCustomerOtpGenerated(data);
+          } else if (topic === "drone.arrived.at.customer") {
+            await handleDroneArrivedAtCustomer(data);
           }
         } catch (error) {
           console.error(`❌ Error processing ${topic} event:`, error);
@@ -442,6 +451,130 @@ async function handleDroneArrived(data: any) {
   } else {
     console.warn("⚠️ drone.arrived event missing storeId, merchant may not receive notification");
   }
+}
+
+// Handle customer.otp.generated event - emit OTP to customer
+async function handleCustomerOtpGenerated(data: any) {
+  if (!io) {
+    console.warn("⚠️ Socket.IO not initialized yet");
+    return;
+  }
+
+  const { deliveryId, orderId, storeId, otp, expiresIn, timestamp } = data;
+
+  if (!orderId) {
+    console.warn("⚠️ customer.otp.generated event missing orderId");
+    return;
+  }
+
+  console.log(`🔐 Customer OTP generated for order ${orderId}: ${otp}`);
+
+  const payload = {
+    eventType: 'CUSTOMER_OTP_GENERATED',
+    deliveryId,
+    orderId,
+    storeId,
+    otp,
+    expiresIn,
+    timestamp
+  };
+
+  // Emit to customer tracking this order
+  io.to(`order:${orderId}`).emit("customer:otp:generated", payload);
+  socketEmitCounter.inc({ event_name: "customer:otp:generated" });
+  console.log(`✅ Emitted customer:otp:generated to order:${orderId} - OTP: ${otp}`);
+
+  // Also emit to admin for monitoring
+  io.to("admin-dashboard").emit("customer:otp:generated", payload);
+  socketEmitCounter.inc({ event_name: "customer:otp:generated" });
+  console.log(`✅ Emitted customer:otp:generated to admin-dashboard`);
+}
+
+// Handle drone.arrived.at.customer event
+async function handleDroneArrivedAtCustomer(data: any) {
+  if (!io) {
+    console.warn("⚠️ Socket.IO not initialized yet");
+    return;
+  }
+
+  const { deliveryId, droneId, orderId, storeId, timestamp } = data;
+
+  if (!orderId) {
+    console.warn("⚠️ drone.arrived.at.customer event missing orderId");
+    return;
+  }
+
+  console.log(`🎯 Drone ${droneId} arrived at customer for order ${orderId}`);
+
+  const payload = {
+    eventType: 'DRONE_ARRIVED_AT_CUSTOMER',
+    deliveryId,
+    droneId,
+    orderId,
+    storeId,
+    timestamp
+  };
+
+  // Emit to customer tracking this order
+  io.to(`order:${orderId}`).emit("drone:arrived:customer", payload);
+  socketEmitCounter.inc({ event_name: "drone:arrived:customer" });
+  console.log(`✅ Emitted drone:arrived:customer to order:${orderId}`);
+
+  // Emit to admin-dashboard
+  io.to("admin-dashboard").emit("drone:arrived:customer", payload);
+  socketEmitCounter.inc({ event_name: "drone:arrived:customer" });
+  console.log(`✅ Emitted drone:arrived:customer to admin-dashboard`);
+
+  // Emit to merchant for notification
+  if (storeId) {
+    io.to(`restaurant:${storeId}`).emit("drone:arrived:customer", payload);
+    socketEmitCounter.inc({ event_name: "drone:arrived:customer" });
+    console.log(`✅ Emitted drone:arrived:customer to restaurant:${storeId}`);
+  }
+}
+
+// Handle delivery.completed event - emit when drone delivers to customer
+async function handleDeliveryCompleted(data: any) {
+  if (!io) {
+    console.warn("⚠️ Socket.IO not initialized yet");
+    return;
+  }
+
+  const { deliveryId, droneId, orderId, storeId, deliveredAt, timestamp } = data;
+
+  if (!orderId) {
+    console.warn("⚠️ delivery.completed event missing orderId");
+    return;
+  }
+
+  console.log(`🎉 Delivery ${deliveryId} completed for order ${orderId}`);
+
+  const payload = {
+    eventType: 'DELIVERY_COMPLETED',
+    deliveryId,
+    droneId,
+    orderId,
+    storeId,
+    deliveredAt,
+    timestamp
+  };
+
+  // Emit to customer tracking this order
+  io.to(`order:${orderId}`).emit("delivery:completed", payload);
+  socketEmitCounter.inc({ event_name: "delivery:completed" });
+  console.log(`✅ Emitted delivery:completed to order:${orderId} (customer)`);
+
+  // Emit to restaurant merchant
+  if (storeId) {
+    io.to(`restaurant:${storeId}`).emit("delivery:completed", payload);
+    socketEmitCounter.inc({ event_name: "delivery:completed" });
+    console.log(`✅ Emitted delivery:completed to restaurant:${storeId}`);
+  }
+
+  // Emit to admin-dashboard
+  io.to("admin-dashboard").emit("delivery:completed", payload);
+  socketEmitCounter.inc({ event_name: "delivery:completed" });
+  console.log(`✅ Emitted delivery:completed to admin-dashboard`);
 }
 
 export async function publishRestaurantOrderStatusEvent(payload: any) {

@@ -32,8 +32,10 @@ interface RestaurantSocketContextType {
   droneArrivedOrders: Set<string>;
   currentOtp: Record<string, string>; // orderId -> otp
   orderStatusUpdates: Record<string, string>; // orderId -> status
+  newOrderReceived: any; // ✅ Order mới từ socket
   joinOrder: (orderId: string) => void;
   leaveOrder: (orderId: string) => void;
+  ensureRoomJoined: () => void; // ✅ Force join restaurant room
 }
 
 const RestaurantSocketContext = createContext<RestaurantSocketContextType | undefined>(undefined);
@@ -44,25 +46,20 @@ export const RestaurantSocketProvider = ({ children }: { children: ReactNode }) 
   const [droneArrivedOrders, setDroneArrivedOrders] = useState<Set<string>>(new Set());
   const [currentOtp, setCurrentOtp] = useState<Record<string, string>>({});
   const [orderStatusUpdates, setOrderStatusUpdates] = useState<Record<string, string>>({});
+  const [newOrderReceived, setNewOrderReceived] = useState<any>(null);
   const [storeId, setStoreId] = useState<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
+  const storeIdRef = useRef<string | null>(null); // ✅ Ref để tránh stale closure
 
-  // Load storeId from localStorage or API
+  // Load storeId from API NGAY KHI CONTEXT MOUNT
   useEffect(() => {
     const loadStoreId = async () => {
       try {
-        // Try to get from localStorage first
-        const storeInfo = localStorage.getItem('storeInfo');
-        if (storeInfo) {
-          const parsed = JSON.parse(storeInfo);
-          if (parsed.id) {
-            setStoreId(parsed.id);
-            console.log('✅ [RestaurantSocket] Loaded storeId from localStorage:', parsed.id);
-            return;
-          }
-        }
+        // 📋 Log localStorage hiện tại
+        const cachedStoreInfo = localStorage.getItem('storeInfo');
+        console.log('📋 [RestaurantSocket] Current localStorage storeInfo:', cachedStoreInfo ? JSON.parse(cachedStoreInfo) : 'NULL');
 
-        // If not in localStorage, try to load via storeService
+        // ✅ LUÔN load từ API để đảm bảo storeId đúng
         console.log('🔄 [RestaurantSocket] Loading storeId from API...');
 
         // Dynamically import to avoid circular dependency
@@ -70,17 +67,42 @@ export const RestaurantSocketProvider = ({ children }: { children: ReactNode }) 
         const response = await storeService.getMyStore();
 
         if (response.success && response.data) {
-          setStoreId(response.data.id);
-          localStorage.setItem('storeInfo', JSON.stringify(response.data));
-          console.log('✅ [RestaurantSocket] Loaded storeId from API:', response.data.id);
+          const newStoreId = response.data.id;
+          setStoreId(newStoreId);
+          storeIdRef.current = newStoreId; // ✅ Update ref
+
+          // ℹ️ storeService đã tự động lưu vào localStorage rồi (realtime)
+
+          console.log('✅ [RestaurantSocket] Loaded storeId from API:', newStoreId);
+          console.log('🔍 [RestaurantSocket] Store info:', {
+            id: response.data.id,
+            name: response.data.name || 'N/A',
+            address: response.data.address || 'N/A'
+          });
+          console.log('📋 [RestaurantSocket] localStorage.storeInfo:', JSON.parse(localStorage.getItem('storeInfo') || '{}'));
+
+          // ✅ Nếu socket đã connected, join room ngay
+          if (socketRef.current?.connected) {
+            console.log('🔄 [RestaurantSocket] Socket already connected, joining room immediately');
+            socketRef.current.emit('join:restaurant', { storeId: newStoreId });
+          }
         } else {
           console.warn('⚠️ [RestaurantSocket] No store found for merchant');
+          // ✅ Xóa storeInfo cũ trong localStorage nếu không tìm thấy store
+          localStorage.removeItem('storeInfo');
+          setStoreId(null);
+          storeIdRef.current = null;
         }
       } catch (error) {
         console.error('❌ [RestaurantSocket] Error loading storeId:', error);
+        // ✅ Xóa storeInfo cũ nếu API lỗi
+        localStorage.removeItem('storeInfo');
+        setStoreId(null);
+        storeIdRef.current = null;
       }
     };
 
+    // ⚡ Load NGAY LẬP TỨC
     loadStoreId();
   }, []);
 
@@ -100,9 +122,17 @@ export const RestaurantSocketProvider = ({ children }: { children: ReactNode }) 
     // Connection events
     socketInstance.on('connect', () => {
       console.log('✅ [RestaurantSocket] Connected - ID:', socketInstance.id);
+      console.log('🔍 [RestaurantSocket] Socket connected, checking if storeId available...');
       setIsConnected(true);
 
-      // Note: Specific store room will be joined by separate useEffect when storeId loads
+      // ✅ Auto-join room if storeId already loaded
+      const currentStoreId = storeIdRef.current;
+      if (currentStoreId) {
+        console.log('🔄 [RestaurantSocket] StoreId already loaded, joining room now: restaurant:' + currentStoreId);
+        socketInstance.emit('join:restaurant', { storeId: currentStoreId });
+      } else {
+        console.log('⏳ [RestaurantSocket] StoreId not loaded yet, will join when loaded');
+      }
     });
 
     socketInstance.on('disconnect', (reason) => {
@@ -112,9 +142,15 @@ export const RestaurantSocketProvider = ({ children }: { children: ReactNode }) 
 
     socketInstance.on('reconnect', (attemptNumber) => {
       console.log('🔄 [RestaurantSocket] Reconnected - Attempt:', attemptNumber);
-      socketInstance.emit('join-room', 'restaurant-merchants');
 
-      // Specific store room will be rejoined by separate useEffect
+      // ✅ Rejoin restaurant room if storeId is available (use ref to avoid stale closure)
+      const currentStoreId = storeIdRef.current;
+      if (currentStoreId) {
+        console.log('🔄 [RestaurantSocket] Rejoining room: restaurant:' + currentStoreId);
+        socketInstance.emit('join:restaurant', { storeId: currentStoreId });
+      } else {
+        console.warn('⚠️ [RestaurantSocket] Cannot rejoin - storeId not loaded yet');
+      }
     });
 
     socketInstance.on('connect_error', (error) => {
@@ -174,7 +210,8 @@ export const RestaurantSocketProvider = ({ children }: { children: ReactNode }) 
         duration: 10000,
       });
 
-      // Note: MerchantOrdersPage sẽ handle việc add vào list thông qua listener riêng
+      // ✅ Set state để MerchantOrdersPage consume
+      setNewOrderReceived(data);
     });
 
     // Listen for order:status:update event
@@ -202,6 +239,30 @@ export const RestaurantSocketProvider = ({ children }: { children: ReactNode }) 
           description: message,
           duration: 5000,
         });
+      }
+    });
+
+    // Listen for delivery:completed event
+    socketInstance.on('delivery:completed', (data: any) => {
+      console.log('📨 [RestaurantSocket] Received delivery:completed:', data);
+      console.log('🎉 [RestaurantSocket] DELIVERY COMPLETED:', {
+        orderId: data.orderId,
+        deliveryId: data.deliveryId,
+        deliveredAt: data.deliveredAt
+      });
+
+      // Show toast notification
+      toast.success('🎉 Giao hàng thành công!', {
+        description: `Đơn hàng #${data.orderId?.slice(0, 8)}... đã được giao đến khách hàng`,
+        duration: 8000,
+      });
+
+      // Update order status
+      if (data.orderId) {
+        setOrderStatusUpdates(prev => ({
+          ...prev,
+          [data.orderId]: 'DELIVERED'
+        }));
       }
     });
 
@@ -320,6 +381,19 @@ export const RestaurantSocketProvider = ({ children }: { children: ReactNode }) 
     }
   };
 
+  // ✅ Force join restaurant room (useful when navigating to orders page)
+  const ensureRoomJoined = () => {
+    const currentStoreId = storeIdRef.current;
+    if (socketRef.current && socketRef.current.connected && currentStoreId) {
+      console.log('🔄 [RestaurantSocket] Ensuring room joined: restaurant:' + currentStoreId);
+      socketRef.current.emit('join:restaurant', { storeId: currentStoreId });
+    } else {
+      console.warn('⚠️ [RestaurantSocket] Cannot ensure room - socket not connected or storeId not loaded');
+      console.warn('  - Socket connected:', socketRef.current?.connected);
+      console.warn('  - StoreId:', currentStoreId);
+    }
+  };
+
   return (
     <RestaurantSocketContext.Provider
       value={{
@@ -329,8 +403,10 @@ export const RestaurantSocketProvider = ({ children }: { children: ReactNode }) 
         droneArrivedOrders,
         currentOtp,
         orderStatusUpdates,
+        newOrderReceived,
         joinOrder,
         leaveOrder,
+        ensureRoomJoined,
       }}
     >
       {children}

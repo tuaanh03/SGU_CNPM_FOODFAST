@@ -8,6 +8,8 @@ import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
 import DispatchQueuePage from "./pages/DispatchQueuePage";
 import DeliveryManagementPage from "./pages/DeliveryManagementPage";
+import CompletedDeliveriesPage from "./pages/CompletedDeliveriesPage";
+import CompletedDeliveryDetailPage from "./pages/CompletedDeliveryDetailPage";
 import OrderDetailPage from "./pages/OrderDetailPage";
 import RouteTrackingPage from "./pages/RouteTrackingPage";
 import DroneManagementPage from "./pages/DroneManagementPage";
@@ -70,6 +72,22 @@ function App() {
                             element={
                                 <ProtectedRoute requiredRole="SYSTEM_ADMIN">
                                     <DroneManagementPage />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/completed-deliveries"
+                            element={
+                                <ProtectedRoute requiredRole="SYSTEM_ADMIN">
+                                    <CompletedDeliveriesPage />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/completed-deliveries/:orderId"
+                            element={
+                                <ProtectedRoute requiredRole="SYSTEM_ADMIN">
+                                    <CompletedDeliveryDetailPage />
                                 </ProtectedRoute>
                             }
                         />

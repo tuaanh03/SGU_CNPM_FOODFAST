@@ -160,6 +160,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem('cart_restaurant');
     }
 
+    // ✅ Xóa storeInfo nếu là merchant logout
+    if (currentRole === "STORE_ADMIN") {
+      localStorage.removeItem('storeInfo');
+      console.log('🗑️ [AuthContext] Cleared storeInfo from localStorage on logout');
+    }
+
     setUser(null);
     toast.success("Đã đăng xuất");
   };

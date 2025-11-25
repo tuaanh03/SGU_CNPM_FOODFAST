@@ -276,6 +276,65 @@ export const deleteDrone = async (req: Request, res: Response) => {
   }
 };
 
+// Get drone realtime location from Redis
+export const getDroneLocation = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { droneLocationRedis } = require('../lib/redis');
+
+    // Try to get location from Redis first (realtime position)
+    const redisLocation = await droneLocationRedis.getDroneLocation(id);
+
+    if (redisLocation) {
+      console.log(`✅ [getDroneLocation] Found realtime location in Redis for drone ${id}`);
+      return res.status(200).json({
+        success: true,
+        data: {
+          lat: redisLocation.lat,
+          lng: redisLocation.lng,
+          source: 'redis' // Realtime position
+        }
+      });
+    }
+
+    // Fallback to database (home base position)
+    const drone = await prisma.drone.findUnique({
+      where: { id },
+      select: { currentLat: true, currentLng: true, status: true }
+    });
+
+    if (!drone) {
+      return res.status(404).json({
+        success: false,
+        message: "Drone not found"
+      });
+    }
+
+    if (!drone.currentLat || !drone.currentLng) {
+      return res.status(404).json({
+        success: false,
+        message: "Drone location not available"
+      });
+    }
+
+    console.log(`⚠️ [getDroneLocation] Using DB location (home base) for drone ${id}`);
+    return res.status(200).json({
+      success: true,
+      data: {
+        lat: drone.currentLat,
+        lng: drone.currentLng,
+        source: 'database' // Home base position
+      }
+    });
+  } catch (error: any) {
+    console.error('❌ [getDroneLocation] Error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
 // Helper function
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;

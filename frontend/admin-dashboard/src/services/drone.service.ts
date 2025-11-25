@@ -129,6 +129,14 @@ class DroneService {
     return response.json();
   }
 
+  // Get drone realtime location from Redis
+  async getDroneLocation(id: string): Promise<{ success: boolean; data: { lat: number; lng: number; source: 'redis' | 'database' } }> {
+    const response = await fetch(`${API_BASE_URL}/drones/${id}/location`, {
+      headers: this.getAuthHeader(),
+    });
+    return response.json();
+  }
+
   async createDrone(data: {
     name: string;
     model: string;

@@ -33,6 +33,8 @@ interface CustomerSocketContextType {
   leaveOrder: (orderId: string) => void;
   orderStatuses: Record<string, string>; // orderId -> status
   droneLocations: Record<string, { lat: number; lng: number }>; // orderId -> location
+  customerOtps: Record<string, string>; // orderId -> OTP (for customer verification)
+  droneArrivedOrders: Set<string>; // ✅ Track đơn hàng nào drone đã đến (cần nhập OTP)
 }
 
 const CustomerSocketContext = createContext<CustomerSocketContextType | undefined>(undefined);
@@ -42,7 +44,23 @@ export const CustomerSocketProvider = ({ children }: { children: ReactNode }) =>
   const [isConnected, setIsConnected] = useState(false);
   const [orderStatuses, setOrderStatuses] = useState<Record<string, string>>({});
   const [droneLocations, setDroneLocations] = useState<Record<string, { lat: number; lng: number }>>({});
+  const [customerOtps, setCustomerOtps] = useState<Record<string, string>>({});
+  const [droneArrivedOrders, setDroneArrivedOrders] = useState<Set<string>>(new Set()); // ✅ Track drone arrived
   const socketRef = useRef<Socket | null>(null);
+
+  // ✅ Load droneArrivedOrders từ localStorage khi mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('droneArrivedOrders');
+      if (saved) {
+        const arrivedOrders = JSON.parse(saved) as string[];
+        setDroneArrivedOrders(new Set(arrivedOrders));
+        console.log('✅ [CustomerSocket] Loaded droneArrivedOrders from localStorage:', arrivedOrders);
+      }
+    } catch (error) {
+      console.error('❌ [CustomerSocket] Error loading droneArrivedOrders from localStorage:', error);
+    }
+  }, []);
 
   useEffect(() => {
     const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3011';
@@ -139,6 +157,85 @@ export const CustomerSocketProvider = ({ children }: { children: ReactNode }) =>
       }
     });
 
+    // Listen for drone:arrived:customer event
+    socketInstance.on('drone:arrived:customer', (data: any) => {
+      console.log('📨 [CustomerSocket] Received drone:arrived:customer:', data);
+      console.log('🚁 [CustomerSocket] Drone arrived at your location!', {
+        orderId: data.orderId,
+        deliveryId: data.deliveryId,
+        droneId: data.droneId
+      });
+
+      // ✅ Thêm vào droneArrivedOrders
+      if (data.orderId) {
+        setDroneArrivedOrders(prev => {
+          const newSet = new Set(prev);
+          newSet.add(data.orderId);
+
+          // ✅ Lưu vào localStorage để persistent qua reload
+          const arrivedOrders = Array.from(newSet);
+          localStorage.setItem('droneArrivedOrders', JSON.stringify(arrivedOrders));
+          console.log('✅ [CustomerSocket] Added to droneArrivedOrders & localStorage:', data.orderId);
+
+          return newSet;
+        });
+      }
+
+      // Show toast notification
+      toast.info('🚁 Drone đã đến!', {
+        description: 'Drone đã đến vị trí của bạn. Vui lòng nhập mã OTP để nhận hàng.',
+        duration: 10000,
+      });
+    });
+
+    // Listen for customer:otp:generated event
+    socketInstance.on('customer:otp:generated', (data: any) => {
+      console.log('📨 [CustomerSocket] Received customer:otp:generated:', data);
+      console.log('🔐 [CustomerSocket] Customer OTP:', {
+        orderId: data.orderId,
+        otp: data.otp,
+        expiresIn: data.expiresIn
+      });
+
+      // Save OTP to state để component có thể lấy và hiển thị dialog
+      if (data.orderId && data.otp) {
+        setCustomerOtps(prev => ({
+          ...prev,
+          [data.orderId]: data.otp
+        }));
+      }
+
+      // Show toast with OTP
+      toast.success('🔐 Mã xác nhận nhận hàng', {
+        description: `Mã OTP của bạn: ${data.otp} (Có hiệu lực ${data.expiresIn}s)`,
+        duration: data.expiresIn * 1000,
+      });
+    });
+
+    // Listen for delivery:completed event
+    socketInstance.on('delivery:completed', (data: any) => {
+      console.log('📨 [CustomerSocket] Received delivery:completed:', data);
+      console.log('🎉 [CustomerSocket] DELIVERY COMPLETED:', {
+        orderId: data.orderId,
+        deliveryId: data.deliveryId,
+        deliveredAt: data.deliveredAt
+      });
+
+      // Show toast notification
+      toast.success('🎉 Đơn hàng đã được giao!', {
+        description: `Đơn hàng #${data.orderId?.slice(0, 8)}... đã được giao đến bạn thành công`,
+        duration: 10000,
+      });
+
+      // Update order status
+      if (data.orderId) {
+        setOrderStatuses(prev => ({
+          ...prev,
+          [data.orderId]: 'DELIVERED'
+        }));
+      }
+    });
+
     console.log('📝 [CustomerSocket] Event listeners registered');
     setSocket(socketInstance);
 
@@ -176,6 +273,8 @@ export const CustomerSocketProvider = ({ children }: { children: ReactNode }) =>
         leaveOrder,
         orderStatuses,
         droneLocations,
+        customerOtps,
+        droneArrivedOrders, // ✅ Export để components sử dụng
       }}
     >
       {children}

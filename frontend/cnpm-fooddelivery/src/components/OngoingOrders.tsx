@@ -7,6 +7,7 @@ import { orderService } from "@/services/order.service";
 import { paymentService } from "@/services/payment.service";
 import { toast } from "sonner";
 import OrderDetailDialog from "./OrderDetailDialog";
+import CustomerOtpDialog from "./CustomerOtpDialog";
 import { useCustomerSocket } from "@/contexts/CustomerSocketContext";
 
 interface OngoingOrder {
@@ -38,9 +39,11 @@ const OngoingOrders = () => {
   const [paymentLoading, setPaymentLoading] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<OngoingOrder | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [otpDialogOpen, setOtpDialogOpen] = useState(false);
+  const [currentOtpOrderId, setCurrentOtpOrderId] = useState<string | null>(null);
 
   // Use CustomerSocketContext for realtime updates
-  const { orderStatuses, joinOrder, leaveOrder, isConnected } = useCustomerSocket();
+  const { orderStatuses, joinOrder, leaveOrder, isConnected, droneArrivedOrders } = useCustomerSocket();
 
   useEffect(() => {
     loadOngoingOrders();
@@ -92,6 +95,8 @@ const OngoingOrders = () => {
       toast.info(`📦 Đơn hàng: ${statusText}`);
     });
   }, [orderStatuses]);
+
+  // ✅ Không tự động mở dialog nữa, chỉ hiển thị nút "Nhập OTP" khi drone arrived
 
   // Helper: Map restaurant status to order status
   const mapRestaurantStatusToOrderStatus = (restaurantStatus: string): string => {
@@ -271,6 +276,13 @@ const OngoingOrders = () => {
     setDetailDialogOpen(true);
   };
 
+  // ✅ Handler để mở OTP dialog
+  const handleEnterOtp = (orderId: string) => {
+    console.log('🔐 [OngoingOrders] Opening OTP dialog for order:', orderId);
+    setCurrentOtpOrderId(orderId);
+    setOtpDialogOpen(true);
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center py-12">
@@ -393,11 +405,22 @@ const OngoingOrders = () => {
                   </Button>
                 ) : (
                   <>
-                    <Button variant="outline" size="sm" className="flex-1">
-                      <Phone className="w-4 h-4 mr-2" />
-                      {order.contactPhone}
-                    </Button>
-                    {order.status === "confirmed" && (
+                    {/* ✅ Nút "Nhập mã OTP" khi drone đã đến */}
+                    {droneArrivedOrders.has(order.id) ? (
+                      <Button
+                        size="sm"
+                        className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                        onClick={() => handleEnterOtp(order.id)}
+                      >
+                        🔐 Nhập mã OTP
+                      </Button>
+                    ) : (
+                      <Button variant="outline" size="sm" className="flex-1">
+                        <Phone className="w-4 h-4 mr-2" />
+                        {order.contactPhone}
+                      </Button>
+                    )}
+                    {order.status === "confirmed" && !droneArrivedOrders.has(order.id) && (
                       <Button size="sm" className="flex-1">
                         Theo dõi đơn hàng
                       </Button>
@@ -416,6 +439,39 @@ const OngoingOrders = () => {
           open={detailDialogOpen}
           onOpenChange={setDetailDialogOpen}
           order={selectedOrder}
+        />
+      )}
+
+      {/* Customer OTP Dialog */}
+      {currentOtpOrderId && (
+        <CustomerOtpDialog
+          open={otpDialogOpen}
+          onClose={() => {
+            setOtpDialogOpen(false);
+            setCurrentOtpOrderId(null);
+          }}
+          orderId={currentOtpOrderId}
+          onSuccess={() => {
+            console.log('✅ [OngoingOrders] OTP verified successfully');
+
+            // ✅ Xóa orderId khỏi droneArrivedOrders trong localStorage
+            if (currentOtpOrderId) {
+              try {
+                const saved = localStorage.getItem('droneArrivedOrders');
+                if (saved) {
+                  const arrivedOrders = JSON.parse(saved) as string[];
+                  const filtered = arrivedOrders.filter(id => id !== currentOtpOrderId);
+                  localStorage.setItem('droneArrivedOrders', JSON.stringify(filtered));
+                  console.log('✅ [OngoingOrders] Removed from droneArrivedOrders:', currentOtpOrderId);
+                }
+              } catch (error) {
+                console.error('❌ [OngoingOrders] Error removing from droneArrivedOrders:', error);
+              }
+            }
+
+            // Reload orders
+            loadOngoingOrders();
+          }}
         />
       )}
     </div>

@@ -102,7 +102,7 @@ export class DroneSimulator {
     // Interpolate position
     const currentPosition = interpolate(start, end, this.progress);
 
-    // ✅ CHECK ARRIVAL TRƯỚC - Quan trọng: check distance trước khi stop
+    // ✅ CHECK ARRIVAL - Quan trọng: check distance trước khi stop
     const destination = this.route[this.route.length - 1];
     const distanceToDestination = calculateDistance(
       currentPosition.lat,
@@ -113,15 +113,27 @@ export class DroneSimulator {
 
     console.log(`📍 Drone ${this.droneId} - Distance to destination: ${(distanceToDestination * 1000).toFixed(0)}m`);
 
-    // If within 100 meters of restaurant (tăng threshold để dễ trigger)
-    if (distanceToDestination < 0.1) { // 100m instead of 50m
-      console.log(`🎯 Drone ${this.droneId} arrived at restaurant!`);
+    const prisma = require('../lib/prisma').default;
+
+    // Check current delivery status to determine which phase we're in
+    const delivery = await prisma.delivery.findUnique({
+      where: { id: this.deliveryId },
+      select: { status: true, orderId: true, restaurantName: true, storeId: true }
+    });
+
+    if (!delivery) {
+      console.error(`❌ Delivery ${this.deliveryId} not found!`);
+      await this.stop();
+      return;
+    }
+
+    // PHASE 1: Arriving at restaurant (status: ASSIGNED or PENDING)
+    if ((delivery.status === 'ASSIGNED' || delivery.status === 'PENDING') && distanceToDestination < 0.1) {
+      console.log(`🎯 [PHASE 1] Drone ${this.droneId} arrived at RESTAURANT!`);
 
       try {
         // Update delivery status to PICKING_UP
-        const prisma = require('../lib/prisma').default;
         console.log(`📝 Updating delivery ${this.deliveryId} status to PICKING_UP...`);
-
         await prisma.delivery.update({
           where: { id: this.deliveryId },
           data: { status: 'PICKING_UP' }
@@ -134,33 +146,8 @@ export class DroneSimulator {
         const otp = await otpRedis.generateOtp(this.deliveryId);
         console.log(`✅ OTP generated: ${otp}`);
 
-        // Get delivery info for event
-        console.log(`📋 Fetching delivery info for delivery ${this.deliveryId}...`);
-        const delivery = await prisma.delivery.findUnique({
-          where: { id: this.deliveryId },
-          select: {
-            orderId: true,
-            restaurantName: true,
-            storeId: true
-          }
-        });
-
-        if (!delivery) {
-          console.error(`❌ Delivery ${this.deliveryId} not found in database!`);
-          await this.stop();
-          return;
-        }
-
-        console.log(`✅ Delivery info fetched:`, {
-          orderId: delivery.orderId,
-          storeId: delivery.storeId,
-          restaurantName: delivery.restaurantName
-        });
-
         // Publish OTP generated event
         const { publishOtpGeneratedEvent } = require('./kafka');
-        console.log(`📤 Publishing OTP generated event...`);
-
         await publishOtpGeneratedEvent({
           eventType: 'OTP_GENERATED',
           deliveryId: this.deliveryId,
@@ -175,8 +162,6 @@ export class DroneSimulator {
 
         // Publish arrival event
         const { publishDroneArrivedEvent } = require('./kafka');
-        console.log(`📤 Publishing drone arrived event...`);
-
         await publishDroneArrivedEvent({
           eventType: 'DRONE_ARRIVED_AT_RESTAURANT',
           deliveryId: this.deliveryId,
@@ -188,13 +173,70 @@ export class DroneSimulator {
         console.log(`✅ Drone arrived event published for orderId: ${delivery.orderId}`);
 
       } catch (error) {
-        console.error(`❌ Error in drone arrival process for delivery ${this.deliveryId}:`, error);
-        console.error(`❌ Error stack:`, (error as Error).stack);
-        // Continue to stop simulation even if error
+        console.error(`❌ Error in Phase 1 arrival process:`, error);
       }
 
       // Stop simulation - wait for OTP verification
       await this.stop();
+      return;
+    }
+
+    // PHASE 2: Arriving at customer (status: IN_TRANSIT)
+    if (delivery.status === 'IN_TRANSIT' && distanceToDestination < 0.05) { // 50m for customer
+      console.log(`🎯 [PHASE 2] Drone ${this.droneId} arrived at CUSTOMER!`);
+
+      try {
+        // Update delivery status to AWAITING_CUSTOMER_PICKUP
+        console.log(`📝 Updating delivery ${this.deliveryId} status to AWAITING_CUSTOMER_PICKUP...`);
+        await prisma.delivery.update({
+          where: { id: this.deliveryId },
+          data: { status: 'AWAITING_CUSTOMER_PICKUP' }
+        });
+        console.log(`✅ Delivery ${this.deliveryId} status updated to AWAITING_CUSTOMER_PICKUP`);
+
+        // Auto-generate OTP for customer
+        const { otpRedis } = require('../lib/redis');
+        console.log(`🔐 Generating customer OTP for delivery ${this.deliveryId}...`);
+        const customerOtpKey = `customer:${this.deliveryId}`;
+        const otp = await otpRedis.generateOtp(customerOtpKey);
+        console.log(`✅ Customer OTP generated: ${otp}`);
+
+        // Publish customer OTP generated event
+        const { publishCustomerOtpGeneratedEvent } = require('./kafka');
+        await publishCustomerOtpGeneratedEvent({
+          eventType: 'CUSTOMER_OTP_GENERATED',
+          deliveryId: this.deliveryId,
+          orderId: delivery.orderId,
+          storeId: delivery.storeId,
+          otp,
+          expiresIn: 60, // 60s for customer
+          timestamp: new Date().toISOString()
+        });
+        console.log(`✅ Customer OTP generated event published - OTP: ${otp}`);
+
+        // Publish drone arrived at customer event
+        const { publishDroneArrivedAtCustomerEvent } = require('./kafka');
+        await publishDroneArrivedAtCustomerEvent({
+          eventType: 'DRONE_ARRIVED_AT_CUSTOMER',
+          deliveryId: this.deliveryId,
+          droneId: this.droneId,
+          orderId: delivery.orderId,
+          storeId: delivery.storeId,
+          timestamp: new Date().toISOString()
+        });
+        console.log(`✅ Drone arrived at customer event published for orderId: ${delivery.orderId}`);
+
+      } catch (error) {
+        console.error(`❌ Error in Phase 2 arrival at customer process:`, error);
+      }
+
+      // Stop simulation - wait for customer OTP verification
+      // Note: Không return to base ngay, đợi customer verify OTP
+      if (this.intervalId) {
+        clearInterval(this.intervalId);
+        this.intervalId = null;
+        console.log(`🛑 Stopped drone ${this.droneId} simulation - waiting for customer OTP`);
+      }
       return;
     }
 

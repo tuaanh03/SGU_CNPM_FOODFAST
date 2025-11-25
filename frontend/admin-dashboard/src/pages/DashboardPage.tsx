@@ -132,7 +132,7 @@ const DashboardPage = () => {
                 </div>
 
                 {/* Quick Actions */}
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     <Card className="cursor-pointer transition-all hover:shadow-lg" onClick={() => navigate("/dispatch")}>
                         <CardHeader>
                             <CardTitle className="flex items-center">
@@ -163,6 +163,23 @@ const DashboardPage = () => {
                         <CardContent>
                             <Button className="w-full" variant="default">
                                 Xem Giao Hàng
+                            </Button>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="cursor-pointer transition-all hover:shadow-lg" onClick={() => navigate("/completed-deliveries")}>
+                        <CardHeader>
+                            <CardTitle className="flex items-center">
+                                <CheckCircle className="mr-2 h-5 w-5" />
+                                Đơn Đã Giao
+                            </CardTitle>
+                            <CardDescription>
+                                Xem lịch sử các đơn hàng đã hoàn thành
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <Button className="w-full" variant="default">
+                                Xem Lịch Sử
                             </Button>
                         </CardContent>
                     </Card>
